@@ -135,8 +135,7 @@ async fn retry_startup_failures_keep_both_attempts_and_do_not_rollback() {
         assert_eq!(serde_json::from_slice::<Value>(&fs::read(root.join("run.json")).unwrap()).unwrap(), retried["snapshot"]);
         let calls = s.herdr.calls();
         assert_eq!(calls.iter().filter(|c| c["kind"] == "agent_prompt").count(), if stage == "submit" { 3 } else { 2 });
-        let expected = if stage == "submit" { vec!["workspace_list", "tab_create", "agent_start", "agent_get", "agent_prompt"] } else { vec!["workspace_list", "tab_create", "agent_start", "agent_get"] };
-        assert_eq!(calls[before_calls..].iter().map(|call| call["kind"].as_str().unwrap()).collect::<Vec<_>>(), expected);
+        assert_retry_launch_calls(&calls[before_calls..], stage == "submit");
         tokio::time::sleep(Duration::from_millis(150)).await;
         assert_eq!(s.herdr.calls(), calls);
         assert_eq!(fs::read_to_string(artifact).unwrap(), "keep old side effects");
@@ -159,10 +158,10 @@ async fn retry_association_failure_exposes_new_attempt_without_overwriting_old_s
     let history = fs::read(root.join("history.jsonl")).unwrap();
     let release = s.data.path().join("retry-identity-release");
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"retry-uncommitted"},"native_cwd":s.data.path().join("node-zone"),"native_session_gate":{"wait_for_file":release,"timeout_ms":10000}}));
+    let before_retry = s.herdr.calls().len();
     let addr = s.server.addr();
     let request = tokio::spawn(async move { post_json_over_tcp(addr, "/api/workflow/manager/retry", &retry_body().to_string()).await });
-    common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().filter(|c| c["kind"] == "agent_get").count() == 3).await;
-    assert_eq!(s.herdr.calls().iter().filter(|c| c["kind"] == "agent_get").count(), 3);
+    assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().skip(before_retry).any(|call| call["kind"] == "agent_get")).await);
     fs::remove_file(&path).unwrap(); fs::create_dir(&path).unwrap();
     fs::write(release, b"release").unwrap();
     let response = request.await.unwrap();
@@ -318,6 +317,21 @@ async fn unavailable_retry_targets_fail_without_fallback_or_reusing_old_executio
     }
 }
 
+// Readiness and submission may both verify the same new owner. Only
+// identity reads can repeat; creation and submission effects must not.
+fn assert_retry_launch_calls(calls: &[Value], submitted: bool) {
+    let [workspace, tab, start, rest @ ..] = calls else { panic!("missing retry launch: {calls:?}") };
+    assert_eq!([workspace, tab, start].map(|call| call["kind"].as_str()), [Some("workspace_list"), Some("tab_create"), Some("agent_start")]);
+    let identity = if submitted {
+        let (prompt, identity) = rest.split_last().expect("missing retry prompt");
+        assert_eq!(prompt["kind"], "agent_prompt");
+        assert_eq!(prompt["target"], start["name"]);
+        identity
+    } else { rest };
+    assert!(!identity.is_empty(), "retry must verify the new native owner");
+    assert!(identity.iter().all(|call| call["kind"] == "agent_get" && call["target"] == start["name"]), "unexpected retry calls: {calls:?}");
+}
+
 fn retry_body() -> Value {
     json!({"sessionId":"retry-manager","nodeId":"A","confirmed":true,"reason":"User checked old Chat and partial output; start independent work"})
 }
@@ -345,7 +359,7 @@ async fn retry_saves_new_identity_before_full_trigger_and_retains_original_facts
     assert_eq!(saved["nodes"]["A"]["previousExecutions"][0]["execution"], old);
     assert_eq!(saved["nodes"]["A"]["previousExecutions"][0]["failure"]["message"], "Original execution left partial output");
     let calls = s.herdr.calls();
-    assert_eq!(calls[before_calls..].iter().map(|call| call["kind"].as_str().unwrap()).collect::<Vec<_>>(), ["workspace_list", "tab_create", "agent_start", "agent_get", "agent_prompt"]);
+    assert_retry_launch_calls(&calls[before_calls..], true);
     let prompt = calls.iter().filter(|c| c["kind"] == "agent_prompt").nth(2).unwrap();
     let text = common::prompt_body(prompt);
     assert!(text.starts_with(&format!("/skill:teach NODE-FIXED\n\nNode ID: A\nNode: Worker A\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n", s.config.scheduler.run_instructions.display(), root.join("run.json").display(), root.join("history.jsonl").display(), root.join("messages.jsonl").display())));

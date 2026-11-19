@@ -337,6 +337,22 @@ fn restored(feedback: &degradation::Feedback, label: &str, target: &crate::herdr
 mod degradation {
     use super::*;
     use serde::Serialize;
+    use crate::tasks::{Agent, catalog::ExecutionRole};
+
+    fn role_extension_ids(agent: Agent, role: ExecutionRole) -> &'static [&'static str] {
+        use ExecutionRole::{Chief, ChiefDelegated, Manager, NestedManager, Node, Standalone};
+        match (agent, role) {
+            (_, Standalone | Chief) => &[],
+            (Agent::Omp, Manager) => &["omp-manager-chat"],
+            (Agent::Omp, Node) => &["omp-node-chat"],
+            (Agent::Omp, NestedManager) => &["omp-manager-chat", "omp-node-chat"],
+            (Agent::Omp, ChiefDelegated) => &["omp-chief-report"],
+            (Agent::Pi, Manager) => &["pi-manager-chat"],
+            (Agent::Pi, Node) => &["pi-node-chat"],
+            (Agent::Pi, NestedManager) => &["pi-manager-chat", "pi-node-chat"],
+            (Agent::Pi, ChiefDelegated) => &["pi-chief-report"],
+        }
+    }
 
     #[derive(Serialize)]
     struct Item {
@@ -355,62 +371,59 @@ mod degradation {
             self.items.push(Item { element, reason, strategy });
         }
 
-        fn default_discovery(&mut self, reason: String) -> Option<Vec<String>> {
+        fn default_discovery(&mut self, reason: String, agent: Agent, associated_role: Option<ExecutionRole>) -> Option<Vec<String>> {
             self.record("extensions", reason,
                 "采用 agent 原生默认扩展发现；不关闭自动发现，不显式追加 Task 固定扩展或 Suite 资源，也不强制接入 connect-bot。默认资源范围可能变化，不代表恢复了原 Suite。".into());
+            for id in associated_role.into_iter().flat_map(|role| role_extension_ids(agent, role)) {
+                self.record("extension", format!("当前恢复未显式装配角色扩展「{id}」。"),
+                    "不改变原执行归属；不保证原生自动发现包含该角色扩展。".into());
+            }
             None
         }
 
         pub(super) async fn environment_args(&mut self, state: &AppState, selected: &crate::chats::history::HistorySelection, kind: &str, source: &SourceTask) -> Result<Option<Vec<String>>, (&'static str, String)> {
-            use crate::tasks::Agent;
             let agent = if kind == "omp" { Agent::Omp } else { Agent::Pi };
-            let task = match (selected.source_task_id.as_deref(), source) {
-                (_, Some(Ok(task))) => task,
-                (Some(id), Some(Err(TaskError::NotFound))) => return Ok(self.default_discovery(
-                    format!("来源 Task 已删除（ID {id}，成功读取存储确认不存在）。"))),
-                (Some(id), Some(Err(error))) => return Ok(self.default_discovery(
-                    format!("无法读取来源 Task（ID {id}）的会话环境（env config）：{}", error.message()))),
-                _ => return Ok(self.default_discovery(
-                    "历史记录缺少来源 Task 关联；不按名称、cwd 或当前 Task 推测来源。".into())),
-            };
-            if task.agent != agent {
+            if matches!(source, Some(Ok(task)) if task.agent != agent) {
                 return Err(("task-agent-mismatch", "来源 Task 的 agent 类型与所选历史不一致；尚未恢复。".into()));
             }
-            let catalog = match state.tasks.catalog() {
-                Ok(catalog) => catalog,
-                Err(error) => return Ok(self.default_discovery(
-                    format!("无法读取来源 Task（ID {}）的会话环境（env config）：{}", task.id, error.message()))),
-            };
-            let role = match state.runs.chat_role(state, &selected.session_id, &task.id, agent).await
+            // Execution ownership comes from saved Chat identity even when the
+            // current environment cannot be read or assembled.
+            let source_id = selected.source_task_id.as_deref();
+            let associated_role = match state.runs.chat_role(state, &selected.session_id, source_id, agent).await
                 .map_err(|message| ("execution-association-invalid", message))? {
-                Some(role) => role,
+                Some(role) => Some(role),
                 None => state.delegations.sender(&selected.session_id)
                     .map_err(|error| ("chief-delegation-storage", error.to_string()))?
                     .filter(|record| record.run_id.is_none())
-                    .map_or_else(|| task.task_type.into(), |_| crate::tasks::catalog::ExecutionRole::ChiefDelegated),
+                    .map(|_| ExecutionRole::ChiefDelegated),
+            };
+            let task = match (source_id, source) {
+                (_, Some(Ok(task))) => task,
+                (Some(id), Some(Err(TaskError::NotFound))) => return Ok(self.default_discovery(
+                    format!("来源 Task 已删除（ID {id}，成功读取存储确认不存在）。"), agent, associated_role)),
+                (Some(id), Some(Err(error))) => return Ok(self.default_discovery(
+                    format!("无法读取来源 Task（ID {id}）的会话环境（env config）：{}", error.message()), agent, associated_role)),
+                _ => return Ok(self.default_discovery(
+                    "历史记录缺少来源 Task 关联；不按名称、cwd 或当前 Task 推测来源。".into(), agent, associated_role)),
+            };
+            let catalog = match state.tasks.catalog() {
+                Ok(catalog) => catalog,
+                Err(error) => return Ok(self.default_discovery(
+                    format!("无法读取来源 Task（ID {}）的会话环境（env config）：{}", task.id, error.message()), agent, associated_role)),
             };
             let suite_args = match state.tasks.prepare_environment(task) {
                 Ok(args) => args,
                 Err(error) => return Ok(self.default_discovery(
-                    format!("来源 Task（ID {}）的 Suite 配置不可用：{}", task.id, error.message()))),
+                    format!("来源 Task（ID {}）的 Suite 配置不可用：{}", task.id, error.message()), agent, associated_role)),
             };
+            let role = associated_role.unwrap_or_else(|| task.task_type.into());
             let env = self.environment(&catalog, agent, role, suite_args, &state.herdr);
             Ok(Some(crate::chats::agent_launch_args(&env, None)))
         }
 
-        fn environment(&mut self, catalog: &crate::tasks::catalog::Catalog, agent: crate::tasks::Agent, role: crate::tasks::catalog::ExecutionRole, suite_args: Vec<String>, herdr: &crate::herdr::HerdrClient) -> crate::tasks::catalog::ResolvedEnvConfig {
-            use crate::tasks::catalog::{ExecutionRole, ExtensionKind, ResolvedEnvConfig};
-            let role_names: &[&str] = match role {
-                ExecutionRole::Standalone | ExecutionRole::Chief => &[],
-                ExecutionRole::Manager => &["manager"],
-                ExecutionRole::Node => &["node"],
-                ExecutionRole::NestedManager => &["manager", "node"],
-                ExecutionRole::ChiefDelegated => &["chief-report"],
-            };
-            for role_name in role_names {
-                let id = if *role_name == "chief-report" {
-                    format!("{}-chief-report", agent.label())
-                } else { format!("{}-{role_name}-chat", agent.label()) };
+        fn environment(&mut self, catalog: &crate::tasks::catalog::Catalog, agent: Agent, role: ExecutionRole, suite_args: Vec<String>, herdr: &crate::herdr::HerdrClient) -> crate::tasks::catalog::ResolvedEnvConfig {
+            use crate::tasks::catalog::{ExtensionKind, ResolvedEnvConfig};
+            for &id in role_extension_ids(agent, role) {
                 if !catalog.extensions.iter().any(|extension| extension.id == id) {
                     self.record("extension", format!("角色扩展「{id}」的当前固定映射缺失。"), "跳过此扩展；保留其余可用项，仍关闭扩展自动发现。".into());
                 }

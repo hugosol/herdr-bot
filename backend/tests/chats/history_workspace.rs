@@ -155,9 +155,10 @@ async fn locating_elsewhere_keeps_original_location_and_native_content() {
     let config = config(&root, &herdr);
     let server = start(&config).await;
     let file = root.path().join("native.jsonl");
-    let header = json!({"type":"session", "id":"native-full-001", "cwd":root.path()});
-    let bytes = format!("{header}\n{{\"type\":\"message\",\"content\":\"Historical content\"}}\n").into_bytes();
-    std::fs::write(&file, &bytes).unwrap();
+    let header = json!({"type":"session","id":"native-full-001","cwd":root.path()});
+    let native = format!("{header}\n{{\"type\":\"message\",\"content\":\"Historical content\"}}\n");
+    let bytes = native.as_bytes();
+    std::fs::write(&file, bytes).unwrap();
     post(&server, "/api/sessions/events", json!({"sessionId":"native-full-001","kind":"register","data":{"cwd":root.path(),"agentType":"pi","sessionFile":file,"originalWorkspaceId":"w-original"}})).await;
     herdr.set_behavior(json!({"agents":[{"agent":"pi","name":"live","workspace_id":"w-elsewhere","tab_id":"t-live","pane_id":"p-live","agent_session":{"agent":"pi","source":"herdr:pi","kind":"id","value":"native-full-001"}}]}));
     let result = post(&server, "/api/chats/resume", json!({"sessionId":"native-full-001"})).await;

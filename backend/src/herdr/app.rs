@@ -131,6 +131,19 @@ impl AppHost {
         self.verify_terminal(&location.workspace_id, &location.tab_id, &target.address).await
     }
 
+    pub(super) async fn close_tab(&self, tab_id: &str) -> Result<(), HerdrError> {
+        const CLOSE: &str = "herdr-app tab.close";
+        // App checks the Tab count at execution: confirmation authorizes the
+        // resulting empty Space, never a separate Space-wide close command.
+        let args = json!({"id":tab_id,"confirmed":true}).to_string();
+        let reply = run_cli(&self.executable, CLOSE, &["do", "tab.close", &args], QUERY_TIMEOUT).await?;
+        if reply.get("ok").and_then(Value::as_bool) != Some(true) {
+            return Err(unexpected(CLOSE, "缺少 App 关闭回执"));
+        }
+        // App kills terminals asynchronously. This is only its command receipt.
+        Ok(())
+    }
+
     pub(super) async fn submit(&self, target: &AppTerminal, text: &str) -> Result<(), HerdrError> {
         const SEND: &str = "hc send";
         let result = run_cli(&self.core, SEND, &["send", "--json", &target.address, "--", text], Duration::from_secs(75)).await?;

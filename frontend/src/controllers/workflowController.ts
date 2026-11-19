@@ -44,6 +44,7 @@ export type NodeState = {
   status: string
   execution: Execution | null
   failure: Failure | null
+  autoCloseFailure?: { code: string; message: string }
   completion: { id: string; at: number; actor: ChatReference; reason: string } | null
   previousExecutions: { execution: Execution | null; failure: Failure | null }[]
 }
@@ -65,6 +66,17 @@ export async function listRuns(): Promise<{ runs: RunEntry[]; pollIntervalSecond
 
 export async function loadRun(id: string): Promise<RunDetail> {
   return await readJSON(`/api/workflow/runs/${encodeURIComponent(id)}`)
+}
+
+export async function locateRunChat(id: string, executionId?: string): Promise<string> {
+  const response = await fetch(`/api/workflow/runs/${encodeURIComponent(id)}/locate`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ executionId }),
+  })
+  const value = await response.json()
+  if (!response.ok || value?.outcome !== 'located' || typeof value.message !== 'string') {
+    throw new Error(typeof value?.message === 'string' ? value.message : '无法确认所选 Run Chat 已聚焦。')
+  }
+  return value.message
 }
 
 export async function renameRun(id: string, name: string): Promise<RunDetail> {

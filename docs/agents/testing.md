@@ -85,6 +85,10 @@ toolkit_baseline = 'C:/absolute/original-toolkit-checkout'
 
 用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test chat_creation`。受控 TUI、App/core 的记录检查所选容器、固定扩展与 Suite、终端收到的原始输入，以及当前启动与目标的匹配；原生上报通过生产 `/api/sessions/events`，关机状态使用记录安全的替身，不调用系统关机。页面定向检查为 `npm --prefix frontend run test:browser:build -- chatCreation.spec.ts --workers=1`；受控上报独立于页面，浏览器只观察创建 HTTP 进度。以上不认证真实安装宿主、framework 或模型行为。
 
+### Run Chat 角色恢复（P42／S1）
+
+用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch --test workflow_start --test chief_delegation p42 -- --nocapture`。场景从公开发起／派发／委派产生真实关联，使用公开 Resume 与独立 Run／node／委派 HTTP 读回核对原身份、角色和数量，检查所选 TUI 或 App/core 的 argv 及终端输入记录。覆盖 OMP／Pi 的原角色、同 Task 普通 Chat、结束节点、子管理者双角色，以及配置错误或缺来源时的默认发现及未显式装配提示。另运行 `app_delegated_map_binds_manager_before_approved_input`，验证 App 的直接 Map 委派恢复仍保持原 Run／委派及管理者角色。既有 `roles::`、`end_node::` 和 `resume_restart::` 继续覆盖 TUI 的普通节点／结束节点、旧执行与错误归属。这些检查不认证实际安装宿主加载扩展、模型行为或跨端 Run 接管。
+
 ### 原生提醒专项（P47／P48）
 
 控制边界：`cargo test --manifest-path backend/Cargo.toml --test chat_creation native_reminders` 和同目标的 `app_launch_uses_task_environment_and_selected_terminal_without_tui_files`。由公开 Chat HTTP 发起 OMP／Pi。TUI 独立核对 Pane 与加载的一份官方状态扩展；App 在 TUI 集成文件缺失时核对原生 agent argv 与所选 Space／Pane／core 终端。两端取完整控制 CLI 记录，确认 connect-bot 的 `working → awaiting-input → awaiting-input` 已在公开会话流可见，却未增加另一条宿主命令。控制记录不证明真实状态或播放。
@@ -110,7 +114,7 @@ toolkit_baseline = 'C:/absolute/original-toolkit-checkout'
 - 工具与依赖安装见 [构建与运行](../../README.md#构建与运行)。后端测试也需要 Node.js，供跨前后端网络护栏使用。
 - 浏览器验收需要本机 Chrome。源码更新后使用 `test:browser:build`，由它先构建前后端和安全关机壳再执行验收；仅调试已构建产物时使用 `npm --prefix frontend run test:browser`。
 - 不同源码副本使用独立 `CARGO_TARGET_DIR`；测试程序会内嵌源码路径。性能比较顺序运行，避免多轮检查争抢同一资源。
-- 原生可见性浏览器清理通过独占 Chrome 的 Node `exit` 事件或独立 Windows 进程句柄确认根进程退出；删除独占 profile 前，句柄观察进程还须确认携带该 profile 路径的残留 Chrome utility 进程退出，不能在根进程先退出时提前终止观察。`taskkill` 返回码或输出不能代替退出确认。
+- 原生可见性浏览器清理分别确认根进程和独占 profile 的进程退出。Node `exit` 事件或独立 Windows 句柄可确认根进程退出；随后观察进程须在独立时限内确认携带该 profile 路径的残留 Chrome utility 进程退出，才允许删除 profile。`taskkill` 返回码或输出不能代替退出确认。
 
 ## 动态 TypeScript 脚本验证
 

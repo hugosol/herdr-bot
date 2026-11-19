@@ -105,7 +105,88 @@ async fn auto_close_targets_only_current_execution_once_among_other_tabs() {
     assert_eq!(repeated["changed"], false);
     tokio::time::sleep(Duration::from_millis(150)).await;
     let calls = s.herdr.calls();
-    assert_eq!(calls[before..].iter().map(|call| call["argv"].clone()).collect::<Vec<_>>(), vec![json!(["tab","close",tab])], "no target discovery, manager/other/old close or repeated close");
+    assert_eq!(calls[before..].iter().map(|call| call["argv"].clone()).collect::<Vec<_>>(), vec![json!(["workspace","list"]), json!(["tab","close",tab])], "only inspect scope and close the saved execution, not manager/other/old Tabs");
+}
+
+// S1/P44: native TUI may remove the Workspace when the associated Tab is
+// its last one. An explicit workspace close (or confirmation override) is not
+// authorized, even when a different Workspace's live Tab is a nearby decoy.
+#[tokio::test]
+async fn precise_auto_close_tui_last_target_tab_may_remove_empty_workspace() {
+    let s = Scenario::without_output_contract().await;
+    set_auto_close(&s, "A", true).await;
+    let started = s.start("close-last-tui-manager").await;
+    node_host(&s, "close-last-tui-worker");
+    let dispatched = s.dispatch("close-last-tui-manager", &["A"]).await;
+    let chat = &dispatched["snapshot"]["nodes"]["A"]["execution"]["chat"];
+    let target = chat["tabId"].as_str().unwrap();
+    let workspace = chat["workspaceId"].as_str().unwrap();
+    approve_execution(&s, "close-last-tui-worker").await;
+    submit_report(&s, "close-last-tui-worker", "Last Tab's work is ready", true).await;
+    // Controlled live layout after an independent removal of the manager Tab.
+    let unrelated = json!({"workspace_id":"w-retained","label":"retained","tabs":[{"tab_id":"w-retained:tab","terminal":"unrelated-live-terminal"}]});
+    s.herdr.set_workspaces(json!([
+        {"workspace_id":workspace,"label":"selected","tabs":[{"tab_id":target,"terminal":"selected-live-terminal"}]},
+        unrelated
+    ]));
+    let before = s.herdr.calls().len();
+    let completed = manager_action(&s, "complete", json!({"sessionId":"close-last-tui-manager","nodeId":"A","reason":"Last Tab's work is ready"}), 200).await;
+    assert_eq!(completed["snapshot"]["nodes"]["A"]["status"], "completed");
+    wait_closed(&s, 1).await;
+    let receipts = common::read_json_lines(&s.herdr.path().join("closed.jsonl"));
+    assert_eq!(receipts, [json!({"target":target,"terminal":"selected-live-terminal"})]);
+    assert_eq!(s.herdr.calls()[before..].iter().map(|call| call["argv"].clone()).collect::<Vec<_>>(),
+        [json!(["workspace","list"]), json!(["tab","close",target])]);
+    let output = std::process::Command::new(s.herdr.executable()).args(["workspace", "list"]).output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let layout: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(layout["result"]["workspaces"], json!([unrelated]));
+    let read = get_over_tcp(s.server.addr(), &format!("/api/workflow/runs/{}", started["id"].as_str().unwrap())).await;
+    assert_eq!(read.status, 200, "{}", read.body);
+    let detail: Value = serde_json::from_str(&read.body).unwrap();
+    assert_eq!(detail["run"]["nodes"]["A"], completed["snapshot"]["nodes"]["A"]);
+}
+
+// P45: TUI can disable its native confirmation. A known cascading last-Tab
+// close must not even be sent to the adapter under that setting.
+#[tokio::test]
+async fn precise_auto_close_tui_refuses_known_worktree_group_before_mutation() {
+    let s = Scenario::without_output_contract().await;
+    set_auto_close(&s, "A", true).await;
+    let started = s.start("close-group-manager").await;
+    node_host(&s, "close-group-worker");
+    let dispatched = s.dispatch("close-group-manager", &["A"]).await;
+    let chat = &dispatched["snapshot"]["nodes"]["A"]["execution"]["chat"];
+    let workspaces = json!([
+        {"workspace_id":chat["workspaceId"],"label":"primary","tab_count":1,
+         "worktree":{"repo_key":"selected-repo","is_linked_worktree":false},"tabs":[{"tab_id":chat["tabId"],"terminal":"selected-pty"}]},
+        {"workspace_id":"w-linked","label":"independent work","tab_count":1,
+         "worktree":{"repo_key":"selected-repo","is_linked_worktree":true},"tabs":[{"tab_id":"linked-tab","terminal":"linked-pty"}]}
+    ]);
+    approve_execution(&s, "close-group-worker").await;
+    submit_report(&s, "close-group-worker", "Ready to complete; not to close unrelated work", true).await;
+    s.herdr.set_workspaces(workspaces.clone());
+    let completed = manager_action(&s, "complete", json!({"sessionId":"close-group-manager","nodeId":"A","reason":"Verified work"}), 200).await;
+    assert_eq!(completed["snapshot"]["nodes"]["A"]["status"], "completed");
+    let url = format!("/api/workflow/runs/{}", started["id"].as_str().unwrap());
+    let detail = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let response = get_over_tcp(s.server.addr(), &url).await;
+            assert_eq!(response.status, 200, "{}", response.body);
+            let detail: Value = serde_json::from_str(&response.body).unwrap();
+            if !detail["run"]["nodes"]["A"]["autoCloseFailure"].is_null() { break detail; }
+            assert!(closes(&s).is_empty(), "native TUI without confirmation could close the group");
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }).await.expect("a refused scope must be visible in the public Run");
+    let saved = &detail["run"]["nodes"]["A"];
+    assert_eq!(saved["completion"], completed["snapshot"]["nodes"]["A"]["completion"]);
+    assert_eq!(saved["autoCloseFailure"]["code"], "close-scope-denied");
+    assert!(closes(&s).is_empty());
+    let output = std::process::Command::new(s.herdr.executable()).args(["workspace", "list"]).output().unwrap();
+    assert!(output.status.success());
+    let layout: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(layout["result"]["workspaces"], workspaces);
 }
 
 // P15/P16: the external close is held behind a release file. An awaited close
@@ -150,14 +231,15 @@ async fn auto_close_while_working_does_not_block_complete_or_same_run_downstream
     let completed: Value = serde_json::from_str(&response.body).unwrap();
     assert_eq!(completed["ready"], json!(["C"]));
     events.push("complete-returned");
-    assert_eq!(s.herdr.calls()[before..].iter().map(|call| call["argv"].clone()).collect::<Vec<_>>(), vec![json!(["tab","close",target])], "completion itself must not stop or probe the working agent");
+    assert_eq!(s.herdr.calls()[before..].iter().map(|call| call["argv"].clone()).collect::<Vec<_>>(), vec![json!(["workspace","list"]), json!(["tab","close",target])], "scope verification must not stop or probe the working agent");
     let next = tokio::time::timeout(Duration::from_secs(10), s.dispatch("close-held-manager", &["C"])).await.expect("same Run must progress while close is held");
     assert_eq!(next["results"][0]["status"], "running");
     events.push("downstream-dispatched");
     assert!(!release.exists());
     assert!(common::read_json_lines(&s.herdr.path().join("closed.jsonl")).is_empty(), "the external close has not returned during either business operation");
     let calls = s.herdr.calls();
-    assert_eq!(calls[before]["argv"], json!(["tab","close",target]));
+    assert_eq!(calls[before]["argv"], json!(["workspace","list"]));
+    assert_eq!(calls[before + 1]["argv"], json!(["tab","close",target]));
     assert!(calls[before..].iter().all(|call| ["tab_close","workspace_list","tab_create","agent_start","agent_get","agent_prompt"].contains(&call["kind"].as_str().unwrap())), "no stop or idle probing: {:?}", &calls[before..]);
     fs::write(&release, "release").unwrap();
     events.push("close-released");

@@ -153,6 +153,14 @@ pub(crate) async fn list_runs(State(state): State<AppState>) -> RunHttpResult {
 pub(crate) async fn get_run(State(state): State<AppState>, Path(id): Path<String>) -> RunHttpResult {
     runs::get_run(state, id).await.map(RunResponse).map_err(HttpError)
 }
+pub(crate) async fn locate_chat(
+    State(state): State<AppState>,
+    RunId(id): RunId,
+    input: CommandJson<runs::LocateRequest, input::Locate>,
+) -> Result<Json<serde_json::Value>, HttpError<crate::chats::Error>> {
+    runs::locate_chat(state, &id, input.value).await.map(Json).map_err(HttpError)
+}
+
 pub(crate) async fn rename_run(
     State(state): State<AppState>,
     RunId(id): RunId,
