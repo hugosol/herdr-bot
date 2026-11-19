@@ -31,10 +31,8 @@ async fn main() -> anyhow::Result<()> {
 
     println!("[herdr-bot] 主界面已启动");
     println!("[herdr-bot] 配置文件：{}", config_path.display());
-    for (label, binding) in [
-        ("启动", &config.operations.start),
-        ("停止", &config.operations.stop),
-    ] {
+    let (start, stop) = config.operations.selected(config.herdr.backend);
+    for (label, binding) in [("启动", start), ("停止", stop)] {
         println!(
             "[herdr-bot] {label}操作：{}（工作目录 {}）",
             binding.script.display(),
@@ -42,11 +40,16 @@ async fn main() -> anyhow::Result<()> {
         );
     }
     println!("[herdr-bot] 打包页面：{}", static_dir.display());
-    println!(
-        "[herdr-bot] Herdr Workspace：{}（herdr：{}）",
-        config.herdr.workspace_name,
-        config.herdr.executable.display()
-    );
+    match config.herdr.backend {
+        herdr_bot::HerdrBackend::Tui => println!(
+            "[herdr-bot] Herdr Workspace：{}（tui：{}）",
+            config.herdr.workspace_name, config.herdr.executable.display()
+        ),
+        herdr_bot::HerdrBackend::App => println!(
+            "[herdr-bot] Herdr App Space：{}（app：{}，core：{}）",
+            config.herdr.workspace_name, config.herdr.app_executable.display(), config.herdr.core_executable.display()
+        ),
+    }
     println!(
         "[herdr-bot] 会话窗口：在线 {} 秒、离线保留 {} 秒",
         config.sessions.online_timeout_seconds.get(),

@@ -197,9 +197,19 @@ workflow 是只读观察入口，没有暂停/恢复按钮。要暂停新派发�
 
 角色工具须先实际部署；没有 manager-chat/node-chat 入口时不要手填身份或编辑运行记录冒充执行。拒绝、重复调用与部分生效的解释见[暂停新执行与恢复派发资格](workflow-runtime.md#暂停新执行与恢复派发资格)。
 
+### 选择 Herdr 宿主
+
+在 `herdr-bot.toml` 的 `[herdr]` 设置 `backend = 'tui'` 或 `backend = 'app'`；省略等同 `tui`，非法值拒绝启动。TUI CLI 路径为 `executable`，App 窗口控制与配套 core 分别为 `app_executable`、`core_executable`。三条路径可一次填好；也可省略，分别按 PATH 查找 `herdr`、`herdr-app`、`hc`。切换前先结束旧 agent、停止旧宿主，再改 `backend` 并重启 herdr-bot；不迁移正在运行的 Chat 或 Run。
+
+App 模式下，`HERDR_APP_HOME` 指向所选窗口，App 实际连接的 core 和 herdr-bot 调用的 `hc` 必须使用相同 core 环境（非默认实例可通过 `HC_SESSION` 或 `HC_SOCKET` 选择）。仅关闭 App 窗口不会退出 core。herdr-bot 用 App 中的实际 Space／Tab 及 core 中记录的终端归属核对目标；短终端地址相同不能证明是同一实例。App Tab 回执本身既不能证明归属，也不能证明 agent 已可输入。
+
+`workspace_name` 是默认容器名称的唯一来源：TUI 匹配 Workspace label，App 匹配 Space name。按字面精确匹配，零个或多个都报错，不任取一个或新建容器。它不是 zone 路径，也不是原生 Chat 身份。
+
 ### server 固定操作
 
-在 `server` 内容页点击“启动”或“停止”，调用服务端预先配置的脚本；页面仅反馈脚本调用，
+在 `server` 内容页点击“启动”或“停止”，调用服务端预先配置的脚本。`[operations.start]`／`[operations.stop]` 可作为两端共享的固定绑定；如果两端需要不同脚本，另外成对声明 `[operations.app.start]`／`[operations.app.stop]`（两段均指定 `script` 与 `working_directory`），仅 App 模式使用该对绑定。
+
+页面仅反馈脚本调用，
 即使退出码为 0，也不代表后台程序已经启动、就绪或彻底停止。请求未结束时两按钮禁用，
 结果区分别说明完成、失败、忙碌拒绝或结果无法确认，不自动重试或排队补做。
 切回 tab 再进入 server 仍可查看本页最近一次调用的反馈。

@@ -28,7 +28,7 @@ cargo build --release --manifest-path backend\Cargo.toml
 backend\target\release\herdr-bot.exe --config herdr-bot.toml
 ```
 
-首次运行前，将 [`paths.example.toml`](paths.example.toml) 复制为仓库根的 `paths.local.toml`，按新机器调整根目录；已有本机配置时不要覆盖。样例保留旧机器已知路径，不代表新机器上存在这些目录。实际配置已被 Git 忽略，程序不会自动回退到样例。另检查 [`herdr-bot.toml`](herdr-bot.toml) 的监听地址、Herdr Workspace，以及 [`meta-data/task-options.toml`](meta-data/task-options.toml) 的模型与扩展选择。请从控制台启动，以便脚本继承可用的控制台。
+首次运行前，将 [`paths.example.toml`](paths.example.toml) 复制为仓库根的 `paths.local.toml`，按新机器调整根目录；已有本机配置时不要覆盖。实际配置已被 Git 忽略，程序不会自动回退到样例。另检查 [`herdr-bot.toml`](herdr-bot.toml) 的监听地址、[宿主选择与默认容器](docs/usage.md#选择-herdr-宿主)，以及 [`meta-data/task-options.toml`](meta-data/task-options.toml) 的模型与扩展选择。请从控制台启动，以便脚本继承可用的控制台。
 
 Task 选项目录内置 `GPT-6.2-Sol` 和 `GPT-6.2-Astra`，在 omp 和 pi 中均使用 `openai-codex`。两端都可选 `low`、`medium`、`high`、`xhigh`、`max`，pi 额外提供 `minimal`（映射为 `low`）。两端均可保留 `default`，不显式指定思考级别；已有 Task 和默认模型不变。
 
@@ -158,7 +158,7 @@ Map／Bot 编辑协调集中在 `frontend/src/scheduler/useSchedulerEditor.ts`�
 
 后端 `scheduler/bots/` 与 `scheduler/maps/` 分别拥有 Bot 和 Map／node 定义行为，Run 预检归 `runs/preflight.rs`。跨定义引用、协调范围及 chief 委派所需定义核对仍由 scheduler 持有；chief 授权与实际委派不移入 scheduler。归属调整不改变 revision／引用检查顺序、文件协调与 Run 操作锁范围、部分失败语义或数据格式，也不保留旧路径转发。
 
-Herdr 集成统一通过 `crate::herdr` 使用；`client` 与 `identity` 保持私有实现，宿主调用与原生身份类型由模块接口导出，内部位置映射通过 `crate::herdr::placement` 使用。本次仅调整源码归属，不改变运行行为。
+Herdr 集成统一通过 `crate::herdr` 使用；`client`、`app` 与 `identity` 保持私有实现。TUI CLI 和 App／core 的协议留在控制模块；宿主调用与原生身份类型由模块接口导出，位置决策继续归 `crate::herdr::placement`。
 
 位置映射集中在 `backend/src/herdr/placement.rs`：`Scenario` 枚举显式区分普通 Chat、chief、chief 委派 Task、根 Map 管理者、chief 委派 Map、node、嵌套 Map 管理者和历史 Chat 恢复，共用按名称放置、跟随管理者、恢复历史位置三套规则。interface 只接收位置依据，不接收整个 Task／Run／AppState；zone 仍是稳定逻辑工作位置，执行目录要求与宿主 Workspace 选择分开表达。映射只进行必要的只读查询，不创建 Tab、启动 agent 或修改历史。
 

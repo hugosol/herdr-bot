@@ -72,6 +72,13 @@ fn missing_empty_or_whitespace_workspace_name_prevents_startup() {
     assert_startup_rejected("tabs", "[herdr]\nworkspace_name = \"\\t\\n\"\n");
 }
 
+#[test]
+fn invalid_backend_is_not_treated_as_tui() {
+    for backend in ["native", "TUI", ""] {
+        assert_startup_rejected("backend", &format!("[herdr]\nworkspace_name = 'explicit-target'\nbackend = '{backend}'\n"));
+    }
+}
+
 /// 合法显式值启动成功；日志说明这次目标不是代码缺省，而是 TOML 中的字面值。
 #[test]
 fn an_explicit_workspace_name_starts_the_real_process() {
@@ -82,10 +89,18 @@ fn an_explicit_workspace_name_starts_the_real_process() {
         static_index.display()
     );
 
+    // S1: startup with both installed paths declared catches rejecting the new
+    // configuration even though switching should change only `backend`.
+    for backend in ["", "backend = 'tui'\n", "backend = 'app'\n"] {
+        assert_starts_with_backend(backend);
+    }
+}
+
+fn assert_starts_with_backend(backend: &str) {
     let dir = TempDir::new("herdr config valid");
     let config_path = write_config(
         &dir,
-        "[herdr]\nworkspace_name = 'explicit-target'\nexecutable = 'herdr'\n",
+        &format!("[herdr]\nworkspace_name = 'explicit-target'\n{backend}executable = 'declared-tui'\napp_executable = 'declared-app'\ncore_executable = 'declared-core'\n"),
     );
     let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
         .current_dir(common::repo_fixtures_dir().parent().unwrap())
@@ -124,13 +139,23 @@ fn an_explicit_workspace_name_starts_the_real_process() {
         }
     }
 
-    let _guard = KillOnDrop(&mut child);
+    let guard = KillOnDrop(&mut child);
     let joined = log.join("\n");
-    assert!(started, "合法显式配置必须真正开始监听：\n{joined}");
-    assert!(
-        joined.contains("Herdr Workspace：explicit-target"),
-        "启动日志必须报告 TOML 中显式配置的目标，而不是缺省值：\n{joined}"
-    );
+    if !started {
+        let _ = guard.0.kill();
+        let _ = guard.0.wait();
+        let mut stderr = String::new();
+        if let Some(mut stream) = guard.0.stderr.take() {
+            std::io::Read::read_to_string(&mut stream, &mut stderr).ok();
+        }
+        panic!("合法显式配置必须真正开始监听：\n{joined}\n{stderr}");
+    }
+    let target = if backend.contains("'app'") {
+        "Herdr App Space：explicit-target（app：declared-app，core：declared-core）"
+    } else {
+        "Herdr Workspace：explicit-target（tui：declared-tui）"
+    };
+    assert!(joined.contains(target), "启动日志必须报告本次选择：\n{joined}");
 }
 
 /// 测试失败或提前返回时也结束真实进程。

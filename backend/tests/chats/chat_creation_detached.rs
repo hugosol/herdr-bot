@@ -43,8 +43,8 @@ fn config_with_operations(
     config.zones.registry_file = storage.path().join("zones.json");
     config.tasks.storage_file = storage.path().join("tasks.json");
     config.herdr = herdr_bot::HerdrConfig {
-        workspace_name: "bot-playground".to_string(),
         executable: herdr.executable().to_path_buf(),
+        ..herdr_bot::HerdrConfig::new("bot-playground")
     };
     config
 }
