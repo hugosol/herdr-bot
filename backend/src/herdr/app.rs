@@ -147,6 +147,9 @@ impl AppHost {
     pub(super) async fn submit(&self, target: &AppTerminal, text: &str) -> Result<(), HerdrError> {
         const SEND: &str = "hc send";
         let result = run_cli(&self.core, SEND, &["send", "--json", &target.address, "--", text], Duration::from_secs(75)).await?;
+        if result.get("started").and_then(Value::as_bool) == Some(false) {
+            return Err(unexpected(SEND, "宿主回执 started:false，不能确认初始指示的提交结果"));
+        }
         if result.get("turn").and_then(Value::as_u64).is_none()
             || !matches!(result.get("started"), Some(Value::Bool(true) | Value::Null))
         {

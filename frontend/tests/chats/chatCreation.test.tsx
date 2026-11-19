@@ -597,11 +597,11 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
         tabId: 'w-target:t9',
         paneId: 'w-target:p9',
         agentName: 'chat-000000000009',
+        inputOutcome: 'not-submitted',
         failure: {
           stage: 'submit',
-          code: 'herdr-command-failed',
-          message:
-            'agent 已就绪，但初始指示的提交被明确拒绝。Tab、Pane 与 agent 已保留。',
+          code: 'herdr-input-blocked',
+          message: '宿主阻止了输入。',
         },
       }),
     )
@@ -612,7 +612,7 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     const failure = await within(dialog).findByTestId('chat-create-failure')
     expect(failure).toHaveTextContent('提交初始指示')
     expect(failure).toHaveTextContent(
-      '现场已存在：agent 已就绪，但初始指示的提交被明确拒绝；不会自动重发。',
+      '现场已存在：初始指示未提交，不会自动重发。',
     )
     expect(failure).not.toHaveTextContent('投递结果未确认')
     expect(within(dialog).queryByTestId('chat-create-success')).toBeNull()

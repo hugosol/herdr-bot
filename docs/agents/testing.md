@@ -85,6 +85,8 @@ toolkit_baseline = 'C:/absolute/original-toolkit-checkout'
 
 用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test chat_creation`。受控 TUI、App/core 的记录检查所选容器、固定扩展与 Suite、终端收到的原始输入，以及当前启动与目标的匹配；原生上报通过生产 `/api/sessions/events`，关机状态使用记录安全的替身，不调用系统关机。页面定向检查为 `npm --prefix frontend run test:browser:build -- chatCreation.spec.ts --workers=1`；受控上报独立于页面，浏览器只观察创建 HTTP 进度。以上不认证真实安装宿主、framework 或模型行为。
 
+初始输入重试（P20、P24–P28、P50、P52）由 `chat_creation` 的 `initial_input_retry::` 及 `a_timed_out_submission` 通过真实 HTTP 和受控宿主验证：拒绝回执门闩后的 4.999／5.000 秒、重复／乱序 ready、同目标唯一重试、退出／换会话／换进程取消，以及未知结果下的独立终端写入记录。`chatCreation.spec.ts` 对照页面等待、拒绝、未知和刷新时的实际创建／输入次数；`mobileWorkflow.spec.ts` 检查窄屏在两次明确阻塞后仍可查看现场、关闭弹窗，并确认没有输入写入。真实原生模态与终端另验。
+
 Toolkit 的 `manager-dispatch-recovery.test.ts` 和 `uncertain-effects.test.ts` 用本工作树的安全关机壳及受控 Herdr 夹具回归 Run 的身份归属：同一原生会话已归属本 Run 的管理者或另一执行时，新的节点启动保留实际启动和身份事实，但不保存重复关联，也不提交业务输入。夹具通过隔离后端接收本次启动的身份和 ready 上报；这些故障场景不代表安装宿主实际产生了重复 ID。
 
 ### Run Chat 角色恢复（P42／S1）

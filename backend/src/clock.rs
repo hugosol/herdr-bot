@@ -8,13 +8,24 @@
 //! 这是内部组织，不是新的外部 interface：交付运行时用的是 [`SystemClock`]，[`ManualClock`]
 //! 只用于把阈值边界变成精确时刻的验收。
 
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use tokio::sync::watch;
+
+pub(crate) async fn sleep_until(clock: &dyn Clock, deadline: Instant) {
+    if let Some(mut updates) = clock.updates() {
+        let _ = updates.wait_for(|now| *now >= deadline).await;
+    } else {
+        tokio::time::sleep_until(deadline.into()).await;
+    }
+}
 
 /// 单调时间来源。
 pub trait Clock: Send + Sync + 'static {
     /// 当前单调时刻。
     fn now(&self) -> Instant;
+
+    /// Updates for clocks that do not advance with the runtime timer.
+    fn updates(&self) -> Option<watch::Receiver<Instant>> { None }
 
     /// Wall-clock server time used only when first persisting history metadata.
     /// Lifecycle and countdown decisions continue to use monotonic `now`.
@@ -42,25 +53,20 @@ impl Clock for SystemClock {
 /// 窗口内推进 10 秒就是恰好 10 秒，不掺入真实调度抖动。
 #[derive(Debug)]
 pub struct ManualClock {
-    /// t=0 对应的真实单调时刻。
-    base: Instant,
-    /// 已推进的时长。
-    elapsed: Mutex<Duration>,
+    time: watch::Sender<Instant>,
 }
 
 impl ManualClock {
     /// 从此刻起算的受控时钟；未推进过时就是 t=0。
     pub fn new() -> Self {
         Self {
-            base: Instant::now(),
-            elapsed: Mutex::new(Duration::ZERO),
+            time: watch::channel(Instant::now()).0,
         }
     }
 
     /// 把受控时刻向前推进 `by`。
     pub fn advance(&self, by: Duration) {
-        let mut elapsed = self.elapsed.lock().expect("受控时刻的锁不会被毒化");
-        *elapsed += by;
+        self.time.send_modify(|now| *now += by);
     }
 }
 
@@ -72,6 +78,10 @@ impl Default for ManualClock {
 
 impl Clock for ManualClock {
     fn now(&self) -> Instant {
-        self.base + *self.elapsed.lock().expect("受控时刻的锁不会被毒化")
+        *self.time.borrow()
+    }
+
+    fn updates(&self) -> Option<watch::Receiver<Instant>> {
+        Some(self.time.subscribe())
     }
 }

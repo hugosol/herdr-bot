@@ -6,6 +6,8 @@
 
 #[path = "../common/mod.rs"]
 mod common;
+#[path = "initial_input_retry.rs"]
+mod initial_input_retry;
 mod native_reminders;
 
 use std::fs;
@@ -1199,9 +1201,9 @@ async fn stage_progress_waits_for_readiness_and_does_not_wait_for_the_model_turn
     );
 }
 
-/// P33：提交被明确拒绝时不假报成功，并保留已创建的 Tab / agent 定位信息。
+/// 普通提交错误不证明未写入，不假报成功，并保留 Tab / agent 定位信息。
 #[tokio::test(flavor = "multi_thread")]
-async fn a_rejected_submission_fails_creation_and_keeps_the_created_objects() {
+async fn a_generic_submission_error_keeps_the_created_objects_without_claiming_non_submission() {
     let herdr = HerdrFixture::new("task creation prompt failure");
     herdr.set_behavior(json!({ "fail_prompt": true }));
     let storage = TempDir::new("task creation prompt failure storage");
@@ -1243,12 +1245,9 @@ async fn a_rejected_submission_fails_creation_and_keeps_the_created_objects() {
         .as_str()
         .expect("失败必须有可读说明");
     assert!(message.contains("agent 已就绪"), "{message}");
-    assert!(message.contains("被明确拒绝"), "{message}");
+    assert_eq!(failed["inputOutcome"], "unknown");
+    assert!(message.contains("投递结果未确认"), "{message}");
     assert!(message.contains("保留"), "{message}");
-    assert!(
-        !message.contains("未确认"),
-        "明确拒绝不能表述成结果未确认：{message}"
-    );
 
     // 外部独立记录：agent 已就绪、投递已被夹具收到并拒绝；之后没有重发或清理动作。
     let created_tab = herdr.tabs().pop().expect("受控 Herdr 必须记录已创建的 Tab");
@@ -1275,7 +1274,7 @@ async fn a_rejected_submission_fails_creation_and_keeps_the_created_objects() {
 async fn a_timed_out_submission_is_unconfirmed_and_keeps_the_site_without_retrying() {
     let herdr = HerdrFixture::new("task creation prompt timeout");
     // 夹具先记录这次投递，再睡过 adapter 的提交时限：外部副作用已经发生，结果却未知。
-    herdr.set_behavior(json!({ "prompt_delay_ms": 31_000 }));
+    herdr.set_behavior(json!({ "prompt_response_delay_ms": 31_000 }));
     let storage = TempDir::new("task creation prompt timeout storage");
     let server = TestServer::start(&config_with(&herdr, &storage)).await;
     let (zone_path, task_id) = prepare_zone_and_task(&server, &storage).await;
@@ -1285,7 +1284,11 @@ async fn a_timed_out_submission_is_unconfirmed_and_keeps_the_site_without_retryi
     assert_eq!(failed["stage"], "failed", "不能显示创建成功");
     assert_eq!(failed["failure"]["stage"], "submit");
     assert_eq!(failed["failure"]["code"], "herdr-timeout");
+    assert_eq!(failed["inputOutcome"], "unknown");
     assert_eq!(failed["inputSubmitted"], false, "超时不能被说成已确认提交");
+    let terminal = common::read_json_lines(&herdr.path().join("submitted.jsonl"));
+    assert_eq!(terminal.len(), 1);
+    assert_eq!(terminal[0]["text"], "超时的指示");
     assert!(failed["tabId"].as_str().is_some());
     assert!(failed["paneId"].as_str().is_some());
     assert!(failed["agentName"].as_str().is_some());
@@ -1309,7 +1312,8 @@ async fn a_timed_out_submission_is_unconfirmed_and_keeps_the_site_without_retryi
     ];
     assert_eq!(call_kinds(&herdr), expected_kinds);
     assert_eq!(herdr.tabs().len(), 1, "已创建的 Tab 必须保留");
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(!wait_until(Duration::from_millis(5500), || call_kinds(&herdr) != expected_kinds).await,
+        "超时后不得自动重发、重建、关闭或删除现场");
     assert_eq!(
         call_kinds(&herdr),
         expected_kinds,

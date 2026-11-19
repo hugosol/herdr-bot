@@ -75,7 +75,7 @@ pub(super) fn dispatch(args: &[String]) {
                 output(json!({"address":terminal,"state":"dead","reason":"killed"}));
             } else {
                 output(json!({"address":terminal,"labels":{"herdr.space":tab["space"],"herdr.tab":tab["tab"]},
-                    "argv":tab["options"]["argv"],"cwd":tab["options"]["folder"],"state":"live","pid":43127}));
+                    "argv":tab["options"]["argv"],"cwd":tab["options"]["folder"],"state":"live","pid":behavior()["launch_pid"].as_u64().unwrap_or(43127)}));
             }
         }
         ["send", "--json", terminal, "--", text] => {
@@ -90,6 +90,10 @@ pub(super) fn dispatch(args: &[String]) {
             record("calls.jsonl", call);
             let behavior = behavior();
             wait_at_gate(&behavior, "prompt_gate", text);
+            if flag(&behavior, "block_prompt") {
+                eprintln!("{}", json!({"error":{"kind":"blocked","message":"controlled core modal"}}));
+                std::process::exit(9);
+            }
             if flag(&behavior, "fail_app_send") {
                 fail("blocked", "controlled App refused the input before sending");
             }
@@ -97,7 +101,7 @@ pub(super) fn dispatch(args: &[String]) {
                 fail("core_send_rejected", "controlled core rejected the input");
             }
             record("submitted.jsonl", json!({"terminal":terminal,"text":text}));
-            output(json!({"turn":0,"started":true,"status":"idle"}));
+            output(json!({"turn":0,"started":behavior["started"].as_bool().unwrap_or(true),"status":"idle"}));
         }
         _ => usage(args),
     }

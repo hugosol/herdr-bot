@@ -500,8 +500,16 @@ fn agent_prompt(args: &[String]) {
         // 调用记录已经写下，因此测试能够证明 herdr-bot 确实尝试过这次提交，而不是跳过它。
         fail("empty_agent_prompt", "agent prompt must not be empty");
     }
+    if flag(&behavior, "block_prompt") {
+        fail("agent_blocked", behavior["block_reason"].as_str().unwrap_or("controlled modal"));
+    }
     if flag(&behavior, "fail_prompt") {
         fail("agent_prompt_failed", "受控夹具拒绝提交初始指示");
+    }
+
+    if behavior["prompt_fault"] == "partial-write" {
+        record("submitted.jsonl", json!({"target":target,"text":text.split_whitespace().next().unwrap_or_default()}));
+        fail("agent_prompt_failed", "terminal disconnected after writing a prefix");
     }
 
     if flag(&behavior, "consume_named_json") || flag(&behavior, "consume_named_files") {
@@ -522,6 +530,18 @@ fn agent_prompt(args: &[String]) {
         }
     }
     record("submitted.jsonl", json!({"target":target,"text":text}));
+    delay(&behavior, "prompt_response_delay_ms");
+    match behavior["prompt_fault"].as_str() {
+        Some("disconnect") => {
+            eprintln!("connection closed after writing input; no agent_blocked acknowledgement");
+            process::exit(1);
+        }
+        Some("ambiguous-ack") => {
+            output(json!({"result":{"type":"agent_prompted","agent":null}}));
+            return;
+        }
+        _ => {}
+    }
     // The host consumed the input, but its acknowledgement is unusable. This
     // exercises the real adapter's unknown-result path, not a mocked error.
     if flag(&behavior, "invalid_prompt_response") {

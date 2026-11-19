@@ -8,7 +8,7 @@
 
 import type { TaskModel, TaskThinking } from './taskController'
 
-export type ChatCreationStage = 'starting' | 'initializing' | 'submitting' | 'succeeded' | 'failed'
+export type ChatCreationStage = 'starting' | 'initializing' | 'submitting' | 'retrying' | 'succeeded' | 'failed'
 export type ChatFailureStage = 'workspace' | 'tab' | 'start' | 'submit'
 
 export type ChatPreview = {
@@ -38,6 +38,8 @@ export type ChatCreation = {
   paneId?: string
   agentName?: string
   inputSubmitted: boolean
+  inputOutcome?: 'not-submitted' | 'unknown'
+  retryReason?: string
   failure?: ChatCreationFailure
 }
 
@@ -76,7 +78,7 @@ function isPreview(value: unknown): value is ChatPreview {
   )
 }
 
-const STAGES: ChatCreationStage[] = ['starting', 'initializing', 'submitting', 'succeeded', 'failed']
+const STAGES: ChatCreationStage[] = ['starting', 'initializing', 'submitting', 'retrying', 'succeeded', 'failed']
 const FAILURE_STAGES: ChatFailureStage[] = ['workspace', 'tab', 'start', 'submit']
 
 function isCreation(value: unknown): value is ChatCreation {
@@ -102,6 +104,8 @@ function isCreation(value: unknown): value is ChatCreation {
     isNullableString(creation.paneId) &&
     isNullableString(creation.agentName) &&
     typeof creation.inputSubmitted === 'boolean' &&
+    (creation.inputOutcome === undefined || creation.inputOutcome === 'not-submitted' || creation.inputOutcome === 'unknown') &&
+    (creation.stage !== 'retrying' || (creation.inputOutcome === 'not-submitted' && isString(creation.retryReason))) &&
     failureShape
   )
 }
