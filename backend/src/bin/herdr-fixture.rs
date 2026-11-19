@@ -48,6 +48,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
+#[path = "herdr-fixture/app_transport.rs"]
+mod app_transport;
 #[path = "herdr-fixture/chat_app.rs"]
 mod chat_app;
 
@@ -60,6 +62,13 @@ fn main() {
     record("invocations.jsonl", json!({"argv":args}));
     if chat_app::selected() {
         chat_app::dispatch(&args);
+        return;
+    }
+    if args
+        .first()
+        .is_some_and(|arg| matches!(arg.as_str(), "ls" | "status" | "do" | "get" | "server"))
+        && app_transport::intercept(&args)
+    {
         return;
     }
     match args.first().map(String::as_str) {

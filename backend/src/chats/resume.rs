@@ -72,9 +72,27 @@ pub(crate) async fn post_resume(state: AppState, request: ResumeRequest) -> Resu
 
 async fn resume_selected(state: &AppState, selected: &crate::chats::history::HistorySelection) -> Result<Value, Error> {
     let kind = match selected.agent_type.as_deref() {
-        Some(kind @ ("pi" | "omp")) => kind,
+        Some("pi") => "pi",
+        Some("omp") => "omp",
         _ => return Err(Error::Invalid( "unsupported-agent", "无法确定受支持的 agent 类型；尚未恢复。".into())),
     };
+    if state.herdr.is_app() {
+        let id = match state.herdr.selected_native_id(kind, selected).await {
+            Ok(id) => id,
+            Err(error) => return failure("lookup", &error),
+        };
+        let mut targets = match state.launches.app_target(&state.herdr, kind, &id).await {
+            Ok(targets) => targets,
+            Err(error) => return failure("lookup", &error),
+        };
+        targets.sort_unstable_by(|a, b| a.location.cmp(&b.location));
+        targets.dedup_by(|a, b| a.location == b.location);
+        if let Some(target) = targets.first() {
+            if let Err(error) = state.herdr.focus_app_target(target).await { return failure("focus", &error); }
+            return located(&target.location, targets.len());
+        }
+        return restore_history(state, selected, kind).await;
+    }
     let targets = match state.herdr.matching_targets(kind, selected).await {
         Ok(targets) => targets,
         Err(error) => return failure("lookup", &error),
@@ -83,16 +101,19 @@ async fn resume_selected(state: &AppState, selected: &crate::chats::history::His
         return restore_history(&state, &selected, kind).await;
     };
     if let Err(error) = state.herdr.focus_target(target).await { return failure("focus", &error); }
-    let message = "已切换到当前herdr焦点";
-    Ok(json!({"outcome":"located","target":target,"matchCount":targets.len(),"message":message}))
+    located(target, targets.len())
 }
 
-async fn restore_history(state: &AppState, selected: &crate::chats::history::HistorySelection, kind: &str) -> Result<Value, Error> {
-    let mut feedback = degradation::Feedback::default();
+fn located(target: &crate::herdr::NavigationTarget, match_count: usize) -> Result<Value, Error> {
+    Ok(json!({"outcome":"located","target":target,"matchCount":match_count,"message":"已切换到当前herdr焦点"}))
+}
+
+async fn restore_history(state: &AppState, selected: &crate::chats::history::HistorySelection, kind: &'static str) -> Result<Value, Error> {
+    let mut feedback = degradation::Feedback::for_host(state.herdr.workspace_kind());
     restore_with_feedback(state, selected, kind, &mut feedback).await
 }
 
-async fn restore_with_feedback(state: &AppState, selected: &crate::chats::history::HistorySelection, kind: &str, feedback: &mut degradation::Feedback) -> Result<Value, Error> {
+async fn restore_with_feedback(state: &AppState, selected: &crate::chats::history::HistorySelection, kind: &'static str, feedback: &mut degradation::Feedback) -> Result<Value, Error> {
     use crate::herdr::NavigationTarget;
     let label = if kind == "omp" { "OMP" } else { "Pi" };
     let scenario = crate::herdr::placement::Scenario::Resume {
@@ -112,8 +133,8 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::chats::histor
         Ok(identity) => identity,
         Err((code, message)) => return restore_failure(feedback, label, "session", code, &message, None),
     };
-    let mut args = match feedback.environment_args(state, selected, kind).await {
-        Ok(args) => args,
+    let environment = match feedback.environment_args(state, selected, kind).await {
+        Ok(environment) => environment,
         Err((code, message)) => return restore_failure(feedback, label, "settings", code, &message, None),
     };
 
@@ -125,8 +146,15 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::chats::histor
         feedback.record(item.element, item.reason, item.strategy);
     }
     let workspace = mapped.workspace;
+    let name = selected.session_name.as_deref().unwrap_or(if kind == "omp" { "Resume OMP Chat" } else { "Resume Pi Chat" });
+    let configured = environment.is_some();
+    let mut args = environment.unwrap_or_default();
+    args.extend([if kind == "omp" { "--resume" } else { "--session" }.into(), load]);
     if let Err(error) = state.chief.restoring_effect(&selected.session_id,false) { return Err(Error::Chief(error)); }
-    let tab = match state.herdr.create_tab(&workspace.id, cwd, selected.session_name.as_deref().unwrap_or(if kind == "omp" { "Resume OMP Chat" } else { "Resume Pi Chat" })).await {
+    if state.herdr.is_app() {
+        return restore_app(state, selected, kind, label, &workspace.id, cwd, name, &id, &args, configured, feedback).await;
+    }
+    let tab = match state.herdr.create_tab(&workspace.id, cwd, name).await {
         Ok(tab) => tab,
         Err(error @ HerdrError::Timeout(_)) => return startup_unconfirmed(feedback, label, "tab", &error.message(), json!({"workspaceId":workspace.id}), None),
         Err(error) => {
@@ -138,7 +166,6 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::chats::histor
     };
     let target = NavigationTarget { workspace_id: workspace.id, tab_id: tab.tab_id, pane_id: tab.pane_id };
     let name = crate::chats::new_agent_name();
-    args.extend([if kind == "omp" { "--resume" } else { "--session" }.into(), load]);
     if let Err(error) = state.herdr.start_agent(&name, kind, &target.pane_id, &args).await {
         if matches!(error, HerdrError::Timeout(_)) {
             return startup_unconfirmed(feedback, label, "start", &error.message(), json!(target), Some(&name));
@@ -151,18 +178,77 @@ async fn restore_with_feedback(state: &AppState, selected: &crate::chats::histor
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
     let actual_cwd = loop {
         match state.herdr.restored_session(&name, kind, deadline).await {
-            Ok(native) if native.session_id == id
-                && std::path::Path::new(&native.cwd).is_absolute()
-                && std::path::Path::new(&native.cwd).is_dir()
-                && cwd.is_none_or(|cwd| crate::zones::same_path(&crate::zones::display_path(std::path::Path::new(&native.cwd)), &crate::zones::display_path(std::path::Path::new(cwd)))) => break native.cwd,
+            Ok(native) if native.session_id == id && recovery_cwd_matches(&native.cwd, cwd) => break native.cwd,
             Ok(_) => return restore_failure(feedback, label, "confirm", "native-session-mismatch", &format!("{label} 加载的原生对话或实际工作目录与历史不符。"), Some(&target)),
             Err(error) if tokio::time::Instant::now() >= deadline => return startup_unconfirmed(feedback, label, "confirm", &error.message(), json!(target), Some(&name)),
             Err(_) => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
         }
     };
     if let Err(error) = state.herdr.focus_target(&target).await { return restore_failure(feedback, label, "focus", error.code(), &error.message(), Some(&target)); }
+    restored(feedback, label, &target, &actual_cwd)
+}
+
+async fn restore_app(
+    state: &AppState, selected: &crate::chats::history::HistorySelection, kind: &'static str, label: &str,
+    workspace: &str, cwd: Option<&str>, name: &str, id: &str, args: &[String], configured: bool,
+    feedback: &mut degradation::Feedback,
+) -> Result<Value, Error> {
+    let launch = configured.then(|| state.launches.begin(kind, cwd));
+    let result = match &launch {
+        Some(launch) => state.herdr.launch_tab(workspace, cwd, name, &crate::chats::new_agent_name(), kind, args, launch).await,
+        None => state.herdr.launch_unreported_app(workspace, cwd, name, kind, args).await,
+    };
+    let target = match result {
+        Ok(target) => target,
+        Err(error @ HerdrError::Timeout(_)) => return startup_unconfirmed(feedback, label, "tab", &error.message(), json!({"workspaceId":workspace}), None),
+        Err(error) => {
+            if matches!(error, HerdrError::CommandFailed { .. } | HerdrError::NotStarted(_)) {
+                state.chief.restoring_effect(&selected.session_id, true).map_err(Error::Chief)?;
+            }
+            return restore_failure(feedback, label, "tab", error.code(), &error.message(), None);
+        }
+    };
+    let location = &target.location;
+    let native = if let Some(launch) = &launch {
+        match launch.identity(&state.herdr).await {
+            Ok(native) if native.session_id == id && recovery_cwd_matches(&native.cwd, cwd) => {
+                launch.retain_app_target();
+                Some(native)
+            }
+            Ok(_) => return restore_failure(feedback, label, "confirm", "native-session-mismatch", &format!("{label} 加载的原生对话或实际工作目录与历史不符。"), Some(location)),
+            Err(error @ HerdrError::Timeout(_)) => return startup_unconfirmed(feedback, label, "confirm", &error.message(), json!(location), None),
+            Err(error) => return restore_failure(feedback, label, "confirm", error.code(), &error.message(), Some(location)),
+        }
+    } else { None };
+    let core = match state.herdr.focus_app_target(&target).await {
+        Ok(core) => core,
+        Err(error) => return restore_failure(feedback, label, "focus", error.code(), &error.message(), Some(location)),
+    };
+    if let Some(native) = native {
+        return restored(feedback, label, location, &native.cwd);
+    }
+    let actual_cwd = core.pointer("/foreground/cwd").and_then(Value::as_str)
+        .or_else(|| core.get("cwd").and_then(Value::as_str));
+    let Some(actual_cwd) = actual_cwd.filter(|actual| recovery_cwd_matches(actual, cwd)) else {
+        return restore_failure(feedback, label, "confirm", "resume-cwd-mismatch", "App/core 未确认有效的实际工作目录。", Some(location));
+    };
+    feedback.response(false, json!({"outcome":"unconfirmed","stage":"focused","code":"restore-unconfirmed",
+        "target":location,"matchCount":0,"actualCwd":actual_cwd,
+        "progress":{"tabCreated":true,"startSubmitted":true,"conversationConfirmed":false,"focused":true},
+        "message":format!("已请求恢复并定位 {label} 终端，原生身份未确认。实际工作目录：{actual_cwd}。不表示 Windows 窗口已置前。") }))
+}
+
+fn recovery_cwd_matches(actual: &str, expected: Option<&str>) -> bool {
+    use crate::zones::{display_path, same_path};
+    use std::path::Path;
+    let actual = Path::new(actual);
+    actual.is_absolute() && actual.is_dir()
+        && expected.is_none_or(|cwd| same_path(&display_path(actual), &display_path(Path::new(cwd))))
+}
+
+fn restored(feedback: &degradation::Feedback, label: &str, target: &crate::herdr::NavigationTarget, actual_cwd: &str) -> Result<Value, Error> {
     feedback.response(true, json!({"outcome":"restored","stage":"focused","target":target,"matchCount":0,"actualCwd":actual_cwd,
-        "message":format!("已确认恢复同一 {label} 原生对话并完成 Herdr 内部导航，实际工作目录：{actual_cwd}。不表示 Windows 窗口已置前。未提交输入或重新应用 Task 预设。")}))
+        "message":format!("已确认恢复同一 {label} 原生对话并完成 Herdr 内部导航，实际工作目录：{actual_cwd}。不表示 Windows 窗口已置前。未提交输入或重新应用 Task 预设。") }))
 }
 
 // Recovery policy and feedback live together, independently of history enrichment.
@@ -179,14 +265,16 @@ mod degradation {
     }
 
     #[derive(Default)]
-    pub(super) struct Feedback { items: Vec<Item> }
+    pub(super) struct Feedback { items: Vec<Item>, workspace_kind: &'static str }
 
     impl Feedback {
+        pub(super) fn for_host(workspace_kind: &'static str) -> Self { Self { items: Vec::new(), workspace_kind } }
+
         pub(super) fn record(&mut self, element: &'static str, reason: String, strategy: String) {
             self.items.push(Item { element, reason, strategy });
         }
 
-        pub(super) async fn environment_args(&mut self, state: &AppState, selected: &crate::chats::history::HistorySelection, kind: &str) -> Result<Vec<String>, (&'static str, String)> {
+        pub(super) async fn environment_args(&mut self, state: &AppState, selected: &crate::chats::history::HistorySelection, kind: &str) -> Result<Option<Vec<String>>, (&'static str, String)> {
             use crate::tasks::{Agent, TaskError};
             let agent = if kind == "omp" { Agent::Omp } else { Agent::Pi };
             let task = match selected.source_task_id.as_deref() {
@@ -205,7 +293,7 @@ mod degradation {
                     None
                 }
             };
-            let Some(task) = task else { return Ok(Vec::new()); };
+            let Some(task) = task else { return Ok(None); };
             if task.agent != agent {
                 return Err(("task-agent-mismatch", "来源 Task 的 agent 类型与所选历史不一致；尚未恢复。".into()));
             }
@@ -221,7 +309,7 @@ mod degradation {
             };
             let mut env = self.environment(&catalog, agent, role);
             env.suite_args = suite_args;
-            Ok(crate::chats::agent_launch_args(&env, None))
+            Ok(Some(crate::chats::agent_launch_args(&env, None)))
         }
 
         pub(super) fn environment(&mut self, catalog: &crate::tasks::catalog::Catalog, agent: crate::tasks::Agent, role: crate::tasks::catalog::ExecutionRole) -> crate::tasks::catalog::ResolvedEnvConfig {
@@ -278,7 +366,7 @@ mod degradation {
             value["fallback"] = json!(self.items.iter().any(|item| matches!(item.element, "workspace" | "cwd")));
             value["degradations"] = json!(self.items);
             if value["outcome"] == "restored" && !self.items.iter().any(|item| item.element == "workspace") {
-                value["message"] = json!(format!("已在原 Workspace 恢复；{}", value["message"].as_str().unwrap_or_default()));
+                value["message"] = json!(format!("已在原 {} 恢复；{}", self.workspace_kind, value["message"].as_str().unwrap_or_default()));
             }
             if !self.items.is_empty() {
                 let mut message = String::from("恢复存在降级：");

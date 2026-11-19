@@ -37,7 +37,7 @@
 
 ### Herdr 宿主选择专项（S1／S3）
 
-先构建本 worktree 的 `frontend` 与生产 `herdr-bot`，并使用独占绝对 `CARGO_TARGET_DIR`。运行 `python scripts/accept-herdr-host-selection.py --backend <herdr-bot.exe> --herdr <herdr.exe> --app <herdr-app.exe> --core <hc.exe> --evidence-dir <新的证据目录>`，所有路径显式且绝对。专项用独占 TUI、App 和两个 core；从公开 HTTP 触发放置，以实际容器、Tab、Pane、终端归属及 core-local ID 碰撞核对配置路由和错配拒绝。固定操作分别核对脚本标记、HTTP 回执与独立宿主探测（成功脚本不必启动或停止进程），退出用所属进程和 core／holder 句柄确认。它不证明真实 Task 初始化或业务输入；有关 agent 行为另验。
+先构建本 worktree 的 `frontend` 与生产 `herdr-bot`，并使用独占绝对 `CARGO_TARGET_DIR`。运行 `python scripts/accept-herdr-host-selection.py --backend <herdr-bot.exe> --herdr <herdr.exe> --app <herdr-app.exe> --core <hc.exe> --evidence-dir <新的证据目录>`，所有路径显式且绝对；证据目录使用 `%TEMP%` 下简短的独占名称，避免 App 的 `herdr-app.sock` 路径超过 Windows Unix socket 长度限制。专项用独占 TUI、App 和两个 core；从公开 HTTP 触发放置，以实际容器、Tab、Pane、终端归属及 core-local ID 碰撞核对配置路由和错配拒绝。固定操作分别核对脚本标记、HTTP 回执与独立宿主探测（成功脚本不必启动或停止进程），退出用所属进程和 core／holder 句柄确认。它不证明真实 Task 初始化或业务输入；有关 agent 行为另验。
 
 ### Task 发起与初始输入（S1）
 
@@ -106,7 +106,7 @@
 
 ## 发布成果批准职责与 V1／V2 独立性（P17／P31／P34／P35／P38）
 
-`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_migration:: -- --nocapture` 保留原 V1 真实 Bun 创建／保存、严格材料拒绝、独立历史和通用替换者业务协议回归，并增加七张实际发布 Map 全部 26 个 node 的字面批准模式与公开完整读回、生产者旧凭据／报告发送确认清理。可读配置依据在 [发布职责清单](../create-bot-wrapper.md#发布成果批准职责清单p34)，不从旧报告开关机械映射。
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_migration:: -- --nocapture` 保留原 V1 真实 Bun 创建／保存、严格材料拒绝、独立历史和通用替换者业务协议回归，覆盖九张实际发布 Map 全部 31 个 node 的字面批准模式、结束职责与公开完整读回，并检查生产者不再要求旧凭据／报告发送确认。可读配置依据在 [发布职责清单](../create-bot-wrapper.md#发布成果批准职责清单p34)，不从旧报告开关机械映射。
 
 成功创建场景进一步独立发起实际两节点 V2 Run：独立目标与 v2 request（保留专用 authorization／confirmation），真实文件的 requirements／完整 target_materials 消费，普通节点报告后仍未批准且 complete 拒绝、显式人工来源批准后仍 running、管理者逐项 complete／finish，以及真实新 Bot 的公开完整读回和真实 revision／v2 saved／handoff 文件。前后完整比较 V1 Run 与 request 不变。只在隔离副本中重定位 zone、直接契约文件和外部宿主 Task 绑定，不替换 Map 拓扑或业务协议，不接触历史／正常服务。受控 Herdr 的材料读取与 HTTP 人工来源只证明 S1；不证明模型遵从或原生 Yes，也不认领 14、15。完成检查仍为本 worktree 独立绝对 CARGO_TARGET_DIR、当前页面及安全后端构建，分别执行完整后端、前端与浏览器入口。
 

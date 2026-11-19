@@ -172,7 +172,14 @@ impl HerdrClient {
         &self.workspace_name
     }
 
-    /// 按本次目标名称精确查找唯一 Workspace；焦点与顺序都不参与选择。
+    pub(crate) fn workspace_kind(&self) -> &'static str {
+        match self.host {
+            Host::Tui(_) => "Workspace",
+            Host::App(_) => "Space",
+        }
+    }
+
+    /// 按本次目标名称精确查找唯一容器；焦点与顺序都不参与选择。
     pub async fn workspace(&self, name: &str) -> Result<Workspace, HerdrError> {
         let inventory = self.workspace_inventory().await?;
         let mut matches = inventory.entries().filter(|(_, label)| *label == name);
@@ -196,13 +203,11 @@ impl HerdrClient {
         let mut original = None;
         for entry in &inventory.records {
             let entry_id = nonempty(entry.get(inventory.id_key))
-                .ok_or_else(|| inventory.error("容器缺少 ID，无法确认原位置是否已删除"))?;
-            if entry_id == id {
-                let label = nonempty(entry.get(inventory.name_key))
-                    .ok_or_else(|| inventory.error("原容器缺少名称"))?;
-                if original.replace(label).is_some() {
-                    return Err(inventory.error("原容器 ID 重复"));
-                }
+                .ok_or_else(|| inventory.error("容器缺少 ID，无法确认原位置"))?;
+            let label = nonempty(entry.get(inventory.name_key))
+                .ok_or_else(|| inventory.error("容器缺少名称，无法确认原位置"))?;
+            if entry_id == id && original.replace(label).is_some() {
+                return Err(inventory.error("原容器 ID 重复"));
             }
         }
         Ok(original.map(|label| Workspace { id: id.into(), label: label.into() }))
@@ -234,7 +239,9 @@ impl HerdrClient {
             let key = PathBuf::from(key);
             if !key.is_absolute() || !key.is_dir() { continue; }
             let root = tokio::task::spawn_blocking(move || {
-                let output = crate::zones::git::run_git(&key, &["worktree", "list", "--porcelain", "-z"], timeout).ok()?;
+                // Bind Git to the reported metadata directory itself: ordinary
+                // discovery from a path inside a checkout is not ownership proof.
+                let output = crate::zones::git::run_git(&key, &["--git-dir=.", "worktree", "list", "--porcelain", "-z"], timeout).ok()?;
                 if !output.status.success() { return None; }
                 let text = std::str::from_utf8(&output.stdout).ok()?;
                 let mut fields = text.split('\0');
@@ -397,13 +404,9 @@ impl HerdrClient {
         Ok(())
     }
 
-    /// Query the live inventory on every attempt; names, cwd and registration
-    /// liveness are never native conversation identities.
-    pub(crate) async fn matching_targets(&self, kind: &str, selected: &crate::chats::history::HistorySelection) -> Result<Vec<NavigationTarget>, HerdrError> {
+    /// Verify the selected historical identity without querying either host.
+    pub(crate) async fn selected_native_id<'a>(&self, kind: &str, selected: &'a crate::chats::history::HistorySelection) -> Result<std::borrow::Cow<'a, str>, HerdrError> {
         let session_id = selected.session_id.as_str();
-        let value = self.run("agent list", &["agent".into(), "list".into()], QUERY_TIMEOUT).await?;
-        let entries = value.pointer("/result/agents").and_then(Value::as_array)
-            .ok_or_else(|| native_error("agent list response has no result.agents array"))?;
         if matches!(kind, "omp" | "pi") && let Some(path) = selected.startup_identity_path.as_ref() {
             let path = PathBuf::from(path);
             let pending = saved_pending_native_session(selected);
@@ -415,9 +418,18 @@ impl HerdrClient {
                 return Err(native_error("saved startup path belongs to another native session"));
             }
         }
-        let id = if std::path::Path::new(session_id).is_absolute() {
-            std::borrow::Cow::Owned(read_native_id(session_id, kind).await?)
-        } else { std::borrow::Cow::Borrowed(session_id) };
+        if Path::new(session_id).is_absolute() {
+            Ok(std::borrow::Cow::Owned(read_native_id(session_id, kind).await?))
+        } else { Ok(std::borrow::Cow::Borrowed(session_id)) }
+    }
+
+    /// Query the live TUI inventory on every attempt; names, cwd and
+    /// registration liveness are never native conversation identities.
+    pub(crate) async fn matching_targets(&self, kind: &str, selected: &crate::chats::history::HistorySelection) -> Result<Vec<NavigationTarget>, HerdrError> {
+        let value = self.run("agent list", &["agent".into(), "list".into()], QUERY_TIMEOUT).await?;
+        let entries = value.pointer("/result/agents").and_then(Value::as_array)
+            .ok_or_else(|| native_error("agent list response has no result.agents array"))?;
+        let id = self.selected_native_id(kind, selected).await?;
         let mut targets = Vec::new();
         for entry in entries {
             if entry.get("agent").and_then(Value::as_str) != Some(kind) { continue; }
@@ -443,6 +455,13 @@ impl HerdrClient {
             return Err(HerdrError::UnexpectedResponse { command: "agent focus", detail: "target navigation was not confirmed".into() });
         }
         Ok(())
+    }
+
+    pub(crate) async fn focus_app_target(&self, target: &LaunchTarget) -> Result<Value, HerdrError> {
+        match (&self.host, &target.control) {
+            (Host::App(app), LaunchControl::App { terminal, .. }) => app.focus_bound_pane(&target.location, terminal).await,
+            _ => Err(HerdrError::UnexpectedResponse { command: "App navigation", detail: "目标没有当前 App/core 的终端关联".into() }),
+        }
     }
 
     /// Close only the saved execution Tab; no discovery, confirmation override or retry.
