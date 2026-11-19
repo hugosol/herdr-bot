@@ -397,7 +397,8 @@ class Scenario(Acceptance):
             return records, list(set(known + terminal_handles))
         entries = [p['pane_id'] for p in self.herdr('pane', 'list', '--workspace', space)['panes']
             if p['tab_id'] == tab] if pane is None else [pane]
-        records = [self.herdr('pane', 'process-info', '--pane', member) for member in entries]
+        records = [self.herdr('pane', 'process-info', '--pane', member)['process_info'] for member in entries]
+        require([record['pane_id'] for record in records] == entries, ('TUI pane/process mismatch', entries, records))
         terminal_pids = {pid for record in records for pid in
             [record.get('shell_pid'), *(p['pid'] for p in record.get('foreground_processes', []))] if pid}
         return records, list(set(known + [self.remember(pid) for pid in terminal_pids]))
