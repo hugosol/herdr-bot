@@ -19,10 +19,12 @@ const inventory = (root: string) => Object.fromEntries(fs.readdirSync(root).sort
 // file and latest preview.
 test('empty bot list creates an independent-ID editable bundled draft and persists only on save', async ({ page }) => {
   server = await startServer({ herdr: {}, separateCwd: true })
-  await open(page)
   const root = path.join(server.cwd, 'meta-data/bots')
   const maps = path.join(server.cwd, 'meta-data/workflow-maps')
+  fs.mkdirSync(root, { recursive: true })
+  fs.mkdirSync(maps, { recursive: true })
   const mapBefore = inventory(maps)
+  await open(page)
   expect(mapBefore).toEqual({})
   expect(inventory(root)).toEqual({})
   await page.getByRole('button', { name: 'new', exact: true }).click()

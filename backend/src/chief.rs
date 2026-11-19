@@ -170,18 +170,8 @@ impl Authority {
         })
     }
 }
-pub(crate) async fn is_chief(state: &AppState, selected: &crate::chats::history::HistorySelection) -> Result<bool, Error> {
-    if state.chief.is_known(&selected.session_id)? { return Ok(true); }
-    let Some(source) = &selected.source_task_id else { return Ok(false); };
-    match state.tasks.get(source).await {
-        Ok(task) => Ok(task.task_type == crate::tasks::TaskType::Chief),
-        Err(crate::tasks::TaskError::NotFound) => Ok(false),
-        Err(error) => Err(Error::Settings(error)),
-    }
-}
-
 #[derive(Debug)]
-pub(crate) enum Error { Occupied, NotCurrent, Storage(io::Error), Settings(crate::tasks::TaskError) }
+pub(crate) enum Error { Occupied, NotCurrent, Storage(io::Error) }
 impl From<io::Error> for Error { fn from(error: io::Error) -> Self { Self::Storage(error) } }
 pub(crate) async fn get_current(state: &AppState) -> Result<Option<Claim>, Error> {
     let _membership = state.chief.membership.lock().await;

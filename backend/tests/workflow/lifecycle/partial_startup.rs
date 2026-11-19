@@ -66,9 +66,10 @@ async fn partial_child_association_reconciliation_preserves_the_original_chat_wi
     let (s, root) = setup("association-root").await;
     let release = s.data.path().join("identity-release");
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"association-child"},"native_cwd":s.data.path().join("node-zone"),"native_session_gate":{"wait_for_file":release,"timeout_ms":10000}}));
+    let before_dispatch = s.herdr.calls().len();
     let request = common::OpenJsonRequest::submit(s.server.addr(), "/api/workflow/manager/dispatch", r#"{"sessionId":"association-root","nodes":["A"]}"#).await;
     let observation = std::panic::AssertUnwindSafe(async {
-        assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().filter(|call| call["kind"] == "agent_get").count() == 2).await);
+        assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().skip(before_dispatch).any(|call| call["kind"] == "agent_get")).await);
         let parent = disk(&s, root["id"].as_str().unwrap());
         let child = parent["nodes"]["A"]["execution"]["childRunId"].as_str().unwrap().to_owned();
         let lock = common::HistoryWriteBlock::new(&s.config.scheduler.run_directory.join(&child).join("run.json"));

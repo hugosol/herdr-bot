@@ -63,10 +63,11 @@ async fn history_deletion_during_child_identity_and_submission_preserves_both_li
         let mut behavior = json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"history-gated-child"},"native_cwd":s.data.path().join("node-zone")});
         behavior[gate] = json!({"wait_for_file":release,"timeout_ms":30000});
         s.herdr.set_behavior(behavior);
+        let before_dispatch = s.herdr.calls().len();
         let pending = common::OpenJsonRequest::submit(s.server.addr(), "/api/workflow/manager/dispatch", &json!({"sessionId":"history-gated-parent","nodes":["A"]}).to_string()).await;
         let observed = std::panic::AssertUnwindSafe(async {
             let kind = if gate == "native_session_gate" { "agent_get" } else { "agent_prompt" };
-            assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().filter(|call| call["kind"] == kind).count() == 2).await, "child must reach {gate}");
+            assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().skip(before_dispatch).any(|call| call["kind"] == kind)).await, "child must reach {gate}");
             let parent_run: Value = serde_json::from_slice(&records(&s, parent_id)[0]).unwrap();
             let child_id = parent_run["nodes"]["A"]["execution"]["childRunId"].as_str().unwrap();
             let child: Value = serde_json::from_slice(&records(&s, child_id)[0]).unwrap();

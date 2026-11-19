@@ -11,6 +11,8 @@ mod map;
 mod reports;
 #[path = "chief_delegation/receipts.rs"]
 mod receipts;
+#[path = "chief_delegation/role_recovery.rs"]
+mod role_recovery;
 use process::TestServer;
 use serde_json::{Value, json};
 use std::{fs, time::Duration};

@@ -47,7 +47,7 @@ test('OMP history Resume confirms identity and focus without input, and exposes 
   const failed = page.waitForResponse((r) => r.url().endsWith('/api/chats/resume') && r.request().method() === 'POST')
   await row.getByRole('button', { name: 'Resume', exact: true }).click()
   expect((await (await failed).json()).code).toBe('native-session-mismatch')
-  await expect(row.getByRole('alert')).toContainText('OMP 加载的原生对话或实际工作目录与历史不符')
+  await expect(row.getByRole('alert')).toContainText('OMP 加载的原生对话、会话文件或实际工作目录与历史不符')
   await expect(row.getByRole('alert')).toContainText('尚未确认恢复成功')
   expect(server.herdrTabs()).toHaveLength(2)
   expect(server.herdrCalls().filter((c) => c.kind === 'agent_focus')).toHaveLength(1)

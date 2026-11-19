@@ -39,11 +39,102 @@
 
 先构建本 worktree 的 `frontend` 与生产 `herdr-bot`，并使用独占绝对 `CARGO_TARGET_DIR`。运行 `python scripts/accept-herdr-host-selection.py --backend <herdr-bot.exe> --herdr <herdr.exe> --app <herdr-app.exe> --core <hc.exe> --evidence-dir <新的证据目录>`，所有路径显式且绝对；证据目录使用 `%TEMP%` 下简短的独占名称，避免 App 的 `herdr-app.sock` 路径超过 Windows Unix socket 长度限制。专项用独占 TUI、App 和两个 core；从公开 HTTP 触发放置，以实际容器、Tab、Pane、终端归属及 core-local ID 碰撞核对配置路由和错配拒绝。固定操作分别核对脚本标记、HTTP 回执与独立宿主探测（成功脚本不必启动或停止进程），退出用所属进程和 core／holder 句柄确认。它不证明真实 Task 初始化或业务输入；有关 agent 行为另验。
 
+### 同一历史 Chat 的双端恢复（S1／S3）
+
+从参与的 `herdr-bot` worktree 根运行。先在 `frontend` 与 toolkit 根各执行 `bun install --frozen-lockfile`（Bun 1.4.4），然后在 PowerShell 中构建并启动专项：
+
+```powershell
+$env:CARGO_TARGET_DIR = 'C:\absolute\exclusive-ticket-cargo'
+$bot = 'C:\absolute\herdr-bot-worktree'
+$toolkit = 'C:\absolute\toolkit-worktree'
+$backend = Join-Path $env:CARGO_TARGET_DIR 'debug\herdr-bot.exe'
+$paths = 'C:\absolute\isolated-history-paths.toml'
+$evidence = 'C:\absolute\new-history-evidence'
+Set-Location $bot
+npm --prefix frontend run build
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
+cargo build --manifest-path backend/Cargo.toml --locked --bins --example safe_shutdown_shell --example recovery_herdr_proxy
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
+python scripts/accept-paired-history-recovery.py --herdr-bot-worktree $bot --toolkit-worktree $toolkit --backend $backend --paths-file $paths --directions tui-to-app,app-to-tui --evidence-dir $evidence
+```
+
+`$paths` 是另建的 TOML，只声明安装位置，不复制任何 agent 的常用配置、历史或认证。将下列绝对路径替换为本机实际安装值：
+
+```toml
+[roots]
+herdr = 'C:/absolute/installed-herdr-directory'
+herdr_app = 'C:/absolute/installed-herdr-app-directory'
+herdr_core = 'C:/absolute/installed-core-directory'
+omp_package = 'C:/absolute/installed-omp-package'
+pi_package = 'C:/absolute/installed-pi-package'
+omp_state_extension = 'C:/absolute/official-herdr-omp-agent-state.ts'
+pi_state_extension = 'C:/absolute/official-herdr-agent-state.ts'
+node = 'C:/absolute/node.exe'
+bun = 'C:/absolute/bun.exe'
+omp_cli = 'C:/absolute/omp.cmd'
+toolkit_baseline = 'C:/absolute/original-toolkit-checkout'
+```
+
+需要 Windows 交互桌面（自有 TUI 客户端与真实 App 窗口）和可运行的 Chrome。`omp.cmd`、`pi.cmd` 必须可从声明的运行时目录解析到同一套已安装包。`toolkit_baseline` 只解析 toolkit 基线记录中的外部路径，运行的源码仍取自 `$toolkit`。专项核对本次后端的 Cargo depfile、版本、源码／锁文件及安装与产物哈希。业务 HTTP 使用生产后端；配对 dock 只使用旁置的 `examples/safe_shutdown_shell.exe`。整个调用仅在交互桌面和配对检查资源允许的窗口运行，不操作已有窗口或已有会话。已预先通过仓库检查时可用 `--native-only` 单独取原生证据；`--controlled-only` 只跑命名的后端 Resume 控制边界。`--agents pi`、`--scenarios cross-end` 等过滤与两个诊断模式始终保留缺格，非零退出，不认证整票。Toolkit 的标准入口可能独立刷新 `framework/docs/pi-acceptance.json`／`omp-acceptance.json`（即使专项其他格失败）。仅收集专项证据时，将本轮生成的记录备份到专项证据目录，再在独占 worktree 内恢复已跟踪基线；不把运行记录混入产品提交，也不丢弃已有修改。
+
+原生专项用数值回环的自有机械文本 provider 只为初次发起生成可读历史，不访问真实模型或用户凭据；安装的 OMP／Pi、框架／connect-bot、宿主和后端走真实路径。先读取实际历史、保留文件头与原容器 ID；退出并持句柄核对旧 agent、旧端及 core 后，才配置另一端及第二个默认容器名。Resume 之后从实际新进程的 native `session_start` 取 SessionManager ID/file 和 `process.cwd()`，从安装包再读原 Chat 的正文，检查目标所属 Workspace/Space、Tab/Pane、core 与内部焦点。透明 CLI 记录器原样转发到本次安装，不替换宿主、原生上报或响应。记录参数只用于检查没有重放模型／思考覆盖、没有强加扩展、目录降级未指定 cwd，以及没有重发创建、启动或输入；不能用参数证明恢复、实际 cwd 或聚焦。两端回执都不证明 Windows 置前。更新来源 Task 的 Suite 和固定环境标记，观察最新扩展确实运行，并比较原生输入、历史和模型访问记录；独立的原生默认扩展观察器不向产品上报身份。
+
+同端命中、跨端无匹配、人工同值、Git 主工作树与目录缺失、四种环境降级、原文件头和来源 agent 冲突均保留独立格子。Task 发起的 Chat 已记录原生文件时，再次登记不会覆盖历史 cwd；本次实际 cwd 由恢复回执和当前会话登记分别展示。未记录原生文件的普通接入继续按既有规则补充历史。未启动、未定位或原生恢复选择框仍待处理时，不将选择框、存在的终端或最近的回执计为成功，专项不替用户选择分叉或继续。人工同值／无来源只改变一次本格的自有历史输入，Resume 前后均保留原始字节，并核对公开记录、既有持久格式和原字段；同一 Windows cwd 的尾斜杠不算换目录。安装端若不能构造真实 Git 歧义或缺少实际退出记录，不用控制结果补格。App 没有可据以确认历史 checkout 的归属，默认 cwd 用同一 Space 的独立原生空白 Tab 取证。错误／畸形／空成功等确定性外部响应、被拒绝的启动／定位以及其他原生身份冲突另用 `chat_resume`、`chat_resume_environment`、`chat_resume_omp`、`chat_resume_pi`、`chat_resume_timeout` 的公开 HTTP＋控制 CLI 边界；它们不证明安装宿主通过。新证据目录包含原始错误、HTTP、native 布局／进程／退出、SessionManager 历史及各仓原始日志。每格另保留一个独占、短路径的临时状态根（见该格 `root`），可在证据归档后独立删除；仅根进程结束或目录可以删除不构成退出证明。CLI 边界回归可用 `python scripts/accept-paired-history-recovery.test.py`，它不启动宿主。
+
 ### Task 发起与初始输入（S1）
 
 用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test chat_creation`。受控 TUI、App/core 的记录检查所选容器、固定扩展与 Suite、终端收到的原始输入，以及当前启动与目标的匹配；原生上报通过生产 `/api/sessions/events`，关机状态使用记录安全的替身，不调用系统关机。页面定向检查为 `npm --prefix frontend run test:browser:build -- chatCreation.spec.ts --workers=1`；受控上报独立于页面，浏览器只观察创建 HTTP 进度。以上不认证真实安装宿主、framework 或模型行为。
 
 初始输入重试（P20、P24–P28、P50、P52）由 `chat_creation` 的 `initial_input_retry::` 及 `a_timed_out_submission` 通过真实 HTTP 和受控宿主验证：拒绝回执门闩后的 4.999／5.000 秒、重复／乱序 ready、同目标唯一重试、退出／换会话／换进程取消，以及未知结果下的独立终端写入记录。`chatCreation.spec.ts` 对照页面等待、拒绝、未知和刷新时的实际创建／输入次数；`mobileWorkflow.spec.ts` 检查窄屏在两次明确阻塞后仍可查看现场、关闭弹窗，并确认没有输入写入。真实原生模态与终端另验。
+
+Toolkit 的 `manager-dispatch-recovery.test.ts` 和 `uncertain-effects.test.ts` 用本工作树的安全关机壳及受控 Herdr 夹具回归 Run 的身份归属：同一原生会话已归属本 Run 的管理者或另一执行时，新的节点启动保留实际启动和身份事实，但不保存重复关联，也不提交业务输入。夹具通过隔离后端接收本次启动的身份和 ready 上报；这些故障场景不代表安装宿主实际产生了重复 ID。
+
+### Run Chat 角色恢复（P42／S1）
+
+用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch --test workflow_start --test chief_delegation p42 -- --nocapture`。场景从公开发起／派发／委派产生真实关联，使用公开 Resume 与独立 Run／node／委派 HTTP 读回核对原身份、角色和数量，检查所选 TUI 或 App/core 的 argv 及终端输入记录。覆盖 OMP／Pi 的原角色、同 Task 普通 Chat、结束节点、子管理者双角色，以及配置错误或缺来源时的默认发现及未显式装配提示。另运行 `app_delegated_map_binds_manager_before_approved_input`，验证 App 的直接 Map 委派恢复仍保持原 Run／委派及管理者角色。既有 `roles::`、`end_node::` 和 `resume_restart::` 继续覆盖 TUI 的普通节点／结束节点、旧执行与错误归属。这些检查不认证实际安装宿主加载扩展、模型行为或跨端 Run 接管。
+
+### 原生提醒专项（P47／P48）
+
+控制边界：`cargo test --manifest-path backend/Cargo.toml --test chat_creation native_reminders` 和同目标的 `app_launch_uses_task_environment_and_selected_terminal_without_tui_files`。由公开 Chat HTTP 发起 OMP／Pi。TUI 独立核对 Pane 与加载的一份官方状态扩展；App 在 TUI 集成文件缺失时核对原生 agent argv 与所选 Space／Pane／core 终端。两端取完整控制 CLI 记录，确认 connect-bot 的 `working → awaiting-input → awaiting-input` 已在公开会话流可见，却未增加另一条宿主命令。控制记录不证明真实状态或播放。
+
+**真实触发与配置。** 每轮使用独占的 Windows 交互桌面环境、HOME／APPDATA／XDG、agent 配置和会话目录、短路径的 `HERDR_CONFIG_PATH`／`HERDR_APP_HOME`、唯一 `HERDR_SESSION`／`HC_SESSION`。只连本轮宿主与 owned backend；每次只运行所选宿主。TUI 要连接一个可实际取得焦点的 TUI 客户端，不能只启动 headless server；App 要有连接到所选 core 的实际窗口，不能用 `hc` 代替窗口。保留已装 agent、宿主和 core 的版本，TUI 固定扩展按安装的官方入口接入；App 不用 TUI 扩展，OMP `terminal.programStatus` 启用，Pi 保持自动协商。
+
+- **OMP 额外通知渠道：** 在本轮独占的 `config.yml` 中设 `completion.notify: "off"`，关闭 OMP 在状态上报之外另外发送的完成 toast（在 Herdr TUI 中它自身也会触发声音）。保留 `terminal.programStatus: true` 和官方状态扩展；仍由实际 agent 状态触发本专项测量的宿主提醒，不改任何用户设置。
+- **TUI：** 写入独占配置的 `[ui.sound]`：`enabled = true`，设置两个可区分的本地 MP3 `done_path`、`request_path`（相对配置文件目录或绝对路径）。确认未设 `HERDR_DISABLE_SOUND`，且没有适用的 `[ui.sound.agents]` 关闭项。默认资源对照移除两个路径和通用 `path`；关闭对照只改 `enabled = false`。
+- **App：** 在独占 `settings.json` 合并 `"sounds": {"enabled":true,"done":"done.mp3","blocked":"request.mp3"}`（文件相对 `HERDR_APP_HOME`，也可用绝对路径）。确认未设 `HERDR_APP_NO_SOUND`。默认资源对照移除 `done`／`blocked`；关闭对照只改 `enabled`。
+- **完成轮次：** 通过产品的 zone → Task 发起 Chat，在初始指示或后续原生输入提交带唯一标记的纯文本请求，例如 `仅回复 REMINDER-<本轮标记>`。用本机受控 provider 收到请求后暂缓响应，先核对目标已 `working` 并切到所需焦点，再放行正常响应。每次用新轮次，分别在目标 Tab 可见且宿主窗口有焦点、目标 Tab 不可见时完成。首次初始化和已停驻的旧状态均不算触发。
+- **需要处理：** 为 owned Run 配置一个 `auto_approved=false` 的普通 node，经真实管理者派发到所选宿主。在 node Chat 正常发起一次成果批准（受控 provider 可固定返回该原生工具调用）。确认完整原生选择框仍显示且所选目标确实进入 `blocked`；在目标可见且宿主有焦点时也应走 request／blocked 音效。保持框打开跨越多次采样，同一状态不应重复响；用原生 **No** 解开，单独记下之后可能发生的完成转换。不要直接调用 `pane report-agent`、写入 OSC、模拟批准或暂停状态处理来制造提醒。
+- **对照：** 两端后台完成各预期一次 done，正在查看时完成不播；实际需要处理的转换各预期一次 request／blocked，保持原状态不再播；关闭声音后重复这些真实转换，状态仍应到达但不得播音。报告投递及 ready 本身不是提示音；若投递使接收 agent 实际开始一轮，单独归因于该轮的原生状态。不要用设置试听或显式 `notification show` 充当任何格子的状态输入。
+
+**时序与取证。** 每格保留选择的配置与声音文件哈希，记录含 UTC 与单调时间的输入提交、焦点变化、真实 provider 进出、原生状态转换、提醒 UI、播放迹象及进程退出。TUI 以 `herdr pane get <Pane>`／`herdr agent get <Pane>` 和 `herdr api snapshot` 保存 Pane、状态与焦点，可在所选实例公开 socket／命名管道订阅 `pane.agent_status_changed`（Windows 无 `herdr api subscribe` CLI）。App 保存 `herdr-app ls`、`herdr-app status`、必要时 `herdr-app shot`，用布局中的 Terminal 地址关联 `hc get <地址> --json` 和 `hc events --terminal <地址> --json`；核对 core 实例身份、`herdr.space`／`herdr.tab` 标签与所选 Pane，不以短地址或成功回执独立作证。保留一个未触发的其他 Pane／终端作为归属对照。
+
+可用的 Windows 证据：保留本轮宿主日志和播放器错误；若有进程／文件访问跟踪，将已识别的宿主 PID（或其原生音频子进程）与打开所选 MP3 的时间关联，区分一次播放和宿主自己的资源回退。App Windows 音频可在进程内播放，找不到外部播放器不是静音证据。可用 Windows 音频端点的 WASAPI loopback 采集带时间基准的 WAV，记录设备、采样方式、其他音源与起止时间；不要让录制界面抢走被测焦点。缺设备、访问跟踪或录音时分别保留缺项；打开文件、Toast、截图或静音观测均不等同于可听。实际宿主自动取证按配对验收执行；两端音色与可听性仅在最终听音环节由用户确认，不预先判通过。
+
+### 配对精确关闭与原生提醒（P43–P45／P47–P48／P54–P55）
+
+在 Windows **交互桌面**上，从参与的 `herdr-bot` worktree 根执行。使用 Bun 1.4.4、已安装的 OMP／Pi、Herdr TUI／App／core、Chrome、FFmpeg；不要占用其他真实宿主验收的桌面时段。该专项会聚焦属于本次运行的两个宿主窗口。无需模型服务或用户认证：只用数值回环的受控 provider 延迟实际请求，或让实际 agent 调用已安装的原生 `approve` 工具。它不代写宿主状态，不走设置试听，也不执行系统关机。
+
+配置 JSON 的值全部为显式绝对路径；准备 `herdr`、`app`、`core`、`node`、`bun` 可执行文件，`omp_package`／`pi_package` 安装目录，`omp_state_extension`／`pi_state_extension` 两个官方 TUI 扩展文件，和 `toolkit_baseline_root`（可解析历史 baseline 的原 toolkit 根，不作源码替代）。产品从 `PATH` 启动 OMP／Pi，入口确认 shim 对应声明的安装。`sound` 对象包含 `ffmpeg`、可区分的 `done`／`request` 自定义 MP3 和四个捆绑音效解码对照 `tui_done`、`tui_request`、`app_done`、`app_request`；从各安装版本的发布源码取 `assets/sounds/{done,request}.mp3`，不改上游。可独占创建自定义探针，例如 `ffmpeg -f lavfi -i sine=frequency=683:duration=0.65 done.mp3` 和 `ffmpeg -f lavfi -i sine=frequency=1129:duration=0.9 request.mp3`。录音分析使用 `PyAudioWPatch==0.2.12.8` 和 `numpy==2.2.6`，可通过 `python -m pip install --target <独占绝对目录> PyAudioWPatch==0.2.12.8 numpy==2.2.6` 准备，设置 `PYTHONPATH` 到该目录。要求 Windows 默认输出支持 WASAPI loopback；关闭其他音源，不切走焦点。没有音频设备、测不到波形或缺资源时保留原始错误，不以静音判通过。
+
+```powershell
+# 下列变量均改为本次绝对路径。target 必须是新建或空目录；证据目录必须不存在。
+$HerdrBotWorktree = 'E:/worktrees/herdr-bot'
+$ToolkitWorktree = 'E:/worktrees/toolkit'
+$IsolatedConfig = 'E:/acceptance/paired-close-reminders.json'
+$Evidence = 'E:/acceptance/paired-close-reminders-new'
+$env:CARGO_TARGET_DIR = 'E:/acceptance/paired-close-reminders-cargo'
+$Backend = Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe'
+Set-Location $HerdrBotWorktree
+python scripts/accept-paired-close-reminders.py `
+  --herdr-bot-worktree $HerdrBotWorktree --toolkit-worktree $ToolkitWorktree `
+  --backend $Backend --isolated-config $IsolatedConfig `
+  --close-cases all --reminder-cases all --evidence-dir $Evidence
+```
+
+- 入口保存两仓 frozen 安装、页面与本后端／安全关机壳构建、三个 herdr-bot 回归入口（后端限制为两个测试二进制并发，浏览器使用一个 worker，不缩小测试范围）、toolkit 四个入口及 `session-ready`／`binding-lifecycle`／`activity-facts`／`round-facts`／`native-node-report`／`node-report-contract` docks 的原始日志。配对 dock 的 `HERDR_BOT_BINARY` 指向同一独占目标目录中的 `safe_shutdown_shell.exe`。Toolkit harness 验收继续读取版本基线，只向本次证据目录的 `toolkit-harness-evidence/` 写检查结果，不改受版本管理的验收记录。失败继续留档，不用无关的绿项补齐；可按上述各入口的实际日志区分构建、测试和清理失败。
+- 关闭用真实 Pi 创建经理／节点，由公开审批、报告、节点完成触发。透明记录器只转发已安装 CLI 的请求和原始回执。对照额外 Tab 和另一容器的存活终端、最后一个 Tab 消失及其容器实际移除；App 在前置负对照中验证未确认请求不产生效果，实际完成必须只发送 `tab.close` 且 `confirmed: true`。TUI worktree group 独占创建，父 Workspace 与关联 checkout 的唯一真实 group 必须可见，拒绝扩大时没有发出 close。TUI 用 `herdr pane process-info --pane <Pane>` 取得进程身份；另核对终端和 SDK agent 进程的真实退出，不把布局或成功回执误作 PID 退出。
+- 提醒按 OMP／Pi × TUI／App × 自定义／捆绑／关闭运行，每格在实际 `working` 时切换焦点，再让同一真实轮次完成；后台完成观察一次 done，前台完成观察抑制。TUI 在连接客户端前按独占标题认领实际窗口，此后按窗口句柄和所属 PID 核对焦点。原生状态出现后继续录音四秒，覆盖 Windows 延迟启动播放器和完整捆绑资源；静音对照还检查信号幅度，避免把未匹配的声音计为静音。真实待审批 UI 可见且保持时观察一次 request，选择原生 No 后单独留档。公开会话状态、Pane/terminal 原生观察、CLI 请求、输入／释放时间、两种音效原文及哈希、WAV 和波形匹配时间分别保存；波形匹配不是用户的听音结论。
+- `--close-cases app-pi-last-tab --reminder-cases none --native-only` 或 `--close-cases none --reminder-cases app-omp-custom --native-only` 用于已有本 worktree 构建产物的定向诊断；所有未运行格仍在 `summary.json`，定向诊断始终不返回全量通过。运行会保留未确认退出或证据归档失败的独占环境，供定位；不操作用户会话。`automatedPassed` 只代表自动范围，唯一人工项 `P48Listening` 始终待确认：用每格时间线与 WAV 核对两端实际可听和触发场景，仅由用户确认，不能提前计为通过。
 
 ### Chief 委派与报告（S1）
 
@@ -54,7 +145,7 @@
 - 工具与依赖安装见 [构建与运行](../../README.md#构建与运行)。后端测试也需要 Node.js，供跨前后端网络护栏使用。
 - 浏览器验收需要本机 Chrome。源码更新后使用 `test:browser:build`，由它先构建前后端和安全关机壳再执行验收；仅调试已构建产物时使用 `npm --prefix frontend run test:browser`。
 - 不同源码副本使用独立 `CARGO_TARGET_DIR`；测试程序会内嵌源码路径。性能比较顺序运行，避免多轮检查争抢同一资源。
-- 原生可见性浏览器清理通过独占 Chrome 的 Node `exit` 事件或独立 Windows 进程句柄确认根进程退出；删除独占 profile 前，句柄观察进程还须确认携带该 profile 路径的残留 Chrome utility 进程退出，不能在根进程先退出时提前终止观察。`taskkill` 返回码或输出不能代替退出确认。
+- 原生可见性浏览器清理分别确认根进程和独占 profile 的进程退出。Node `exit` 事件或独立 Windows 句柄可确认根进程退出；随后观察进程须在独立时限内确认携带该 profile 路径的残留 Chrome utility 进程退出，才允许删除 profile。`taskkill` 返回码或输出不能代替退出确认。
 
 ## 动态 TypeScript 脚本验证
 

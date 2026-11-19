@@ -34,6 +34,7 @@ impl Panel {
             }
         }));
         panel.addr = rx.recv_timeout(Duration::from_secs(30)).unwrap_or_else(|error| panic!("backend startup: {error}; {}", fs::read_to_string(stderr).unwrap()));
+        fs::write(s.herdr.path().join("launch_endpoint.txt"), panel.addr.to_string()).unwrap();
         panel
     }
 }

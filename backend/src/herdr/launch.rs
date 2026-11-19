@@ -63,7 +63,7 @@ struct State {
     identity: bool,
     early_ready: Option<Owner>,
     ready: bool,
-    official_failure: Option<HerdrError>,
+    identity_failure: Option<HerdrError>,
     ended: Vec<(u32, String)>,
     retained: bool,
     closed: bool,
@@ -73,6 +73,7 @@ struct Pending {
     target_id: String,
     kind: &'static str,
     cwd: Option<String>,
+    restoring: bool,
     state: watch::Sender<State>,
 }
 
@@ -93,9 +94,17 @@ impl Launches {
     }
 
     pub(crate) fn begin(self: &Arc<Self>, kind: &'static str, cwd: Option<&str>) -> Launch {
+        self.track(kind, cwd, false)
+    }
+
+    pub(crate) fn begin_app_restore(self: &Arc<Self>, kind: &'static str, cwd: Option<&str>) -> Launch {
+        self.track(kind, cwd, true)
+    }
+
+    fn track(self: &Arc<Self>, kind: &'static str, cwd: Option<&str>, restoring: bool) -> Launch {
         let id = crate::chats::new_creation_id();
         let pending = Arc::new(Pending {
-            target_id: crate::chats::new_creation_id(), kind, cwd: cwd.map(str::to_owned),
+            target_id: crate::chats::new_creation_id(), kind, cwd: cwd.map(str::to_owned), restoring,
             state: watch::channel(State::default()).0,
         });
         self.pending.lock().unwrap().insert(id.clone(), Arc::clone(&pending));
@@ -103,11 +112,22 @@ impl Launches {
     }
 
     pub(crate) async fn app_target(&self, herdr: &HerdrClient, kind: &str, session_id: &str) -> Result<Vec<Arc<LaunchTarget>>, HerdrError> {
+        self.app_targets(herdr, kind, session_id, None).await
+    }
+
+    pub(crate) async fn app_target_at(&self, herdr: &HerdrClient, kind: &str, session_id: &str, location: &super::NavigationTarget) -> Result<Option<Arc<LaunchTarget>>, HerdrError> {
+        let mut matches = self.app_targets(herdr, kind, session_id, Some(location)).await?;
+        if matches.len() > 1 { return Err(native_error("multiple live App owners for the saved Run Chat")); }
+        Ok(matches.pop())
+    }
+
+    async fn app_targets(&self, herdr: &HerdrClient, kind: &str, session_id: &str, location: Option<&super::NavigationTarget>) -> Result<Vec<Arc<LaunchTarget>>, HerdrError> {
         let candidates = self.pending.lock().unwrap().values().filter_map(|pending| {
             let state = pending.state.borrow();
             let owner = state.owner.as_ref()?;
             let target = state.target.as_ref()?;
             (pending.kind == kind && state.retained && !state.closed && owner.session_id == session_id
+                && location.is_none_or(|location| target.location == *location)
                 && target.app_coordinates().is_some()).then(|| (pending.clone(), owner.clone(), target.clone()))
         }).collect::<Vec<_>>();
         let mut found = Vec::with_capacity(candidates.len());
@@ -122,7 +142,9 @@ impl Launches {
         &self, herdr: &HerdrClient, session_id: String, report: Report, phase: Phase,
     ) -> Result<(), ()> {
         let pending = self.pending.lock().unwrap().get(&report.launch_id).cloned().ok_or(())?;
-        if report.target_id != pending.target_id || report.agent_type != pending.kind || report.pid == 0
+        let wrong_kind = report.agent_type != pending.kind;
+        let restore_identity = pending.restoring && matches!(phase, Phase::Identity);
+        if report.target_id != pending.target_id || (wrong_kind && !restore_identity) || report.pid == 0
             || session_id.trim().is_empty() || !Path::new(&report.cwd).is_absolute()
             || pending.cwd.as_deref().is_some_and(|cwd| !crate::zones::same_path(&report.cwd, cwd))
             || report.session_file.as_deref().is_some_and(|path| !Path::new(path).is_absolute())
@@ -158,17 +180,22 @@ impl Launches {
                 return Ok(());
             }
         }
-        if let Err(error) = target.verify(herdr, pending.kind, &owner.cwd, owner.pid, &owner.session_id, owner.session_file.as_deref()).await {
-            match error {
-                LaunchVerificationError::Unproven(error) => eprintln!("launch evidence rejected: {}", error.message()),
-                LaunchVerificationError::OfficialIdentity(error) => {
-                    eprintln!("launch evidence rejected: {}", error.message());
-                    pending.state.send_if_modified(|state| {
-                        if state.rejects(&owner) { return false; }
-                        state.official_failure = Some(error);
-                        true
-                    });
-                }
+        let verified = target.verify(herdr, pending.kind, &owner.cwd, owner.pid, &owner.session_id, owner.session_file.as_deref()).await;
+        let (error, terminal) = match verified {
+            Ok(_) if wrong_kind => (Some(native_error("reported recovery agent type conflicts with the selected Chat")), true),
+            Ok(_) => (None, false),
+            Err(LaunchVerificationError::OfficialIdentity(error)) => (Some(error), true),
+            Err(LaunchVerificationError::ReportedIdentity(error)) => (Some(error), restore_identity),
+            Err(LaunchVerificationError::Unproven(error)) => (Some(error), false),
+        };
+        if let Some(error) = error {
+            eprintln!("launch evidence rejected: {}", error.message());
+            if terminal {
+                pending.state.send_if_modified(|state| {
+                    if state.rejects(&owner) { return false; }
+                    state.identity_failure = Some(error);
+                    true
+                });
             }
             return Err(());
         }
@@ -203,23 +230,23 @@ impl Launches {
 
 impl State {
     fn rejects(&self, owner: &Owner) -> bool {
-        self.closed || self.retry == Retry::OwnerChanged || self.official_failure.is_some() || owner.ended(self)
+        self.closed || self.retry == Retry::OwnerChanged || self.identity_failure.is_some() || owner.ended(self)
             || self.owner.as_ref().is_some_and(|active| active != owner)
     }
 
     fn observes_replacement(&self, owner: &Owner, phase: Phase) -> bool {
         self.retry == Retry::Waiting && matches!(phase, Phase::Identity)
-            && !self.closed && self.official_failure.is_none() && !owner.ended(self)
+            && !self.closed && self.identity_failure.is_none() && !owner.ended(self)
             && self.owner.as_ref().is_some_and(|active| !active.same_session(owner) && !active.ended(self))
     }
 
     fn cannot_retry(&self) -> bool {
-        self.closed || self.retry == Retry::OwnerChanged || self.official_failure.is_some()
+        self.closed || self.retry == Retry::OwnerChanged || self.identity_failure.is_some()
             || self.owner.as_ref().is_none_or(|owner| owner.ended(self))
     }
 
     fn retry_invalidation(&self) -> HerdrError {
-        self.official_failure.clone().unwrap_or_else(|| native_error(if self.retry == Retry::OwnerChanged {
+        self.identity_failure.clone().unwrap_or_else(|| native_error(if self.retry == Retry::OwnerChanged {
             "launch owner changed before retry"
         } else {
             "launch owner ended before retry"
@@ -261,10 +288,10 @@ impl Launch {
         let mut receiver = self.pending.state.subscribe();
         let (owner, target) = {
             let state = tokio::time::timeout(READY_TIMEOUT, receiver.wait_for(|state| {
-                state.official_failure.is_some() || state.owner.as_ref().is_some_and(|owner| owner.ended(state) || state.identity && (!require_ready || state.ready))
+                state.identity_failure.is_some() || state.owner.as_ref().is_some_and(|owner| owner.ended(state) || state.identity && (!require_ready || state.ready))
             })).await.map_err(|_| HerdrError::Timeout("framework ready"))?
                 .map_err(|_| native_error("launch evidence no longer available"))?;
-            if let Some(error) = &state.official_failure { return Err(error.clone()); }
+            if let Some(error) = &state.identity_failure { return Err(error.clone()); }
             let owner = state.owner.as_ref().unwrap();
             if owner.ended(&state) { return Err(native_error("launch owner ended before input")); }
             (owner.clone(), state.target.clone().unwrap())
@@ -325,7 +352,7 @@ impl Launch {
     async fn verify(&self, herdr: &HerdrClient, target: &LaunchTarget, owner: &Owner) -> Result<NativeSession, HerdrError> {
         let identity = target.verify(herdr, self.pending.kind, &owner.cwd, owner.pid, &owner.session_id, owner.session_file.as_deref()).await?;
         let state = self.pending.state.borrow();
-        if let Some(error) = &state.official_failure { return Err(error.clone()); }
+        if let Some(error) = &state.identity_failure { return Err(error.clone()); }
         if state.retry == Retry::OwnerChanged { return Err(state.retry_invalidation()); }
         if owner.ended(&state) { return Err(native_error("launch owner ended before input")); }
         Ok(identity)

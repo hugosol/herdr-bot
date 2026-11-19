@@ -239,6 +239,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
         let role = if target.map.is_some() { crate::tasks::catalog::ExecutionRole::NestedManager } else if target.end_node { crate::tasks::catalog::ExecutionRole::Standalone } else { crate::tasks::catalog::ExecutionRole::Node };
         let mut preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(task, role)).map_err(|e| e.message())?;
         preset.env.suite_args = suite_args;
+        preset.env.select_host(&state.herdr);
         preset.env.check_entrypoints()?;
         let mut child = match &target.map {
             Some(map) => Some(prepare_child(state, &mut candidate, id, map, &target, &mut effects, &mut stage).await?),
@@ -321,7 +322,7 @@ async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &
         zone_bindings: { let mut bindings = checked.zone_bindings; bindings.insert(zone_id, target.zone.clone()); bindings },
         workspace_name: parent.workspace_name.clone(), user_input: target.input.clone(), file_inputs: input.file_inputs,
         inputs_ready: false, manager: None, status: "running".into(), finished: None,
-        nodes: checked.node_ids.into_iter().map(|id| (id, NodeState { status: "pending".into(), execution: None, failure: None, completion: None, previous_executions: Vec::new() })).collect(),
+        nodes: checked.node_ids.into_iter().map(|id| (id, NodeState { status: "pending".into(), execution: None, failure: None, completion: None, auto_close_failure: None, previous_executions: Vec::new() })).collect(),
     };
     *stage = "child-register";
     *parent.nodes.get_mut(node_id).unwrap().execution.as_mut().unwrap().child_run_id_mut() = Some(child.id.clone());
@@ -400,35 +401,32 @@ async fn protocol(
         (None, _) => delegation.map(|launch| launch.name.clone()).unwrap_or_else(|| crate::chats::render_chat_name(&task.chat_name, zone, task, &crate::chats::new_chat_id())),
     };
     *stage = "tab";
-    let tab = state.herdr.create_tab(&workspace.id, Some(zone), &name).await.map_err(|e| e.message())?;
-    drop(directory);
-    effects.tab_id = Some(tab.tab_id.clone());
-    effects.pane_id = Some(tab.pane_id.clone());
-    let agent = crate::chats::new_agent_name();
-    effects.agent_name = Some(agent.clone());
-    *stage = "start";
-    state.herdr.start_agent(&agent, task.agent.label(), &tab.pane_id,
-        &crate::chats::agent_launch_args(&preset.env, Some(&preset.trigger)))
+    let kind = task.agent.label();
+    let alias = crate::chats::new_agent_name();
+    let args = crate::chats::agent_launch_args(&preset.env, Some(&preset.trigger));
+    let launch = state.launches.begin(kind, Some(zone));
+    let hosted = state.herdr.launch_tab(&workspace.id, Some(zone), &name, &alias, kind, &args, &launch)
         .await.map_err(|e| e.message())?;
+    effects.tab_id = Some(hosted.location.tab_id.clone());
+    effects.pane_id = Some(hosted.location.pane_id.clone());
+    if !state.herdr.is_app() { effects.agent_name = Some(alias.clone()); }
+    *stage = "start";
+    hosted.start_agent(&state.herdr, kind, &args).await.map_err(|e| e.message())?;
     effects.agent_started = true;
     *stage = "identity";
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-    // started_session owns the restricted pending-native-file identity rules.
-    let identity = tokio::time::timeout_at(deadline,
-        state.herdr.started_session(&agent, task.agent.label(), deadline))
-        .await.map_err(|_| "获取原生身份超时".to_owned())?.map_err(|e| e.message())?;
+    let identity = launch.ready(&state.herdr).await.map_err(|e| e.message())?;
     effects.session_id = Some(identity.session_id.clone());
-    if let Role::Node { target, .. } = &role {
-        if !crate::zones::same_path(&identity.cwd, &target.zone) {
-            return Err(format!("原生 Chat cwd 与定义 zone 不一致：{}", identity.cwd));
+    if let Role::Node { id, .. } = &role {
+        let execution = run.nodes[*id].execution.as_ref().ok_or("缺少冻结执行。")?;
+        if run.session_claimed_by_other_execution(&identity.session_id, &execution.id) {
+            return Err("原生 Chat 已属于本 Run 的管理者或其他执行，不能重复关联。".into());
         }
-    }
-    if delegation.is_some() && !crate::zones::same_path(&identity.cwd, &run.zone) {
-        return Err("原生 manager Chat cwd 与确认的 zone 不一致".into());
     }
     let chat = ChatReference {
         session_id: identity.session_id.clone(), workspace_id: workspace.id.clone(),
-        tab_id: tab.tab_id, pane_id: tab.pane_id, agent_name: agent.clone(),
+        tab_id: hosted.location.tab_id.clone(), pane_id: hosted.location.pane_id.clone(),
+        // App launches the native agent directly; navigation never uses a TUI alias there.
+        agent_name: effects.agent_name.clone().unwrap_or_else(|| kind.to_owned()),
     };
     if let Some(child) = child.as_deref_mut() {
         child.manager = Some(chat.clone());
@@ -510,10 +508,13 @@ async fn protocol(
     let text = crate::chats::compose_prompt(&fixed_prompt, preset.trigger.native_skill.as_deref(), &input, &prompts.instructions(&task.trigger.prompt));
     std::borrow::Cow::Owned(text)
     };
+    launch.current(&state.herdr, &hosted).await.map_err(|e| e.message())?;
+    // A saved association stays locatable when the submission outcome is uncertain.
+    if state.herdr.is_app() { launch.retain_app_target(); }
     effects.input_attempted = true;
     effects.input_outcome = Some(InputOutcome::Unknown);
-    if let Err(error) = state.herdr.prompt(&agent, &text).await {
-        if matches!(error, crate::herdr::HerdrError::CommandFailed { .. }) {
+    if let Err(error) = hosted.submit(&state.herdr, &text).await {
+        if matches!(error, crate::herdr::HerdrError::NotStarted(_) | crate::herdr::HerdrError::CommandFailed { .. }) {
             effects.input_outcome = Some(InputOutcome::Rejected);
         }
         return Err(error.message());

@@ -85,26 +85,60 @@ pub(super) async fn complete(state: &AppState, run: &mut Run, node_id: String, r
     Ok(Decision::Commit(event))
 }
 
-// Called only after a new completion fact was saved. The detached task owns no
-// Run operation guard or file coordination; host latency cannot hold up business.
+// Called only after a new completion fact was saved. The detached task holds
+// no Run operation guard during host interaction; a failure is recorded after it.
 pub(super) fn close_completed_tab(state: &AppState, run: &Run, node_id: &str) {
-    let Some(execution) = run.nodes[node_id].execution.as_ref().filter(|execution| execution.auto_close) else { return; };
+    let node = &run.nodes[node_id];
+    let Some(execution) = node.execution.as_ref().filter(|execution| execution.auto_close) else { return; };
     let Some(chat) = execution.chat().filter(|chat| !chat.tab_id.trim().is_empty()) else {
         eprintln!("[workflow] run={} node={} execution={} auto-close=skipped reason=missing-tab-association", run.id, node_id, execution.id);
         return;
     };
-    let herdr = state.herdr.clone();
+    let state = state.clone();
     let run_id = run.id.clone();
     let node_id = node_id.to_owned();
     let execution_id = execution.id.clone();
-    let tab_id = chat.tab_id.clone();
+    let completion_id = node.completion.as_ref().expect("new completion was saved").id.clone();
+    let chat = chat.clone();
     tokio::spawn(async move {
+        let tab_id = &chat.tab_id;
         eprintln!("[workflow] run={run_id} node={node_id} execution={execution_id} tab={tab_id} auto-close=attempt");
-        match herdr.close_tab(&tab_id).await {
-            Ok(()) => eprintln!("[workflow] run={run_id} node={node_id} execution={execution_id} tab={tab_id} auto-close=succeeded"),
-            Err(error) => eprintln!("[workflow] run={run_id} node={node_id} execution={execution_id} tab={tab_id} auto-close=failed code={} error={}", error.code(), error.message()),
+        match close_execution_tab(&state, &chat).await {
+            Ok(()) => eprintln!("[workflow] run={run_id} node={node_id} execution={execution_id} tab={tab_id} auto-close=succeeded result=host-acknowledged"),
+            Err((code, message)) => {
+                eprintln!("[workflow] run={run_id} node={node_id} execution={execution_id} tab={tab_id} auto-close=failed code={code} error={message}");
+                let failure = AutoCloseFailure { code: code.into(), message };
+                if let Err(error) = record_close_failure(&state, &run_id, &node_id, &completion_id, failure).await {
+                    eprintln!("[workflow] run={run_id} node={node_id} execution={execution_id} tab={tab_id} close-feedback-save-failed error={error}");
+                }
+            }
         }
     });
+}
+
+async fn record_close_failure(state: &AppState, run_id: &str, node_id: &str, completion_id: &str, failure: AutoCloseFailure) -> Result<(), String> {
+    let lock = state.runs.operations.lock().await.get(run_id).cloned().ok_or("缺少 Run 操作关联。")?;
+    let _operation = lock.lock().await;
+    let mut run = state.runs.read(state, run_id).await?;
+    let Some(node) = run.nodes.get_mut(node_id).filter(|node| {
+        node.completion.as_ref().is_some_and(|completion| completion.id == completion_id)
+    }) else { return Err("节点完成关联已变化；未附加关闭失败。".into()); };
+    node.auto_close_failure = Some(failure);
+    save_run(state, &run).await
+}
+
+async fn close_execution_tab(state: &AppState, chat: &ChatReference) -> Result<(), (&'static str, String)> {
+    let result = if state.herdr.is_app() {
+        let target = chat.app_target(state, &chat.location()).await.map_err(|error| match error {
+            crate::chats::Error::Invalid(code, message) | crate::chats::Error::NotFound(code, message)
+            | crate::chats::Error::Internal(code, message) => (code, message),
+            other => ("run-chat-lookup-failed", format!("{other:?}")),
+        })?;
+        state.herdr.close_app_target(&target).await
+    } else {
+        state.herdr.close_tui_tab(&chat.workspace_id, &chat.tab_id).await
+    };
+    result.map_err(|error| (error.code(), error.message()))
 }
 
 pub(super) fn can_finish(run: &Run) -> bool {

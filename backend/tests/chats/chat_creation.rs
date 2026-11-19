@@ -8,6 +8,7 @@
 mod common;
 #[path = "initial_input_retry.rs"]
 mod initial_input_retry;
+mod native_reminders;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -1004,12 +1005,16 @@ async fn app_launch_uses_task_environment_and_selected_terminal_without_tui_file
             assert_eq!(post_json_over_tcp(server.addr(), "/api/sessions/events", &report("launch_ready")).await.status, 200);
         }
         assert_eq!(wait_stage(&server, id, "succeeded").await["inputSubmitted"], true);
+        let invocation_log = host.path().join("invocations.jsonl");
+        let before_ready_replay = fs::read(&invocation_log).unwrap();
         assert_eq!(post_json_over_tcp(server.addr(), "/api/sessions/events", &report("launch_ready")).await.status, 200);
+        assert_eq!(fs::read(invocation_log).unwrap(), before_ready_replay, "replaying ready is not a native reminder");
         let sent = calls_of_kind(&host, "core_send");
         assert_eq!(sent.len(), index + 1);
         assert_eq!(sent[index]["terminal"], tab["terminal"]);
         assert_eq!(sent[index]["text"], "/skill:teach Literal {unknown}\n\nUser body\nsecond line");
         assert!(calls_of_kind(&host, "agent_prompt").is_empty());
+        native_reminders::assert_panel_state_has_no_host_action(&server, &host, &format!("app-native-{agent}"), &dir).await;
     }
 }
 

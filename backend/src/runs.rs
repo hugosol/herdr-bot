@@ -37,7 +37,14 @@ pub struct NodeState {
     pub execution: Option<NodeExecution>,
     pub failure: Option<StartupFailure>,
     pub completion: Option<Completion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    auto_close_failure: Option<AutoCloseFailure>,
     pub previous_executions: Vec<ExecutionFact>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+struct AutoCloseFailure {
+    code: String,
+    message: String,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -134,6 +141,15 @@ pub struct Run {
     pub finished: Option<Finished>,
     pub nodes: BTreeMap<String, NodeState>,
 }
+impl Run {
+    fn session_claimed_by_other_execution(&self, session_id: &str, execution_id: &str) -> bool {
+        self.manager.as_ref().is_some_and(|chat| chat.session_id == session_id)
+            || self.nodes.values().any(|node| node.executions().any(|other| {
+                other.id != execution_id && other.chat().is_some_and(|chat| chat.session_id == session_id)
+            }))
+    }
+}
+
 /// Display-only launch snapshot, independent of mutable Run names and definitions.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -366,7 +382,7 @@ impl Runs {
         ]
     }
     /// Recover role from persisted execution identity, including retired attempts.
-    pub(crate) async fn chat_role(&self, state: &AppState, session_id: &str, task_id: &str, agent: crate::tasks::Agent) -> Result<Option<crate::tasks::catalog::ExecutionRole>, String> {
+    pub(crate) async fn chat_role(&self, state: &AppState, session_id: &str, task_id: Option<&str>, agent: crate::tasks::Agent) -> Result<Option<crate::tasks::catalog::ExecutionRole>, String> {
         let root = state.run_directory.clone();
         let entries = match self.files.with_async(&[root.clone()], move |access| Box::pin(async move { access.read_dir(&root) })).await.map_err(|e| e.to_string())? {
             Ok(entries) => entries,
@@ -396,7 +412,7 @@ impl Runs {
                         (Some(_), None, None, None) if execution.child_run_id.is_none() => {},
                         (None, Some(source), Some(host), Some(chat)) => {
                             if let Some(chat) = chat.filter(|chat| chat.session_id == session_id) {
-                                if source != task_id || host != agent {
+                                if task_id.is_some_and(|id| id != source) || host != agent {
                                     return Err("原生 Chat 的持久执行关联与来源 Task 或 agent 不一致。".into());
                                 }
                                 if matched.is_some() || run_match.is_some() || node_match.is_some() { return Err(INVALID_LINK.into()); }
@@ -412,7 +428,7 @@ impl Runs {
             }
             if let Some(matched) = run_match { node_match = Some((id, matched)); }
             if let Some(chat) = run.manager.filter(|chat| chat.session_id == session_id) {
-                if run.manager_task_id != task_id { return Err("原生 Chat 的持久角色关联与来源 Task 不一致。".into()); }
+                if task_id.is_some_and(|id| id != run.manager_task_id) { return Err("原生 Chat 的持久角色关联与来源 Task 不一致。".into()); }
                 if manager_match.is_some() { return Err(INVALID_LINK.into()); }
                 manager_match = Some((run.id, run.parent, chat));
             }
@@ -553,6 +569,75 @@ pub(crate) async fn get_run(state: AppState, id: String) -> RunResult {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LocateRequest {
+    execution_id: Option<String>,
+}
+
+impl ChatReference {
+    fn location(&self) -> crate::herdr::NavigationTarget {
+        crate::herdr::NavigationTarget {
+            workspace_id: self.workspace_id.clone(), tab_id: self.tab_id.clone(), pane_id: self.pane_id.clone(),
+        }
+    }
+
+    async fn saved_history(&self, state: &AppState) -> Result<crate::chats::history::HistorySelection, crate::chats::Error> {
+        use crate::chats::Error;
+        state.history.selection(&self.session_id).await
+            .map_err(|error| Error::Internal("history-unreadable", error.to_string()))?
+            .ok_or_else(|| Error::NotFound("run-chat-not-found", "找不到关联 Chat 的原生历史。".into()))
+    }
+
+    async fn app_target(&self, state: &AppState, location: &crate::herdr::NavigationTarget) -> Result<std::sync::Arc<crate::herdr::LaunchTarget>, crate::chats::Error> {
+        let selected = self.saved_history(state).await?;
+        let kind = run_agent(&selected)?;
+        let native = state.herdr.selected_native_id(kind, &selected).await.map_err(run_chat_lookup_failure)?;
+        state.launches.app_target_at(&state.herdr, kind, &native, location).await
+            .map_err(run_chat_lookup_failure)?.ok_or_else(run_chat_not_live)
+    }
+}
+
+fn run_agent(selected: &crate::chats::history::HistorySelection) -> Result<&str, crate::chats::Error> {
+    selected.agent_type.as_deref().filter(|kind| matches!(*kind, "omp" | "pi"))
+        .ok_or_else(|| crate::chats::Error::Invalid("unsupported-agent", "无法确定目标 Chat 的 agent 类型。".into()))
+}
+
+fn run_chat_lookup_failure(error: crate::herdr::HerdrError) -> crate::chats::Error {
+    crate::chats::Error::Internal("run-chat-lookup-failed", error.message())
+}
+
+fn run_chat_not_live() -> crate::chats::Error {
+    crate::chats::Error::NotFound("run-chat-not-found", "所选 Run／执行关联的宿主目标不在运行或已变化；未使用其他目标。".into())
+}
+
+pub(crate) async fn locate_chat(state: AppState, id: &str, input: LocateRequest) -> Result<serde_json::Value, crate::chats::Error> {
+    use crate::chats::Error;
+    let run = state.runs.read(&state, id).await.map_err(|message| Error::Internal("run-read-failed", message))?;
+    let chat = match input.execution_id {
+        None => run.manager.as_ref(),
+        Some(id) => {
+            let mut executions = run.nodes.values().flat_map(NodeState::executions).filter(|execution| execution.id == id);
+            let execution = executions.next();
+            if executions.next().is_some() {
+                return Err(Error::Conflict("run-chat-ambiguous", "同一执行 ID 有多个保存关联；尚未定位。".into()));
+            }
+            execution.and_then(NodeExecution::chat)
+        }
+    }.ok_or_else(|| Error::NotFound("run-chat-not-found", "没有所选 Run／执行的 Chat 关联；尚未定位。".into()))?;
+    let location = chat.location();
+    if state.herdr.is_app() {
+        let target = chat.app_target(&state, &location).await?;
+        state.herdr.focus_app_target(&target).await.map(drop)
+    } else {
+        let selected = chat.saved_history(&state).await?;
+        let targets = state.herdr.matching_targets(run_agent(&selected)?, &selected).await.map_err(run_chat_lookup_failure)?;
+        if !targets.contains(&location) { return Err(run_chat_not_live()); }
+        state.herdr.focus_target(&location).await
+    }.map_err(|error| Error::Internal("run-chat-focus-failed", error.message()))?;
+    Ok(serde_json::json!({"outcome":"located","target":location,"message":"已聚焦所选宿主内的 Run Chat；不保证 Windows 窗口置前。"}))
+}
+
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RenameRequest {
     pub(crate) name: String,
@@ -610,6 +695,7 @@ pub(crate) async fn start_run(state: AppState, map: String, input: crate::runs::
         Err(e) => return Err(RunError::Task(e)),
     };
     preset.env.suite_args = suite_args;
+    preset.env.select_host(&state.herdr);
     if let Err(message) = preset.env.check_entrypoints() {
         return Err(error(
             FailureKind::Failed,
@@ -672,6 +758,7 @@ pub(crate) fn root_run(
                         execution: None,
                         failure: None,
                         completion: None,
+                        auto_close_failure: None,
                         previous_executions: Vec::new(),
                     },
                 )

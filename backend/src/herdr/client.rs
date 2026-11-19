@@ -88,6 +88,8 @@ pub enum HerdrError {
     WorkspaceNotFound { name: String },
     /// 配置名称匹配到多个 Workspace，不能任取一个。
     WorkspaceAmbiguous { name: String, matches: usize },
+    /// Closing the selected Tab would also close other workspaces.
+    UnsafeCloseScope,
     /// Herdr 明确返回了失败。
     CommandFailed {
         command: &'static str,
@@ -110,6 +112,7 @@ impl HerdrError {
             Self::Timeout(_) => "herdr-timeout",
             Self::WorkspaceNotFound { .. } => "workspace-not-found",
             Self::WorkspaceAmbiguous { .. } => "workspace-ambiguous",
+            Self::UnsafeCloseScope => "close-scope-denied",
             Self::CommandFailed { .. } => "herdr-command-failed",
             Self::InputBlocked { .. } => "herdr-input-blocked",
             Self::UnexpectedResponse { .. } => "herdr-unexpected-response",
@@ -136,6 +139,7 @@ impl HerdrError {
                     "名称恰好为 “{name}” 的 Herdr Workspace 有 {matches} 个；不能任取一个，本次没有继续创建。"
                 )
             }
+            Self::UnsafeCloseScope => "关闭此 Tab 会扩大到 worktree group；未发送关闭命令。".into(),
             Self::CommandFailed { command, message } | Self::InputBlocked { command, message } => {
                 format!("Herdr 的 {command} 失败：{message}")
             }
@@ -472,8 +476,31 @@ impl HerdrClient {
         }
     }
 
-    /// Close only the saved execution Tab; no discovery, confirmation override or retry.
-    pub(crate) async fn close_tab(&self, tab_id: &str) -> Result<(), HerdrError> {
+    pub(crate) async fn close_app_target(&self, target: &LaunchTarget) -> Result<(), HerdrError> {
+        match (&self.host, &target.control) {
+            (Host::App(app), LaunchControl::App { .. }) => app.close_tab(&target.location.tab_id).await,
+            _ => Err(HerdrError::UnexpectedResponse { command: "App close", detail: "目标没有当前 App/core 的终端关联".into() }),
+        }
+    }
+
+    /// TUI handles an empty Workspace. Never ask it to close a known worktree
+    /// group, even on installations with the native confirmation disabled.
+    pub(crate) async fn close_tui_tab(&self, workspace_id: &str, tab_id: &str) -> Result<(), HerdrError> {
+        let inventory = self.workspace_inventory().await?;
+        let mut owners = inventory.records.iter().filter(|row| row["workspace_id"].as_str() == Some(workspace_id));
+        let owner = owners.next().filter(|_| owners.next().is_none())
+            .ok_or_else(|| inventory.error("无法确认目标 Tab 保存的 Workspace"))?;
+        if let Some(worktree) = owner.get("worktree").filter(|value| !value.is_null()) {
+            let linked = worktree["is_linked_worktree"].as_bool().ok_or_else(|| inventory.error("缺少 worktree 类型"))?;
+            if !linked && owner["tab_count"].as_u64().is_none_or(|count| count <= 1) {
+                let repo = nonempty(worktree.get("repo_key")).ok_or_else(|| inventory.error("缺少 worktree 组身份"))?;
+                if inventory.records.iter().any(|row| row["workspace_id"] != workspace_id
+                    && nonempty(row.pointer("/worktree/repo_key")) == Some(repo))
+                {
+                    return Err(HerdrError::UnsafeCloseScope);
+                }
+            }
+        }
         let value = self.run("tab close", &["tab".into(), "close".into(), tab_id.into()], QUERY_TIMEOUT).await?;
         if value.pointer("/result/type").and_then(Value::as_str) != Some("ok") {
             return Err(HerdrError::UnexpectedResponse { command: "tab close", detail: "missing ok confirmation".into() });
@@ -583,15 +610,16 @@ pub struct NavigationTarget {
     pub pane_id: String,
 }
 impl NavigationTarget {
-    fn from_agent(agent: &Value) -> Result<Self, HerdrError> {
+    pub(super) fn from_agent(agent: &Value) -> Result<Self, HerdrError> {
         let field = |name| nonempty(agent.get(name)).map(str::to_owned)
             .ok_or_else(|| native_error("matched agent has incomplete navigation location"));
         Ok(Self { workspace_id: field("workspace_id")?, tab_id: field("tab_id")?, pane_id: field("pane_id")? })
     }
 }
 
-// App has a structured argv but no per-Tab env setting. This fixed program
-// sets only the correlation values for the agent; all Task args stay argv data.
+// App has a structured argv but no per-Tab env setting. Set only the launch
+// correlation; keep the agent on the core PTY for native input and OSC 7501.
+// All Task args stay argv data.
 const APP_AGENT: &str = concat!(
     "const [launchId, targetId, agent, ...args] = process.argv.slice(1); ",
     "const child = Bun.spawn([agent, ...args], {env: {...process.env, HERDR_BOT_LAUNCH_ID: launchId, HERDR_BOT_LAUNCH_TARGET_ID: targetId}, stdin: 'inherit', stdout: 'inherit', stderr: 'inherit'}); ",
@@ -613,6 +641,7 @@ pub(crate) struct LaunchTarget {
 pub(super) enum LaunchVerificationError {
     Unproven(HerdrError),
     OfficialIdentity(HerdrError),
+    ReportedIdentity(HerdrError),
 }
 
 impl From<HerdrError> for LaunchVerificationError {
@@ -622,7 +651,8 @@ impl From<HerdrError> for LaunchVerificationError {
 impl From<LaunchVerificationError> for HerdrError {
     fn from(error: LaunchVerificationError) -> Self {
         match error {
-            LaunchVerificationError::Unproven(error) | LaunchVerificationError::OfficialIdentity(error) => error,
+            LaunchVerificationError::Unproven(error) | LaunchVerificationError::OfficialIdentity(error)
+            | LaunchVerificationError::ReportedIdentity(error) => error,
         }
     }
 }
@@ -670,7 +700,7 @@ impl LaunchTarget {
                 if NavigationTarget::from_agent(agent)? != self.location || nonempty(agent.get("agent")) != Some(kind) {
                     return Err(native_error("TUI launch has another target or agent").into());
                 }
-                let process = herdr.run("pane process-info", &["pane".into(), "process-info".into(), self.location.pane_id.clone()], QUERY_TIMEOUT).await?;
+                let process = herdr.run("pane process-info", &["pane".into(), "process-info".into(), "--pane".into(), self.location.pane_id.clone()], QUERY_TIMEOUT).await?;
                 let pane = process.pointer("/result/process_info").ok_or_else(|| native_error("missing pane process information"))?;
                 if nonempty(pane.get("pane_id")) != Some(self.location.pane_id.as_str())
                     || !pane.get("foreground_processes").and_then(Value::as_array).is_some_and(|processes| processes.iter().any(|p| {
@@ -716,7 +746,7 @@ impl LaunchTarget {
             }
             _ => return Err(native_error("launch target host changed").into()),
         }
-        super::launch::reported_native_session(kind, cwd, id, file).await.map_err(Into::into)
+        super::launch::reported_native_session(kind, cwd, id, file).await.map_err(LaunchVerificationError::ReportedIdentity)
     }
 }
 
