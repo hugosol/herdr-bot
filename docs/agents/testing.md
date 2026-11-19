@@ -39,9 +39,53 @@
 
 先构建本 worktree 的 `frontend` 与生产 `herdr-bot`，并使用独占绝对 `CARGO_TARGET_DIR`。运行 `python scripts/accept-herdr-host-selection.py --backend <herdr-bot.exe> --herdr <herdr.exe> --app <herdr-app.exe> --core <hc.exe> --evidence-dir <新的证据目录>`，所有路径显式且绝对；证据目录使用 `%TEMP%` 下简短的独占名称，避免 App 的 `herdr-app.sock` 路径超过 Windows Unix socket 长度限制。专项用独占 TUI、App 和两个 core；从公开 HTTP 触发放置，以实际容器、Tab、Pane、终端归属及 core-local ID 碰撞核对配置路由和错配拒绝。固定操作分别核对脚本标记、HTTP 回执与独立宿主探测（成功脚本不必启动或停止进程），退出用所属进程和 core／holder 句柄确认。它不证明真实 Task 初始化或业务输入；有关 agent 行为另验。
 
+### 同一历史 Chat 的双端恢复（S1／S3）
+
+从参与的 `herdr-bot` worktree 根运行。先在 `frontend` 与 toolkit 根各执行 `bun install --frozen-lockfile`（Bun 1.4.4），然后在 PowerShell 中构建并启动专项：
+
+```powershell
+$env:CARGO_TARGET_DIR = 'C:\absolute\exclusive-ticket-cargo'
+$bot = 'C:\absolute\herdr-bot-worktree'
+$toolkit = 'C:\absolute\toolkit-worktree'
+$backend = Join-Path $env:CARGO_TARGET_DIR 'debug\herdr-bot.exe'
+$paths = 'C:\absolute\isolated-history-paths.toml'
+$evidence = 'C:\absolute\new-history-evidence'
+Set-Location $bot
+npm --prefix frontend run build
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
+cargo build --manifest-path backend/Cargo.toml --locked --bins --example safe_shutdown_shell --example recovery_herdr_proxy
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
+python scripts/accept-paired-history-recovery.py --herdr-bot-worktree $bot --toolkit-worktree $toolkit --backend $backend --paths-file $paths --directions tui-to-app,app-to-tui --evidence-dir $evidence
+```
+
+`$paths` 是另建的 TOML，只声明安装位置，不复制任何 agent 的常用配置、历史或认证。将下列绝对路径替换为本机实际安装值：
+
+```toml
+[roots]
+herdr = 'C:/absolute/installed-herdr-directory'
+herdr_app = 'C:/absolute/installed-herdr-app-directory'
+herdr_core = 'C:/absolute/installed-core-directory'
+omp_package = 'C:/absolute/installed-omp-package'
+pi_package = 'C:/absolute/installed-pi-package'
+omp_state_extension = 'C:/absolute/official-herdr-omp-agent-state.ts'
+pi_state_extension = 'C:/absolute/official-herdr-agent-state.ts'
+node = 'C:/absolute/node.exe'
+bun = 'C:/absolute/bun.exe'
+omp_cli = 'C:/absolute/omp.cmd'
+toolkit_baseline = 'C:/absolute/original-toolkit-checkout'
+```
+
+需要 Windows 交互桌面（自有 TUI 客户端与真实 App 窗口）和可运行的 Chrome。`omp.cmd`、`pi.cmd` 必须可从声明的运行时目录解析到同一套已安装包。`toolkit_baseline` 只解析 toolkit 基线记录中的外部路径，运行的源码仍取自 `$toolkit`。专项核对本次后端的 Cargo depfile、版本、源码／锁文件及安装与产物哈希。业务 HTTP 使用生产后端；配对 dock 只使用旁置的 `examples/safe_shutdown_shell.exe`。整个调用仅在交互桌面和配对检查资源允许的窗口运行，不操作已有窗口或已有会话。已预先通过仓库检查时可用 `--native-only` 单独取原生证据；`--controlled-only` 只跑命名的后端 Resume 控制边界。`--agents pi`、`--scenarios cross-end` 等过滤与两个诊断模式始终保留缺格，非零退出，不认证整票。Toolkit 的标准入口可能独立刷新 `framework/docs/pi-acceptance.json`／`omp-acceptance.json`（即使专项其他格失败）。仅收集专项证据时，将本轮生成的记录备份到专项证据目录，再在独占 worktree 内恢复已跟踪基线；不把运行记录混入产品提交，也不丢弃已有修改。
+
+原生专项用数值回环的自有机械文本 provider 只为初次发起生成可读历史，不访问真实模型或用户凭据；安装的 OMP／Pi、框架／connect-bot、宿主和后端走真实路径。先读取实际历史、保留文件头与原容器 ID；退出并持句柄核对旧 agent、旧端及 core 后，才配置另一端及第二个默认容器名。Resume 之后从实际新进程的 native `session_start` 取 SessionManager ID/file 和 `process.cwd()`，从安装包再读原 Chat 的正文，检查目标所属 Workspace/Space、Tab/Pane、core 与内部焦点。透明 CLI 记录器原样转发到本次安装，不替换宿主、原生上报或响应。记录参数只用于检查没有重放模型／思考覆盖、没有强加扩展、目录降级未指定 cwd，以及没有重发创建、启动或输入；不能用参数证明恢复、实际 cwd 或聚焦。两端回执都不证明 Windows 置前。更新来源 Task 的 Suite 和固定环境标记，观察最新扩展确实运行，并比较原生输入、历史和模型访问记录；独立的原生默认扩展观察器不向产品上报身份。
+
+同端命中、跨端无匹配、人工同值、Git 主工作树与目录缺失、四种环境降级、原文件头和来源 agent 冲突均保留独立格子。Task 发起的 Chat 已记录原生文件时，再次登记不会覆盖历史 cwd；本次实际 cwd 由恢复回执和当前会话登记分别展示。未记录原生文件的普通接入继续按既有规则补充历史。未启动、未定位或原生恢复选择框仍待处理时，不将选择框、存在的终端或最近的回执计为成功，专项不替用户选择分叉或继续。人工同值／无来源只改变一次本格的自有历史输入，Resume 前后均保留原始字节，并核对公开记录、既有持久格式和原字段；同一 Windows cwd 的尾斜杠不算换目录。安装端若不能构造真实 Git 歧义或缺少实际退出记录，不用控制结果补格。App 没有可据以确认历史 checkout 的归属，默认 cwd 用同一 Space 的独立原生空白 Tab 取证。错误／畸形／空成功等确定性外部响应、被拒绝的启动／定位以及其他原生身份冲突另用 `chat_resume`、`chat_resume_environment`、`chat_resume_omp`、`chat_resume_pi`、`chat_resume_timeout` 的公开 HTTP＋控制 CLI 边界；它们不证明安装宿主通过。新证据目录包含原始错误、HTTP、native 布局／进程／退出、SessionManager 历史及各仓原始日志。每格另保留一个独占、短路径的临时状态根（见该格 `root`），可在证据归档后独立删除；仅根进程结束或目录可以删除不构成退出证明。CLI 边界回归可用 `python scripts/accept-paired-history-recovery.test.py`，它不启动宿主。
+
 ### Task 发起与初始输入（S1）
 
 用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test chat_creation`。受控 TUI、App/core 的记录检查所选容器、固定扩展与 Suite、终端收到的原始输入，以及当前启动与目标的匹配；原生上报通过生产 `/api/sessions/events`，关机状态使用记录安全的替身，不调用系统关机。页面定向检查为 `npm --prefix frontend run test:browser:build -- chatCreation.spec.ts --workers=1`；受控上报独立于页面，浏览器只观察创建 HTTP 进度。以上不认证真实安装宿主、framework 或模型行为。
+
+Toolkit 的 `manager-dispatch-recovery.test.ts` 和 `uncertain-effects.test.ts` 用本工作树的安全关机壳及受控 Herdr 夹具回归 Run 的身份归属：同一原生会话已归属本 Run 的管理者或另一执行时，新的节点启动保留实际启动和身份事实，但不保存重复关联，也不提交业务输入。夹具通过隔离后端接收本次启动的身份和 ready 上报；这些故障场景不代表安装宿主实际产生了重复 ID。
 
 ### Run Chat 角色恢复（P42／S1）
 

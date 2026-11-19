@@ -81,8 +81,7 @@ pub(super) async fn reconcile(state: &AppState, run: &mut Run, node_id: String, 
             if !crate::zones::same_path(&identity.cwd, &execution.zone)
                 || effects.session_id.as_ref().is_some_and(|session| session != &identity.session_id)
                 || execution.chat().is_some_and(|chat| chat.session_id != identity.session_id)
-                || run.manager.as_ref().is_some_and(|chat| chat.session_id == identity.session_id)
-                || run.nodes.values().any(|node| node.executions().any(|other| other.id != execution.id && other.chat().is_some_and(|chat| chat.session_id == identity.session_id))) {
+                || run.session_claimed_by_other_execution(&identity.session_id, &execution.id) {
                 return Decision::reject("dispatch-chat-mismatch", "原 Chat 的身份或 zone 不一致，或已属于其他执行；保持 failed，不替换执行。");
             }
             let chat = ChatReference { session_id: identity.session_id, workspace_id: workspace.clone(), tab_id: tab.clone(), pane_id: pane.clone(), agent_name: agent.clone() };

@@ -184,7 +184,13 @@ impl History {
                             if from_zone && session_name.is_some() { record.name_from_zone = true; }
                         }
                         update(&mut record.agent_type, agent_type);
-                        update(&mut record.cwd, cwd);
+                        // A Task's recorded native file anchors its historical
+                        // directory; registration reports the running cwd.
+                        // Records without that anchor retain their merge rules.
+                        let anchored_task = record.name_from_zone && record.session_file.is_some();
+                        if from_zone || !anchored_task || record.cwd.is_none() {
+                            update(&mut record.cwd, cwd);
+                        }
                         update(&mut record.session_file, session_file);
                         if record.original_workspace_id.is_none() {
                             record.original_workspace_id = original_workspace_id.map(str::to_owned);

@@ -416,6 +416,12 @@ async fn protocol(
     *stage = "identity";
     let identity = launch.ready(&state.herdr).await.map_err(|e| e.message())?;
     effects.session_id = Some(identity.session_id.clone());
+    if let Role::Node { id, .. } = &role {
+        let execution = run.nodes[*id].execution.as_ref().ok_or("缺少冻结执行。")?;
+        if run.session_claimed_by_other_execution(&identity.session_id, &execution.id) {
+            return Err("原生 Chat 已属于本 Run 的管理者或其他执行，不能重复关联。".into());
+        }
+    }
     let chat = ChatReference {
         session_id: identity.session_id.clone(), workspace_id: workspace.id.clone(),
         tab_id: hosted.location.tab_id.clone(), pane_id: hosted.location.pane_id.clone(),
