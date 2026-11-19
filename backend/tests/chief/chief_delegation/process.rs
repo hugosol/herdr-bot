@@ -26,7 +26,11 @@ impl TestServer {
                 "start":{"script":config.operations.start.script,"working_directory":root},
                 "stop":{"script":config.operations.stop.script,"working_directory":root}
             },
-            "herdr":{"workspace_name":config.herdr.workspace_name,"executable":config.herdr.executable},
+            "herdr":{
+                "backend":if config.herdr.backend == herdr_bot::config::HerdrBackend::App { "app" } else { "tui" },
+                "workspace_name":config.herdr.workspace_name,"executable":config.herdr.executable,
+                "app_executable":config.herdr.app_executable,"core_executable":config.herdr.core_executable
+            },
             "zones":{"registry_file":config.zones.registry_file},
             "tasks":{"storage_file":config.tasks.storage_file,"metadata_file":config.tasks.metadata_file},
             "sessions":{"history_file":config.sessions.history_file},

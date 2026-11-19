@@ -46,10 +46,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use serde_json::{Value, json};
-
 #[path = "herdr-fixture/app_transport.rs"]
 mod app_transport;
+
+use serde_json::{Value, json};
+
 #[path = "herdr-fixture/chat_app.rs"]
 mod chat_app;
 
@@ -64,17 +65,11 @@ fn main() {
         chat_app::dispatch(&args);
         return;
     }
-    if args
-        .first()
-        .is_some_and(|arg| matches!(arg.as_str(), "ls" | "status" | "do" | "get" | "server"))
-        && app_transport::intercept(&args)
-    {
-        return;
-    }
     match args.first().map(String::as_str) {
         Some("workspace") if args.get(1).map(String::as_str) == Some("list") => {
             workspace_list(&args)
         }
+        Some("ls" | "status" | "do" | "get" | "server") if app_transport::intercept(&args) => {}
         Some("tab") if args.get(1).map(String::as_str) == Some("create") => tab_create(&args),
         Some("tab") if args.get(1).map(String::as_str) == Some("close") => tab_close(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("start") => agent_start(&args),

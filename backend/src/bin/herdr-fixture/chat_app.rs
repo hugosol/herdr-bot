@@ -1,6 +1,6 @@
 //! Public App/core CLI stand-in for the launch matrix. The test owns both
 //! surfaces; only the actual Rust backend interprets their output.
-use super::{data_dir, output, record, read_records, usage};
+use super::{behavior, data_dir, fail, flag, output, read_records, record, usage, wait_at_gate};
 use serde_json::{Value, json};
 
 pub(super) fn dispatch(args: &[String]) {
@@ -53,9 +53,15 @@ pub(super) fn dispatch(args: &[String]) {
                 }).collect::<Vec<_>>());
             }
             record("calls.jsonl", call);
-            if super::flag(&super::behavior(), "fail_app_send") {
-                super::fail("blocked", "controlled App refused the input before sending");
+            let behavior = behavior();
+            wait_at_gate(&behavior, "prompt_gate", text);
+            if flag(&behavior, "fail_app_send") {
+                fail("blocked", "controlled App refused the input before sending");
             }
+            if flag(&behavior, "fail_prompt") {
+                fail("core_send_rejected", "controlled core rejected the input");
+            }
+            record("submitted.jsonl", json!({"terminal":terminal,"text":text}));
             output(json!({"turn":0,"started":true,"status":"idle"}));
         }
         _ => usage(args),

@@ -133,11 +133,18 @@ async fn recipient(state: &AppState, report_id: &str) -> Result<NotificationTarg
         .map_err(|error| Notification::not_attempted(format!("无法读取当前 chief Chat：{error}")))?
         .ok_or_else(|| Notification::not_attempted("当前 chief 缺少真实 Chat 记录。"))?;
     let kind = selected.agent_type.as_deref().ok_or_else(|| Notification::not_attempted("当前 chief 缺少宿主身份。"))?;
-    let targets = state.herdr.matching_targets(kind, &selected).await
-        .map_err(|error| Notification::not_attempted(error.message()))?;
-    if targets.len() != 1 {
-        return Err(Notification::not_attempted("当前 chief 没有唯一在线的 Herdr 目标；未发起通知。"));
-    }
+    let unavailable = || Notification::not_attempted("当前 chief 没有唯一在线的 Herdr 目标；未发起通知。");
+    let lookup_failure = |error: crate::herdr::HerdrError| Notification::not_attempted(error.message());
+    let target = if state.herdr.is_app() {
+        let id = state.herdr.selected_native_id(kind, &selected).await.map_err(lookup_failure)?;
+        let mut targets = state.launches.app_target(&state.herdr, kind, &id).await.map_err(lookup_failure)?;
+        if targets.len() != 1 { return Err(unavailable()); }
+        NotificationTarget::App(targets.pop().expect("one App target"))
+    } else {
+        let mut targets = state.herdr.matching_targets(kind, &selected).await.map_err(lookup_failure)?;
+        if targets.len() != 1 { return Err(unavailable()); }
+        NotificationTarget::Tui(targets.pop().expect("one TUI target").pane_id)
+    };
     // Inventory may await external work. Never use a stale claim after lookup.
     let eligible = state.chief.authorize(session_id, |current| {
         if current.claim_id != claim.claim_id { return Err(crate::chief::Error::NotCurrent); }
@@ -146,7 +153,7 @@ async fn recipient(state: &AppState, report_id: &str) -> Result<NotificationTarg
         state.chief_reports.receipt(report_id).map(|receipt| receipt.is_none()).map_err(crate::chief::Error::from)
     }).map_err(|error| Notification::not_attempted(format!("当前 chief 已失去接收资格或接收状态不可核实：{error:?}")))?;
     if !eligible { return Err(Notification::not_attempted("报告已可靠接收；未再次通知。")); }
-    Ok(NotificationTarget::Tui(targets.into_iter().next().expect("one target").pane_id))
+    Ok(target)
 }
 
 #[derive(Deserialize)]
