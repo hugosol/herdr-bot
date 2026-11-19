@@ -9,7 +9,7 @@ P3/P14: a recovered Chat could be rebound/replayed or consume the live Map mode.
   compare business history and public execution, then require its real manual UI.
 P11/P24: an old Yes could authorize retry, or waiting UI could lock the Run.
   Keep that real UI pending while bounded public work and fail/retry finish;
-  only then return real Yes and observe unchanged new execution for 51 seconds.
+  only then return real Yes and observe unchanged new execution for 91 seconds.
 P10: source Task or a model-selected identity could grant another execution.
   Compare actual tool catalogs and zero-argument native calls across real roles,
   and reject cross-execution requests with those actual Session identities.
@@ -81,9 +81,9 @@ class ApprovalLifecycleAcceptance(ApprovalFailuresAcceptance):
         super().__init__(args)
         self.evidence.update(promise=None, promises=PROMISES, scenario='node-approval-lifecycle',
             coverage={key: {'verified': False} for key in PROMISES}, cases=[],
-            budgets={'confirmationSeconds': 20, 'requestSeconds': 30, 'boundedPublicSeconds': 2,
-                     'staleObservationSeconds': 51,
-                     'reason': '51s exceeds actual 20s confirmation + 30s request + 1s margin; no timeout/retry changes'},
+            budgets={'confirmationSeconds': 60, 'requestSeconds': 30, 'boundedPublicSeconds': 2,
+                     'staleObservationSeconds': 91,
+                     'reason': '91s covers 60s approval confirmation + 30s request + 1s margin'},
             scenarioSource={'path': str(Path(__file__).resolve()),
                             'sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()})
         self.chat_pids = {}
@@ -756,9 +756,9 @@ class ApprovalLifecycleAcceptance(ApprovalFailuresAcceptance):
             and baseline['run']['nodes']['later']['status'] == 'pending', 'Old Yes changed the settled retry business baseline')
         require(self.detail(other_run)['run']['nodes']['work']['execution']['approved'] is True, 'Stale Yes changed other Run')
         started = time.monotonic()
-        window = {'started': started, 'requiredSeconds': 51, 'samples': []}
+        window = {'started': started, 'requiredSeconds': 91, 'samples': []}
         race['observation'] = window
-        while time.monotonic() - started < 51:
+        while time.monotonic() - started < 91:
             held = self.gate_held(current['chat'])
             require(held, 'Native predecision scheduling evidence disappeared')
             detail = self.detail(self.run_id)

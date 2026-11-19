@@ -185,9 +185,9 @@ class PublishedV1Acceptance(OuterAcceptance):
             self.evidence['isolation'][key] = str(directory)
         self.evidence.update(promise=None, promises=['P31/S2', 'P34/S2,S3', 'P35/S2'],
             scenario='published-v1-native', coverage={}, cases=[], nativeApprovals=[], publicFacts=[],
-            independentGuides=GUIDES, originalErrors=[], budgets={'confirmationMs': 20000,
-                'requestMs': 30000, 'quietSeconds': 51,
-                'reason': 'Existing 20s native confirmation plus 30s HTTP request plus 1s margin; no product timeout/retry change.'})
+            independentGuides=GUIDES, originalErrors=[], budgets={'confirmationMs': 60000,
+                'requestMs': 30000, 'quietSeconds': 91,
+                'reason': '60s approval confirmation plus 30s HTTP request plus 1s margin.'})
         self.native_root = None
         self.confirmations = self.root / 'confirmations'
         self.confirmations.mkdir()
@@ -502,7 +502,7 @@ class PublishedV1Acceptance(OuterAcceptance):
                     and item.get('title') == '成果批准' and item['id'] not in self.ui_confirmed), None)
                 if approval:
                     require(execution['autoApproved'] is False and execution['approved'] is False, ('Unexpected manual confirmation', execution, approval))
-                    require(approval['hasUI'] is True and approval['timeoutMs'] == 20000
+                    require(approval['hasUI'] is True and approval['timeoutMs'] == 60000
                         and approval['message'] == '当前会话的成果是否已达到预期，可以交接并推进后续流程？', approval)
                     screen = self.command([self.args.herdr, 'pane', 'read', chat['paneId'], '--lines', '1000', '--format', 'text'])
                     require('当前会话的成果是否已达到预期' in screen and ('→ Yes' in screen or '❯ Yes' in screen), ('Actual native Yes is not visibly selected', screen))
@@ -1251,10 +1251,10 @@ class PublishedV1Acceptance(OuterAcceptance):
                     window['heartbeatWireIndices'].append(record['index'])
                 pending = still_pending
                 elapsed = time.monotonic() - started
-                if elapsed >= 51:
+                if elapsed >= 91:
                     if not pending:
                         break
-                    require(elapsed < 53, ('Unsettled heartbeat at end of observation', [item['index'] for item in pending]))
+                    require(elapsed < 93, ('Unsettled heartbeat at end of observation', [item['index'] for item in pending]))
                 time.sleep(.5)
         finally:
             window['ended'] = time.monotonic()

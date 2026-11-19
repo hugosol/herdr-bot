@@ -388,8 +388,8 @@ class PublishedV2Acceptance(NativeAcceptance):
             coverage={key: {'verified': False} for key in ITEMS}, phases=[],
             independentExpected={'modes': MODES, 'targetPrompt': PROMPT, 'schemaVersion': 2},
             scenarioSource={'path': str(Path(__file__).resolve()), 'sha256': digest(Path(__file__))},
-            budgets={'confirmationMs': 20000, 'requestMs': 30000, 'observationSeconds': 51,
-                'reason': 'Existing 20s native confirmation + 30s HTTP budget + 1s margin; no product policy changes.'})
+            budgets={'confirmationMs': 60000, 'requestMs': 30000, 'observationSeconds': 91,
+                'reason': '60s approval confirmation + 30s HTTP request + 1s margin.'})
         for key, name in [('OMP_CODING_AGENT_DIR', 'agent'), ('XDG_DATA_HOME', 'state'), ('XDG_CACHE_HOME', 'cache'), ('TEMP', 'temp'), ('TMP', 'temp'), ('TMPDIR', 'temp')]:
             directory = self.root / name
             directory.mkdir(exist_ok=True)
@@ -539,7 +539,7 @@ class PublishedV2Acceptance(NativeAcceptance):
         for request in requests:
             if request['sessionId'] != chat['sessionId'] or request['id'] in self.yes:
                 continue
-            require(request['title'] == '成果批准' and request['message'] == QUESTION and request['hasUI'] is True and request['timeoutMs'] == 20000, request)
+            require(request['title'] == '成果批准' and request['message'] == QUESTION and request['hasUI'] is True and request['timeoutMs'] == 60000, request)
             screen = self.screen(chat)
             require(QUESTION in screen and 'Yes' in screen and 'No' in screen, ('Native question not fully visible', screen))
             selected = lambda text: any(arrow + ' Yes' in text for arrow in ['→', '❯'])
@@ -1291,7 +1291,7 @@ class PublishedV2Acceptance(NativeAcceptance):
         start = time.monotonic()
         samples = []
         baseline = len(self.backend_wire.records)
-        while time.monotonic() - start < 51:
+        while time.monotonic() - start < 91:
             require([self.detail(detail['run']['id']) for detail in runs] == runs, 'V2 Run/report facts advanced without explicit manager action')
             samples.append(time.monotonic())
             time.sleep(0.25)

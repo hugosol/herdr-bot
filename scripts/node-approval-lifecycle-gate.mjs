@@ -1,7 +1,7 @@
 // Acceptance-only scheduling of one marked, invocation-owned native initial
 // turn. No tool choice, model result, identity, UI result or payload is replaced.
 // Both installed runners await context handlers in registration order. Separate
-// lifecycle events are NOT serial. Four bounded context handlers provide an
+// lifecycle events are NOT serial. Six bounded context handlers provide an
 // owner-released scheduling window without extending the 30s handler budget.
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -35,7 +35,8 @@ export default function lifecycleGate(api) {
       at: Date.now(), monotonicMs: performance.now(), signature,
     }) + '\n');
   });
-  for (let stage = 0; stage < 4; stage++) {
+  const stages = 6;
+  for (let stage = 0; stage < stages; stage++) {
     api.on('context', async (_event, ctx) => {
       if (!marked || !existsSync(configuration)) return;
       const config = JSON.parse(readFileSync(configuration, 'utf8'));
@@ -48,7 +49,7 @@ export default function lifecycleGate(api) {
         await new Promise(resolve => setTimeout(resolve, 25));
       }
       save(config.evidence, { ...common, at: Date.now(), monotonicMs: performance.now(),
-        state: existsSync(config.release) ? 'released' : stage === 3 ? 'exhausted' : 'advancing-to-next-pre-request-hook',
+        state: existsSync(config.release) ? 'released' : stage === stages - 1 ? 'exhausted' : 'advancing-to-next-pre-request-hook',
         elapsedMs: performance.now() - started });
       // Undefined preserves the public event's original payload and behavior.
     });

@@ -91,8 +91,8 @@ class NodeApprovalHandoff(NativeAcceptance):
             coverage={key: {'verified': False} for key in ITEMS}, modelIdentities=[],
             independentExpectedQuote=QUOTE,
             scenarioSource={'path': str(Path(__file__).resolve()), 'sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
-            budgets={'confirmationMs': 20000, 'requestMs': 30000, 'observationSeconds': 51,
-                'reason': 'Existing 20s native confirmation + 30s HTTP request budgets + 1s observation margin; no product timeout changes.'})
+            budgets={'confirmationMs': 60000, 'requestMs': 30000, 'observationSeconds': 91,
+                'reason': '60s approval confirmation + 30s HTTP request + 1s observation margin.'})
         self.env.update(OMP_CODING_AGENT_DIR=str(self.root / 'agent'), XDG_DATA_HOME=str(self.root / 'state'))
         self.evidence['isolation'].update({key: self.env[key] for key in ['OMP_CODING_AGENT_DIR', 'XDG_DATA_HOME']})
         self.confirmations = self.root / 'native-confirmations'
@@ -235,7 +235,7 @@ class NodeApprovalHandoff(NativeAcceptance):
             screen = self.command([self.args.herdr, 'pane', 'read', chat['paneId'], '--lines', '1000', '--format', 'text'])
             return (invocation, screen) if '当前会话的成果是否已达到预期，可以交接并推进后续流程？' in screen and 'Yes' in screen and 'No' in screen else None
         invocation, screen = until('actual native result approval with visible Yes/No', visible, self.args.timeout)
-        require(invocation['hasUI'] is True and invocation['timeoutMs'] == 20000, invocation)
+        require(invocation['hasUI'] is True and invocation['timeoutMs'] == 60000, invocation)
         require(invocation['message'] == '当前会话的成果是否已达到预期，可以交接并推进后续流程？', invocation)
         require('→ Yes' in screen or '❯ Yes' in screen, 'Native Yes is not visibly selected; do not guess keys')
         require(not self.records('/api/workflow/node/approve', chat['sessionId']), 'Manual approval submitted before actual user Yes')
@@ -406,7 +406,7 @@ class NodeApprovalHandoff(NativeAcceptance):
         start = time.monotonic()
         samples = []
         baseline = len(self.backend_wire.records)
-        while time.monotonic() - start < 51:
+        while time.monotonic() - start < 91:
             observed = self.detail(self.run_id)
             require(observed['run'] == final['run'] and observed['reports'] == final['reports'], 'Handoff spontaneously advanced or required end approval/report')
             require(not (self.root / 'end-zone/invoice-issued.txt').exists(), 'Missing user invoice data was bypassed')

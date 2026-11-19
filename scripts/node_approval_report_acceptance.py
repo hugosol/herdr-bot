@@ -124,7 +124,7 @@ class NodeApprovalReportAcceptance(NativeAcceptance):
             scope='Controlled provider; real installed hosts, visible native UI, production backend/storage and installed Herdr; no real-model business judgment',
             coverage={key: {'verified': False} for key in CLAIMS}, cases=[],
             scenarioSource={'path': str(Path(__file__).resolve()), 'sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
-            budgets={'requestSeconds': 30, 'confirmationSeconds': 20, 'choiceObservationSeconds': 5,
+            budgets={'requestSeconds': 30, 'approveConfirmationSeconds': 60, 'chiefConfirmationSeconds': 20, 'choiceObservationSeconds': 5,
                 'negativeObservationSeconds': 46, 'reason': '46s exceeds 30s HTTP and 10s online + 30s retention + 5s maintenance; no product budget is changed',
                 'nativeRoundSeconds': args.timeout, 'concurrentArrivalSeconds': 5})
         self.actions = {}
@@ -209,7 +209,7 @@ class NodeApprovalReportAcceptance(NativeAcceptance):
         self.backend_wire.close()
         self.backend_wire = ApprovalWire(self.base, self.root / 'approval-wire')
         (self.root / 'toolkit/extensions/workflow-chat/config.yaml').write_text(
-            f'endpoint: {self.backend_wire.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
+            f'endpoint: {self.backend_wire.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\napproveConfirmationTimeoutMs: 60000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
         for role in ['manager', 'node', 'chief']:
             directory = self.root / ('zone-' + role)
             directory.mkdir()

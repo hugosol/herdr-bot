@@ -1,6 +1,6 @@
 """Owned S2 cases for P5/non-Yes, P7, P8 and P38/native-failures.
 
-Design: No, Esc, real 20-second timeout or real headless UI absence must leave
+Design: No, Esc, real 60-second timeout or real headless UI absence must leave
 approved=false and running. A plausible violation retries approve automatically,
 marks the execution failed, or still gates report behind the old send dialog.
 Observe actual native requests/returns, HTTP and public Run state continuously;
@@ -47,9 +47,9 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
         self.env['CHIEF_MAP_CONFIRMATION_EVIDENCE_DIR'] = str(self.confirmations)
         self.evidence.update(promise=None, promises=['P5/S2/non-Yes', 'P7', 'P8', 'P38/native-failures'],
             scenario='node-approval-' + self.condition, coverage={'verified': False},
-            budgets={'confirmationSeconds': 20, 'requestSeconds': 30, 'onlineSeconds': 10,
-                'retentionSeconds': 30, 'maintenanceSeconds': 5, 'observationSeconds': 61,
-                'reason': '61s exceeds 20s confirmation + 30s request and 10s online + 30s retention + 5s scan; no product timeout/retry changes'},
+            budgets={'confirmationSeconds': 60, 'requestSeconds': 30, 'onlineSeconds': 10,
+                'retentionSeconds': 30, 'maintenanceSeconds': 5, 'observationSeconds': 101,
+                'reason': '101s exceeds 60s approval confirmation + 30s request and 10s online + 30s retention + 5s scan'},
             independentExpected={'approved': False, 'nodeStatus': 'running', 'automaticConfirmations': 0,
                 'materialUtf8': CONTINUED.decode(), 'reportBody': REPORT, 'canComplete': False},
             scenarioSource={'path': str(Path(__file__).resolve()), 'sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()})
@@ -195,6 +195,7 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
             request = records[-1]
             require(request['title'] == '成果批准' and request['message'] == QUESTION,
                     ('Approval must ask the fixed result question, not a report-send preview', request))
+            require(request['timeoutMs'] == 60000, ('Wrong native approval confirmation budget', request))
             return {'request': request, 'screen': screen, 'at': time.monotonic()}
         return until('actual result approval UI and raw native request', probe, self.args.timeout)
 
@@ -222,7 +223,7 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
                 path = self.confirmations / (request_id + '.' + kind + '.json')
                 if path.exists():
                     return {'kind': kind, **json.loads(path.read_text(encoding='utf-8'))}
-        actual = until('real native return or exception', returned, 25)
+        actual = until('real native return or exception', returned, 65 if choice == 'timeout' else 25)
         pending['nativeReturn'] = actual
         if choice == 'Yes':
             require(actual.get('result') is True, ('Selected Yes did not return native true', actual))
@@ -232,7 +233,7 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
         else:
             require(actual.get('result') is not True, 'Native non-Yes unexpectedly approved')
         if choice == 'timeout':
-            require(actual['elapsedMs'] >= 19_900, ('Not the real configured 20-second timeout', actual))
+            require(actual['elapsedMs'] >= 59_900, ('Not the real configured 60-second timeout', actual))
         return actual
 
     def result(self, history, start):
@@ -257,10 +258,10 @@ class ApprovalFailuresAcceptance(NativeAcceptance):
         native_calls = calls(history)
         before = self.unapproved()
         started = time.monotonic()
-        observation = {'started': started, 'secondsRequired': 61, 'samples': [], 'wireCounts': wire_counts,
+        observation = {'started': started, 'secondsRequired': 101, 'samples': [], 'wireCounts': wire_counts,
                        'confirmationCount': len(requests), 'nativeCalls': native_calls}
         self.evidence['noAutomaticActionWindow'] = observation
-        while time.monotonic() - started < 61:
+        while time.monotonic() - started < 101:
             detail = self.unapproved()
             require(detail == before, 'Public facts changed without new user input')
             require(self.confirmation_requests() == requests, 'System automatically requested another confirmation')

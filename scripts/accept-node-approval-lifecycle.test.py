@@ -389,7 +389,7 @@ class CollectRegistrationFixture(unittest.TestCase):
 @unittest.skipUnless(os.environ.get('NODE_APPROVAL_LIFECYCLE_FIXTURE_TOOLKIT'),
                      'Supply explicit owned worktree/binary/paths for the native gate regression')
 class NativeGateFixture(unittest.TestCase):
-    """Installed hosts must stay working before the first request for 51 seconds.
+    """Installed hosts must stay working before the first request for 91 seconds.
 
     The local provider only acknowledges inputs. It does not choose approval or
     supply UI results; this checks scheduling, not ticket 12 business coverage.
@@ -436,10 +436,10 @@ class NativeGateFixture(unittest.TestCase):
                 held = until('installed host predecision gate', lambda: self.gate_held(self.worker), 5)
                 working = self.herdr('agent', 'wait', self.worker['paneId'], '--until', 'working', '--timeout', '1000')
                 started = time.monotonic()
-                observation = {'started': started, 'requiredSeconds': 51, 'working': working,
+                observation = {'started': started, 'requiredSeconds': 91, 'working': working,
                     'execution': execution, 'initialGate': held, 'samples': []}
                 self.evidence['gateObservation'] = observation
-                while time.monotonic() - started < 51:
+                while time.monotonic() - started < 91:
                     observation['samples'].append({'at': time.monotonic(), 'gate': self.gate_held(self.worker)})
                     time.sleep(0.25)
                 observation.update(ended=time.monotonic(), actualSeconds=time.monotonic() - started)
