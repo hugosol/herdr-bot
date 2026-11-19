@@ -32,18 +32,27 @@ async fn snapshot(server: &TestServer) -> Value {
 async fn event(server: &TestServer, id: &str, kind: &str, data: Value) -> Value {
     post(server, "/api/sessions/events", json!({"sessionId":id,"kind":kind,"data":data})).await
 }
-async fn create_pending(server: &TestServer, fixture: &HerdrFixture, zone: &str, task: &str, count: usize) {
+async fn creation(server: &TestServer, path: &str) -> Value {
+    let response = get_over_tcp(server.addr(), path).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    serde_json::from_str(&response.body).unwrap()
+}
+async fn create_pending(server: &TestServer, fixture: &HerdrFixture, zone: &str, task: &str) -> String {
     let preview = post(server, "/api/chats/preview", json!({"zone":zone,"taskId":task})).await;
     let accepted = post(server, "/api/chats", json!({"zone":zone,"taskId":task,"chatId":preview["chatId"],"input":"/settings"})).await;
+    let path = format!("/api/chats/{}", accepted["id"].as_str().unwrap());
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
-            let response = get_over_tcp(server.addr(), &format!("/api/chats/{}", accepted["id"].as_str().unwrap())).await;
-            let view: Value = serde_json::from_str(&response.body).unwrap();
+            let view = creation(server, &path).await;
             assert_ne!(view["stage"], "failed", "{view}");
-            if view["stage"] == "succeeded" && fixture.calls().iter().filter(|c| c["kind"] == "agent_get").count() == count { break; }
+            assert_eq!(view["inputSubmitted"], false, "{view}");
+            if view["agentName"].is_string() && fixture.calls().iter().any(|call| {
+                call["kind"] == "agent_get" && call["target"] == view["agentName"]
+            }) { break; }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }).await.expect("creation succeeds and exact identity query reaches external gate");
+    }).await.expect("this Chat's identity query reaches the external gate before input");
+    path
 }
 async fn wait_name(server: &TestServer, name: &str) {
     tokio::time::timeout(Duration::from_secs(3), async {
@@ -77,6 +86,7 @@ async fn cross_source_write_failures_preserve_keep_alive_monitoring_and_countdow
         let sessions = Arc::new(SessionsState::with_policy_and_clock(config.sessions.policy(), clock.clone()));
         let power = Arc::new(RecordingPowerOff::default());
         let server = TestServer::start_app(herdr_bot::app_with_sessions(&config, power.clone(), sessions)).await;
+        fs::write(fixture.path().join("launch_endpoint.txt"), server.addr().to_string()).unwrap();
         let zone = root.path().join("zone"); fs::create_dir(&zone).unwrap();
         let zones = post(&server, "/api/zones", json!({"id": zone, "path":zone})).await;
         let zone = zones["zones"][0]["id"].as_str().unwrap();
@@ -90,8 +100,8 @@ async fn cross_source_write_failures_preserve_keep_alive_monitoring_and_countdow
         post(&server,"/api/shutdown/monitor",json!({"sessionId":id,"selected":true})).await;
         for (round, task, name) in [(1,first,"Zone first literal"), (2,renamed,"Zone final literal")] {
             let release = root.path().join(format!("release-{round}"));
-            fixture.set_behavior(json!({"native_session":{"source":format!("herdr:{agent}"),"agent":agent,"kind":"id","value":id},"native_cwd":"C:/native","native_session_gate":{"wait_for_file":release,"timeout_ms":40000}}));
-            create_pending(&server,&fixture,zone,task,round).await;
+            fixture.set_behavior(json!({"native_session":{"source":format!("herdr:{agent}"),"agent":agent,"kind":"id","value":id},"native_session_gate":{"wait_for_file":release,"timeout_ms":40000}}));
+            let pending = create_pending(&server,&fixture,zone,task).await;
             clock.advance(Duration::from_secs(9));
             let intent_before_failure = snapshot(&server).await;
             let blocked = common::HistoryWriteBlock::new(&config.sessions.history_file);
@@ -117,6 +127,9 @@ async fn cross_source_write_failures_preserve_keep_alive_monitoring_and_countdow
             drop(blocked);
             fs::write(&release,b"identity ready").unwrap();
             wait_name(&server,name).await;
+            let finished = creation(&server, &pending).await;
+            assert_eq!(finished["stage"], "succeeded", "{finished}");
+            assert_eq!(finished["inputSubmitted"], true, "{finished}");
             assert_eq!(history(&server).await["sessions"][0]["firstRecordedAt"],first_time);
             let after = snapshot(&server).await;
             assert_eq!(after["sessions"],current["sessions"],"zone history never mutates current registration");

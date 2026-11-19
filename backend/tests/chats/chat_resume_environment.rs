@@ -9,7 +9,7 @@ use std::{fs, io::{BufRead, BufReader}, net::SocketAddr, path::{Path, PathBuf}, 
 
 struct Panel { child: Child, addr: SocketAddr }
 impl Panel {
-    fn start(root: &Path) -> Self {
+    fn start(root: &Path, herdr: &HerdrFixture) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
             .args(["--config", "panel.toml"]).current_dir(root)
             .stdin(Stdio::null()).stdout(Stdio::piped())
@@ -29,6 +29,7 @@ impl Panel {
         panel.addr.set_port(rx.recv_timeout(Duration::from_secs(20)).unwrap_or_else(|error| {
             panic!("server did not start: {error}: {}", fs::read_to_string(root.join("server-stderr.log")).unwrap())
         }));
+        fs::write(herdr.path().join("launch_endpoint.txt"), panel.addr.to_string()).unwrap();
         panel
     }
 }
@@ -151,7 +152,7 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
         configure(root.path(),&herdr);
         catalog(root.path(),agent,"old",true);
         let file = native(root.path(),&herdr,agent,"native-full-identity-001");
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         let zones = post(&panel,"/api/zones",json!({"id": root.path(), "path":root.path()})).await;
         let zone = zones["zones"][0]["id"].as_str().unwrap();
         let saved = post(&panel,"/api/tasks",task(agent, "Source A")).await;
@@ -165,7 +166,7 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
         assert_eq!(edited.status,200,"{}",edited.body);
         drop(panel);
         catalog(root.path(),agent,"current",true);
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         let offset = herdr.calls().len();
         let result = post(&panel,"/api/chats/resume",json!({"sessionId":"native-full-identity-001"})).await;
         assert_eq!(result["outcome"],"restored");
@@ -221,7 +222,7 @@ async fn entrypoint_case(agent: &str, broken: &str, failure: &str) {
     configure(root.path(), &herdr);
     catalog(root.path(), agent, "valid", true);
     let file = native(root.path(), &herdr, agent, "native-filter-entry");
-    let panel = Panel::start(root.path());
+    let panel = Panel::start(root.path(), &herdr);
     let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
     let zone = zones["zones"][0]["id"].as_str().unwrap();
     let saved = post(&panel, "/api/tasks", task(agent, "Entry source")).await;
@@ -277,7 +278,7 @@ async fn empty_explicit_environment_retains_each_warning_without_assuming_confir
         configure(root.path(), &herdr);
         catalog(root.path(), agent, "valid", true);
         let file = native(root.path(), &herdr, agent, "native-empty-explicit");
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
         let zone = zones["zones"][0]["id"].as_str().unwrap();
         let saved = post(&panel, "/api/tasks", task(agent, "Empty source")).await;
@@ -320,7 +321,7 @@ async fn invalid_model_or_initial_skill_does_not_block_environment_restoration()
             configure(root.path(), &herdr);
             catalog(root.path(), agent, "valid", true);
             let file = native(root.path(), &herdr, agent, "native-trigger-independent");
-            let panel = Panel::start(root.path());
+            let panel = Panel::start(root.path(), &herdr);
             let zones = post(&panel,"/api/zones",json!({"id": root.path(), "path":root.path()})).await;
             let zone = zones["zones"][0]["id"].as_str().unwrap().to_owned();
             let saved = post(&panel,"/api/tasks",task(agent, "Source")).await;
@@ -334,7 +335,7 @@ async fn invalid_model_or_initial_skill_does_not_block_environment_restoration()
                 if missing == "model" { "id = 'launch-model'" } else { "id = 'launch-skill'" },
                 "id = 'replacement-not-selected'",
             )).unwrap();
-            let panel = Panel::start(root.path());
+            let panel = Panel::start(root.path(), &herdr);
             let offset = herdr.calls().len();
             let result = post(&panel,"/api/chats/resume",json!({"sessionId":"native-trigger-independent"})).await;
             assert_eq!(result["outcome"],"restored");
@@ -370,7 +371,7 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         let file = native(root.path(),&herdr,"omp",target);
         let original_native = fs::read(&file).unwrap();
         fs::write(root.path().join("history.json"),json!([{"sessionId":other,"sessionName":"Same name","agentType":"omp","cwd":root.path(),"firstRecordedAt":123,"memo":"independent memo"}]).to_string()).unwrap();
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         let zones = post(&panel,"/api/zones",json!({"id": root.path(), "path":root.path()})).await;
         let zone = zones["zones"][0]["id"].as_str().unwrap();
         let saved = post(&panel,"/api/tasks",task("omp", "Same display name")).await;
@@ -395,22 +396,24 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         } else {
             let release = root.path().join("release-native");
             herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"path","value":file},"native_session_gate":{"wait_for_file":release,"timeout_ms":10000}}));
-            let done = create(&panel,zone,source_a).await;
-            assert!(common::wait_until(Duration::from_secs(3),|| herdr.calls().iter().any(|call| call["kind"] == "agent_get")).await);
-            let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(4));
-            let writes = [target,other,"native-shared-full-prefix-003"].map(|id| {
-                let barrier = barrier.clone();
-                let addr = panel.addr;
-                let data = json!({"cwd":root.path(),"sessionName":"Same name","sourceTaskId":source_b});
-                tokio::spawn(async move {
-                    barrier.wait().await;
-                    let reply = post_json_over_tcp(addr,"/api/sessions/events",&json!({"sessionId":id,"kind":"register","data":data}).to_string()).await;
-                    assert_eq!(reply.status,200,"{}",reply.body);
-                })
+            let (done, ()) = tokio::join!(create(&panel,zone,source_a), async {
+                assert!(common::wait_until(Duration::from_secs(3),|| herdr.calls().iter().any(|call| call["kind"] == "agent_get")).await);
+                assert!(!herdr.calls().iter().any(|call| call["kind"] == "agent_prompt"));
+                let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(4));
+                let writes = [target,other,"native-shared-full-prefix-003"].map(|id| {
+                    let barrier = barrier.clone();
+                    let addr = panel.addr;
+                    let data = json!({"cwd":root.path(),"sessionName":"Same name","sourceTaskId":source_b});
+                    tokio::spawn(async move {
+                        barrier.wait().await;
+                        let reply = post_json_over_tcp(addr,"/api/sessions/events",&json!({"sessionId":id,"kind":"register","data":data}).to_string()).await;
+                        assert_eq!(reply.status,200,"{}",reply.body);
+                    })
+                });
+                barrier.wait().await;
+                fs::write(&release,b"release").unwrap();
+                for write in writes { write.await.unwrap(); }
             });
-            barrier.wait().await;
-            fs::write(&release,b"release").unwrap();
-            for write in writes { write.await.unwrap(); }
             let row = collected(&panel,target,&done["name"]).await;
             first_time = row["firstRecordedAt"].clone();
             memo(&panel,target,"first memo\n保留").await;
@@ -427,7 +430,7 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         assert_eq!(target_row["cwd"],json!(root.path()));
         assert_eq!(target_row["agentType"],"omp");
         drop(panel);
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         let after = read(&panel,"/api/sessions/history").await;
         assert_eq!(after,before);
         let mut ids = after["sessions"].as_array().unwrap().iter().map(|row| row["sessionId"].as_str().unwrap()).collect::<Vec<_>>();
@@ -449,7 +452,7 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         let done = create(&panel,zone,source_a).await;
         collected(&panel,other,&done["name"]).await;
         drop(panel);
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         let offset = herdr.calls().len();
         assert_eq!(post(&panel,"/api/chats/resume",json!({"sessionId":other})).await["outcome"],"restored");
         assert_eq!(herdr.calls()[offset..].iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],json!(["--no-extensions","--extension",root.path().join("omp-fixed-merge.ts"),"--extension",root.path().join("omp-b-merge.ts"),"--resume",other_file]));
@@ -474,7 +477,7 @@ async fn missing_source_and_deleted_task_use_native_discovery_without_guessing()
             configure(root.path(), &herdr);
             catalog(root.path(), agent, "discovery", true);
             let file = native(root.path(), &herdr, agent, "native-discovery-full-001");
-            let panel = Panel::start(root.path());
+            let panel = Panel::start(root.path(), &herdr);
             let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
             let saved = post(&panel, "/api/tasks", task(agent, "Same name")).await;
             let source = saved["tasks"][0]["id"].as_str().unwrap();
@@ -498,7 +501,7 @@ async fn missing_source_and_deleted_task_use_native_discovery_without_guessing()
             }
             drop(panel);
             let before = fs::read(root.path().join("history.json")).unwrap();
-            let panel = Panel::start(root.path());
+            let panel = Panel::start(root.path(), &herdr);
             let offset = herdr.calls().len();
             let result = post(&panel, "/api/chats/resume", json!({"sessionId":"native-discovery-full-001"})).await;
             assert_eq!(result["outcome"], "restored", "{agent}/{scenario}: {result}");
@@ -541,7 +544,7 @@ async fn history_reads_only_resolve_workspace_names_without_any_persistent_enric
             {"workspace_id":"w-decoy", "label":"Original name", "focused":true}
         ]));
         herdr.set_behavior(json!({"fail_workspace_list":label.is_none()}));
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         for _ in 0..3 {
             let view = read(&panel, "/api/sessions/history").await;
             let row = &view["sessions"][0];
@@ -560,7 +563,7 @@ async fn history_reads_only_resolve_workspace_names_without_any_persistent_enric
         drop(panel);
     }
     fs::remove_file(&history_file).unwrap();
-    let panel = Panel::start(root.path());
+    let panel = Panel::start(root.path(), &herdr);
     assert_eq!(read(&panel, "/api/sessions/history").await["total"], 0);
     assert!(!history_file.exists(), "empty history read initialized persistence");
 }
@@ -578,7 +581,7 @@ async fn unreadable_task_storage_or_catalog_fails_without_start_or_repair() {
             configure(root.path(), &herdr);
             catalog(root.path(), agent, "failures", true);
             native(root.path(), &herdr, agent, "native-error-full-001");
-            let panel = Panel::start(root.path());
+            let panel = Panel::start(root.path(), &herdr);
             let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
             let saved = post(&panel, "/api/tasks", task(agent, "Source")).await;
             create(&panel, zones["zones"][0]["id"].as_str().unwrap(), saved["tasks"][0]["id"].as_str().unwrap()).await;
