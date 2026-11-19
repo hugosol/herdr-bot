@@ -575,7 +575,7 @@ pub struct NavigationTarget {
     pub pane_id: String,
 }
 impl NavigationTarget {
-    fn from_agent(agent: &Value) -> Result<Self, HerdrError> {
+    pub(super) fn from_agent(agent: &Value) -> Result<Self, HerdrError> {
         let field = |name| nonempty(agent.get(name)).map(str::to_owned)
             .ok_or_else(|| native_error("matched agent has incomplete navigation location"));
         Ok(Self { workspace_id: field("workspace_id")?, tab_id: field("tab_id")?, pane_id: field("pane_id")? })
@@ -605,6 +605,7 @@ pub(crate) struct LaunchTarget {
 pub(super) enum LaunchVerificationError {
     Unproven(HerdrError),
     OfficialIdentity(HerdrError),
+    ReportedIdentity(HerdrError),
 }
 
 impl From<HerdrError> for LaunchVerificationError {
@@ -614,7 +615,8 @@ impl From<HerdrError> for LaunchVerificationError {
 impl From<LaunchVerificationError> for HerdrError {
     fn from(error: LaunchVerificationError) -> Self {
         match error {
-            LaunchVerificationError::Unproven(error) | LaunchVerificationError::OfficialIdentity(error) => error,
+            LaunchVerificationError::Unproven(error) | LaunchVerificationError::OfficialIdentity(error)
+            | LaunchVerificationError::ReportedIdentity(error) => error,
         }
     }
 }
@@ -697,7 +699,7 @@ impl LaunchTarget {
             }
             _ => return Err(native_error("launch target host changed").into()),
         }
-        super::launch::reported_native_session(kind, cwd, id, file).await.map_err(Into::into)
+        super::launch::reported_native_session(kind, cwd, id, file).await.map_err(LaunchVerificationError::ReportedIdentity)
     }
 }
 

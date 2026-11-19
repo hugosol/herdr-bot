@@ -13,4 +13,4 @@ pub(crate) mod placement;
 
 pub use client::{CreatedTab, HerdrClient, HerdrError, NavigationTarget, Workspace};
 pub use identity::NativeSession;
-pub(crate) use identity::read_native_id;
+pub(crate) use identity::{RestoreEvidence, read_existing_native_id, read_native_id};

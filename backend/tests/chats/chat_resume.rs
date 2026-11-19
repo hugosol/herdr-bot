@@ -382,16 +382,17 @@ async fn app_resume_selects_only_the_current_hosts_space_and_directory() {
         assert_eq!(history["sessions"][0].get("originalWorkspaceId").and_then(Value::as_str), original);
         let response = resume(&server, "resume-native").await;
         let body: Value = serde_json::from_str(&response.body).unwrap();
-        assert_eq!(response.status, 502, "{scenario}: {body}");
         if let Some(code) = match scenario {
             "focus-refused" => Some("herdr-command-failed"),
             "wrong-focal-pane" => Some("herdr-unexpected-response"),
             _ => None,
         } {
+            assert_eq!(response.status, 502, "{scenario}: {body}");
             assert_eq!(body["outcome"], "failed", "{scenario}: {body}");
             assert_eq!(body["stage"], "focus", "{scenario}: {body}");
             assert_eq!(body["code"], code, "{scenario}: {body}");
         } else {
+            assert_eq!(response.status, 200, "{scenario}: {body}");
             assert_eq!(body["outcome"], "unconfirmed", "{scenario}: {body}");
             assert_eq!(body["stage"], "focused", "{scenario}: {body}");
             assert_eq!(body["actualCwd"], json!(actual));
@@ -465,6 +466,18 @@ async fn app_original_lookup_fault_never_falls_back_to_a_valid_default() {
 // prove ownership or the observed final focus.
 #[tokio::test]
 async fn app_resume_locates_the_existing_native_owner_without_creating_another_tab() {
+    for kind in ["pi", "omp"] {
+        for scenario in ["verified", "wrong-id", "wrong-type", "header-conflict"] {
+            app_resume_with_correlated_identity(kind, scenario).await;
+        }
+    }
+}
+
+// S1 (P29/P30/P52): the report is from the expected core process. A mismatched
+// ID/type or the report's conflicting file header must fail, not time out as
+// if there were no evidence or start a new agent. The positive control retains
+// the verified owner for a later user locator action.
+async fn app_resume_with_correlated_identity(agent: &str, scenario: &str) {
     use std::time::Duration;
     let root = TempDir::new("App located Resume");
     let tui = HerdrFixture::new("unselected TUI for locate");
@@ -476,6 +489,13 @@ async fn app_resume_locates_the_existing_native_owner_without_creating_another_t
     config.herdr.core_executable = core.executable().to_owned();
     config.tasks.storage_file = root.path().join("tasks.json");
     let cwd = root.path();
+    let mut metadata: toml::Value = toml::from_str(&std::fs::read_to_string(&config.tasks.metadata_file).unwrap()).unwrap();
+    let tui_extension = format!("{agent}-herdr-agent-state");
+    let state_extension = metadata["extensions"].as_array_mut().unwrap().iter_mut()
+        .find(|entry| entry["id"].as_str() == Some(tui_extension.as_str())).unwrap();
+    state_extension["entrypoint"] = toml::Value::String(cwd.join("not-installed-tui-state.ts").display().to_string());
+    config.tasks.metadata_file = cwd.join("app-options.toml");
+    std::fs::write(&config.tasks.metadata_file, toml::to_string(&metadata).unwrap()).unwrap();
     let core_behavior = |argv: Value, tab: &str| json!({"app_transport":{
         "server status":{"core":{"id":"core-selected"}},
         "get":{"address":"t27","state":"live","cwd":cwd,"pid":std::process::id(),"argv":argv,
@@ -491,12 +511,12 @@ async fn app_resume_locates_the_existing_native_owner_without_creating_another_t
     app.set_behavior(app_behavior("pane-real", false));
     core.set_behavior(core_behavior(json!([]), "tab-real"));
     let server = TestServer::start_app(herdr_bot::app_with_power_off(&config, Arc::new(NeverPowerOff))).await;
-    let stored = post_json_over_tcp(server.addr(), "/api/tasks", &json!({"name":"App origin","chatName":"Original", "agent":"pi", "model":"default", "thinking":"default","prompt":""}).to_string()).await;
+    let stored = post_json_over_tcp(server.addr(), "/api/tasks", &json!({"name":"App origin","chatName":"Original", "agent":agent, "model":"default", "thinking":"default","prompt":""}).to_string()).await;
     assert!((200..300).contains(&stored.status), "{}", stored.body);
     let stored: Value = serde_json::from_str(&stored.body).unwrap();
     let native = cwd.join("history-native.jsonl");
     std::fs::write(&native, format!("{}\n", json!({"type":"session","id":"app-owner","cwd":cwd}))).unwrap();
-    let bytes = json!([{"sessionId":"app-owner","agentType":"pi","cwd":cwd,"sessionFile":native,
+    let bytes = json!([{"sessionId":"app-owner","agentType":agent,"cwd":cwd,"sessionFile":native,
         "sourceTaskId":stored["tasks"][0]["id"],"originalWorkspaceId":"tui:w12","firstRecordedAt":123}]).to_string();
     std::fs::write(&config.sessions.history_file, &bytes).unwrap();
     let address = server.addr();
@@ -516,16 +536,37 @@ async fn app_resume_locates_the_existing_native_owner_without_creating_another_t
     let args = argv.as_array().expect("structured command");
     let separator = args.iter().position(|arg| arg == "--").expect("launcher arguments");
     core.set_behavior(core_behavior(argv.clone(), "tab-real"));
+    let report_file = if matches!(scenario, "wrong-id" | "header-conflict") {
+        let path = cwd.join("different-native.jsonl");
+        std::fs::write(&path, format!("{}\n", json!({"type":"session","id":"different-owner","cwd":cwd}))).unwrap();
+        path
+    } else { native.clone() };
     let accepted = post_json_over_tcp(server.addr(), "/api/sessions/events", &json!({
-        "sessionId":"app-owner", "kind":"launch_identity", "data":{
-            "launchId":args[separator+1], "targetId":args[separator+2], "agentType":"pi",
-            "cwd":cwd, "pid":std::process::id(), "sessionFile":native,
+        "sessionId":if scenario == "wrong-id" { "different-owner" } else { "app-owner" }, "kind":"launch_identity", "data":{
+            "launchId":args[separator+1], "targetId":args[separator+2], "agentType":if scenario == "wrong-type" { if agent == "pi" { "omp" } else { "pi" } } else { agent },
+            "cwd":cwd, "pid":std::process::id(), "sessionFile":report_file,
         },
     }).to_string()).await;
+    if scenario != "verified" {
+        let completed = tokio::time::timeout(Duration::from_secs(4), started).await.expect("reliable conflict must not wait as absent evidence").unwrap();
+        assert_eq!(completed.status, 502, "{scenario}: {}", completed.body);
+        let result: Value = serde_json::from_str(&completed.body).unwrap();
+        assert_eq!(result["outcome"], "failed", "{scenario}: {result}");
+        assert_eq!(result["stage"], "confirm", "{scenario}: {result}");
+        assert_eq!(app.calls().iter().filter(|call| call["kind"] == "tab.new").count(), 1);
+        assert!(!app.calls().iter().any(|call| call["kind"] == "pane.focus"));
+        assert!(core.calls().iter().all(|call| matches!(call["kind"].as_str(), Some("server status" | "get"))));
+        assert_eq!(std::fs::read_to_string(&config.sessions.history_file).unwrap(), bytes);
+        return;
+    }
     assert!((200..300).contains(&accepted.status), "{}", accepted.body);
     let completed = started.await.unwrap();
     assert_eq!(completed.status, 200, "{}", completed.body);
-    assert_eq!(serde_json::from_str::<Value>(&completed.body).unwrap()["outcome"], "restored");
+    let result: Value = serde_json::from_str(&completed.body).unwrap();
+    assert_eq!(result["outcome"], "restored");
+    assert!(args.iter().filter_map(Value::as_str).any(|arg| arg.ends_with(&format!("{agent}-connect-bot.ts"))));
+    assert!(!args.iter().filter_map(Value::as_str).any(|arg| arg.ends_with("not-installed-tui-state.ts")));
+    assert!(result["degradations"].as_array().unwrap().iter().all(|item| item["element"] != "extension"), "App must not validate TUI-only entries: {result}");
 
     for (kind, status, stage, focus_attempted) in [
         ("located", 200, None, true),
