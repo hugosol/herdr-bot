@@ -3,6 +3,7 @@ from contextlib import ExitStack
 from datetime import datetime, timezone
 import errno
 import json
+import os
 from pathlib import Path
 import re
 import secrets
@@ -50,6 +51,19 @@ def save(path, value):
 
 def timestamp():
     return {'utc': datetime.now(timezone.utc).isoformat(), 'monotonic': time.monotonic()}
+
+
+def remove_owned_root(root):
+    def remove_readonly(action, path, exception):
+        error = exception[1]
+        if not isinstance(error, PermissionError) or os.access(path, os.W_OK):
+            raise error
+        # Git makes object files read-only on Windows. The entire root was
+        # created by this invocation; never alter files beyond it.
+        os.chmod(path, 0o600)
+        action(path)
+
+    shutil.rmtree(root, onerror=remove_readonly)
 
 
 class Scenario(Acceptance):
@@ -107,7 +121,7 @@ class Scenario(Acceptance):
                 shutil.copytree(self.root, self.archive, ignore=lambda path, names: [name for name in names
                     if name.endswith('.sock') or (Path(path) == self.root and name == 'toolkit')])
                 if not errors:
-                    shutil.rmtree(self.root)
+                    remove_owned_root(self.root)
             except (OSError, shutil.Error):
                 errors.append(traceback.format_exc())
                 self.evidence['passed'] = False

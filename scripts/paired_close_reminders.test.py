@@ -1,11 +1,12 @@
 """Independent S1/S3 evidence gates, not substitutes for native acceptance."""
 from pathlib import Path
+import stat
 import subprocess
 import sys
 import tempfile
 import unittest
 
-from acceptance.paired_close_reminders import check_close, check_sound
+from acceptance.paired_close_reminders import check_close, check_sound, remove_owned_root
 
 
 class CompletionEvidence(unittest.TestCase):
@@ -44,6 +45,21 @@ class SoundEvidence(unittest.TestCase):
 
 
 class EvidenceDirectory(unittest.TestCase):
+    def test_removes_read_only_owned_git_objects_without_touching_its_neighbor(self):
+        with tempfile.TemporaryDirectory(prefix='paired-close-cleanup-') as folder:
+            parent = Path(folder)
+            owned = parent / 'owned'
+            objects = owned / '.git' / 'objects'
+            objects.mkdir(parents=True)
+            object_file = objects / 'record'
+            object_file.write_bytes(b'owned')
+            object_file.chmod(stat.S_IREAD)
+            control = parent / 'control'
+            control.write_bytes(b'unrelated')
+            remove_owned_root(owned)
+            self.assertFalse(owned.exists())
+            self.assertEqual(control.read_bytes(), b'unrelated')
+
     # Reusing a previous run could silently merge lost/failed observations
     # into a new green matrix. Existing evidence must be left byte-identical.
     def test_existing_archive_is_not_touched_even_with_requested_cases(self):
