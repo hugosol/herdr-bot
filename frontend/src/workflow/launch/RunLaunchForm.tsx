@@ -23,7 +23,12 @@ export function RunLaunchForm({ file, declarations = [], requirements = '', acti
   const groupRevision = useGroupRefresh()
   const [tasks, setTasks] = useState<Task[]>([])
   const [zones, setZones] = useState<ZoneRegistration[]>([])
-  const [input, setInput] = useState<RunPreflightInput>({ managerTaskId: '', zone: '', userInput: '' })
+  const [input, setInput] = useState<RunPreflightInput>(() => ({
+    managerTaskId: '', zone: '', userInput: '',
+    ...(file === 'github-repository-exploration.json' && {
+      githubExploration: { githubUrl: '', parentDirectory: '', explorationDirection: '' },
+    }),
+  }))
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -79,6 +84,7 @@ export function RunLaunchForm({ file, declarations = [], requirements = '', acti
   }
 
   function correction(issue: PreflightIssue) {
+    if (issue.code === 'github-clone-pair-required') return <button type="button" onClick={() => document.getElementById(`run-file-input-${issue.inputId}`)?.focus()}>{issue.inputId === 'github_url' ? '补填 GitHub 仓库链接' : '补填克隆父目录'}</button>
     if (issue.target === 'run-input') return <button type="button" onClick={() => document.getElementById(`run-file-input-${issue.inputId}`)?.focus()}>修正文件输入 {issue.inputId}</button>
     if (issue.taskId) return <>
       <button type="button" onClick={() => onTask(issue.taskId)}>修正 Task {issue.taskId}</button>
@@ -111,9 +117,16 @@ export function RunLaunchForm({ file, declarations = [], requirements = '', acti
     {!loading && zones.length === 0 && <p>尚未登记 zone。<button type="button" onClick={onZones}>管理 zone 登记</button></p>}
     <label>Workspace<input value={workspaceName} readOnly /></label>
     <p>Workspace 从管理者 zone 目录名推导；不选择当前或默认 Workspace。实际目标可用性在启动时确认。</p>
-    <label>本次要求<textarea value={input.userInput} disabled={busy} onChange={event => change({ userInput: event.target.value })} placeholder="可空，支持 Markdown；不改写 node 输入或 Task 固定指示。" /></label>
+    {input.githubExploration ? <>
+      <div className="scheduler-github-fields">
+        <label>GitHub 仓库链接<input id="run-file-input-github_url" value={input.githubExploration.githubUrl} disabled={busy} onChange={event => change({ githubExploration: { ...input.githubExploration!, githubUrl: event.target.value } })} placeholder="例如 https://github.com/owner/repo" /></label>
+        <label>克隆父目录<input id="run-file-input-parent_directory" value={input.githubExploration.parentDirectory} disabled={busy} onChange={event => change({ githubExploration: { ...input.githubExploration!, parentDirectory: event.target.value } })} placeholder={'服务器已有目录，例如 D:\\repos'} /></label>
+        <label>探索方向<textarea rows={2} value={input.githubExploration.explorationDirection} disabled={busy} onChange={event => change({ githubExploration: { ...input.githubExploration!, explorationDirection: event.target.value } })} placeholder="用一句话说明想了解什么，例如：梳理 CLI 入口" /></label>
+      </div>
+      <p>链接和父目录请一起填写，或一起留空。探索方向可单独填写。留空项可在管理者 Chat 补充。</p>
+    </> : <label>本次要求<textarea value={input.userInput} disabled={busy} onChange={event => change({ userInput: event.target.value })} placeholder="可空，支持 Markdown；不改写 node 输入或 Task 固定指示。" /></label>}
     {requirements.trim() && <MapInputRequirements content={requirements} />}
-    <fieldset disabled={busy} aria-label="Run 文件输入绑定"><legend>本次文件输入</legend>
+    {!input.githubExploration && <fieldset disabled={busy} aria-label="Run 文件输入绑定"><legend>本次文件输入</legend>
       {declarations.length === 0 && <p>此 Map 无文件输入声明，无需绑定文件。</p>}
       {declarations.map(declaration => <label key={declaration.id}>{declaration.description?.trim() || `文件输入 ${declaration.id}`}（{declaration.required ? '必需' : '可选'}）<input
         id={`run-file-input-${declaration.id}`} value={input.fileInputs?.find(binding => binding.id === declaration.id)?.path ?? ''}
@@ -121,7 +134,7 @@ export function RunLaunchForm({ file, declarations = [], requirements = '', acti
           ...(input.fileInputs ?? []).filter(binding => binding.id !== declaration.id),
           ...(event.target.value === '' ? [] : [{ id: declaration.id, path: event.target.value }]),
         ] })} placeholder="服务器已有文件的绝对路径" /></label>)}
-    </fieldset>
+    </fieldset>}
     {loading && <p role="status">正在读取启动选项……</p>}
     {error && <p role="alert">{error}</p>}
     {result?.kind === 'rejected' && <div role="alert"><p>{result.message}</p><ul>{result.issues.map((issue, index) => <li key={index}>

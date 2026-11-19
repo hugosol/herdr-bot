@@ -99,6 +99,73 @@ test('nesting P08 P09 P11 root named inputs are edited, rejected and rebound thr
   await page.screenshot({ path: info.outputPath('named-root-inputs.png') })
 })
 
+test('GitHub launch writes named materials without injecting Run background', async ({ page }, info) => {
+  const { server, zone, ids } = await fixture()
+  const mapDirectory = path.join(server.cwd, 'meta-data/workflow-maps')
+  const definition = JSON.parse(fs.readFileSync(path.join(mapDirectory, 'launch.json'), 'utf8'))
+  definition.title = 'GitHub 仓库拉取与探索'
+  definition.input_files = ['clone_request', 'exploration_brief'].map(id => ({ id, required: true }))
+  fs.writeFileSync(path.join(mapDirectory, 'github-repository-exploration.json'), JSON.stringify(definition))
+  const zonePath = path.join(path.dirname(server.configPath), 'bot-playground')
+  const materials = path.join(zonePath, '.manager-zone')
+  const parentDirectory = path.dirname(server.configPath)
+  const githubUrl = 'git@github.com:example/source.git'
+  const direction = '  梳理 CLI 入口\n\n只读检查配置。  '
+
+  await page.goto(`${server.baseURL}?layout=expanded`)
+  await page.getByRole('tab', { name: 'scheduler', exact: true }).click()
+  await page.getByRole('button', { name: definition.title, exact: true }).click()
+  await page.getByRole('button', { name: '+ 发起 Run', exact: true }).click()
+  const form = page.getByRole('form', { name: '发起 Run', exact: true })
+  const link = form.getByRole('textbox', { name: 'GitHub 仓库链接' })
+  const parent = form.getByRole('textbox', { name: '克隆父目录' })
+  const brief = form.getByRole('textbox', { name: '探索方向' })
+  await expect(link).toHaveAttribute('placeholder', /https:\/\/github\.com/)
+  await expect(parent).toHaveAttribute('placeholder', /服务器已有目录/)
+  await expect(brief).toHaveAttribute('placeholder', /用一句话/)
+  await expect(form.getByRole('group', { name: 'Run 文件输入绑定' })).toHaveCount(0)
+  await expect(form.getByRole('textbox', { name: '本次要求' })).toHaveCount(0)
+  await form.getByRole('combobox', { name: '管理者 Task' }).selectOption(ids.manager)
+  await form.getByRole('combobox', { name: '管理者 zone' }).selectOption(zone)
+  const preflight = form.getByRole('button', { name: '校验启动配置' })
+  const submit = form.getByRole('button', { name: '启动 Run' })
+
+  await link.fill(githubUrl)
+  await submit.click()
+  await expect(form.getByRole('alert')).toContainText('须一起填写')
+  await form.getByRole('button', { name: '补填克隆父目录' }).click()
+  await expect(parent).toBeFocused()
+  await parent.fill(parentDirectory)
+  await brief.fill(direction)
+  await preflight.click()
+  await expect(form.getByRole('status')).toContainText('配置校验通过')
+  expect(fs.existsSync(materials)).toBe(false)
+
+  fs.writeFileSync(materials, 'occupied')
+  await submit.click()
+  await expect(form.getByRole('alert')).toContainText('未发起管理者 Chat')
+  expect(server.herdrCalls()).toEqual([])
+  expect(fs.readFileSync(materials, 'utf8')).toBe('occupied')
+  fs.unlinkSync(materials)
+  await page.screenshot({ path: info.outputPath('github-launch-fields.png') })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({ path: info.outputPath('github-launch-fields-phone.png') })
+  await submit.click()
+  await expect(page.getByRole('heading', { name: 'Run 详情', exact: true })).toBeVisible()
+  const id = page.url().split('#workflow/')[1]
+  const { run } = await (await page.request.get(`${server.baseURL}/api/workflow/runs/${id}`)).json()
+  const directory = path.join(materials, '.workflow', id)
+  const clonePath = path.join(directory, 'clone_request.json')
+  const briefPath = path.join(directory, 'exploration_brief.txt')
+  expect(run.fileInputs).toEqual([{ id: 'clone_request', path: clonePath }, { id: 'exploration_brief', path: briefPath }])
+  expect(run.userInput).toBe('')
+  expect(run.inputsReady).toBe(false)
+  expect(JSON.parse(fs.readFileSync(clonePath, 'utf8'))).toEqual({ github_url: githubUrl, parent_directory: parentDirectory })
+  expect(fs.readFileSync(briefPath, 'utf8')).toBe(direction)
+  expect(server.herdrCalls().filter(call => call.kind === 'agent_start')).toHaveLength(1)
+})
+
 // Approved seams: delivered page + HTTP, process restart, external Herdr recorder
 // and the three real record files. P28.04/P49.01/P68.08 source: ticket 16.
 // Plausible violation: startup scans saved identities and re-enables management

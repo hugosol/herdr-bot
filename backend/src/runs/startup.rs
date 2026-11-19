@@ -31,9 +31,69 @@ async fn resolve_inputs(state: &AppState, run: &Run, rules: &[crate::scheduler::
     Ok(inputs)
 }
 
+pub(super) fn material_directory(zone: &str, id: &str) -> PathBuf {
+    std::path::Path::new(zone).join(".manager-zone").join(".workflow").join(id)
+}
+
+pub(super) async fn write_github_materials(
+    state: &AppState,
+    zone: &str,
+    id: &str,
+    github: preflight::GitHubExploration,
+) -> Result<Vec<crate::scheduler::maps::ResolvedFile>, String> {
+    use crate::scheduler::maps::ResolvedFile;
+    use preflight::GitHubExploration as GitHub;
+    use std::io::{Error, ErrorKind};
+
+    #[derive(Serialize)]
+    struct CloneRequest<'a> {
+        github_url: &'a str,
+        parent_directory: &'a str,
+    }
+
+    let clone = github.has_clone().then(|| serde_json::to_vec(&CloneRequest {
+        github_url: &github.github_url,
+        parent_directory: &github.parent_directory,
+    })).transpose().map_err(|e| e.to_string())?;
+    let brief = github.has_brief().then_some(github.exploration_direction);
+    if clone.is_none() && brief.is_none() { return Ok(Vec::new()); }
+
+    let directory = material_directory(zone, id);
+    let scope = directory.parent().expect("material parent").to_path_buf();
+    let zone = PathBuf::from(zone);
+    let state = state.clone();
+    let failed = |e| format!("无法写入 Run 启动材料，未发起管理者 Chat：{e}");
+    tokio::task::spawn_blocking(move || state.runs.files.with(&[scope.clone()], |access| {
+        // Do not follow a link or recreate a removed manager zone.
+        for path in scope.ancestors() {
+            match access.symlink_metadata(path) {
+                Ok(metadata) if metadata.is_dir() && !crate::zones::browse::is_link_like(&metadata) => {},
+                Ok(_) => return Err(Error::new(ErrorKind::PermissionDenied, format!("材料目录不能经过链接或非目录：{}", path.display()))),
+                Err(e) if e.kind() == ErrorKind::NotFound && path != zone && path.starts_with(&zone) => {},
+                Err(e) => return Err(e),
+            }
+        }
+        access.create_dir_all(&scope)?;
+        access.create_dir(&directory)?;
+        let mut bindings = Vec::with_capacity(2);
+        for (id, filename, bytes) in [
+            (GitHub::CLONE, "clone_request.json", clone.as_deref()),
+            (GitHub::BRIEF, "exploration_brief.txt", brief.as_deref().map(str::as_bytes)),
+        ] {
+            if let Some(bytes) = bytes {
+                let path = directory.join(filename);
+                access.create(&path, bytes)?;
+                let path = path.into_os_string().into_string().map_err(|_| Error::new(ErrorKind::InvalidData, "材料路径不是有效的 UTF-8"))?;
+                bindings.push(ResolvedFile { id: id.into(), path });
+            }
+        }
+        Ok(bindings)
+    })).await.map_err(|e| format!("无法写入 Run 启动材料，未发起管理者 Chat：{e}"))?.and_then(|result| result).map_err(failed)
+}
+
 fn manager_input(state: &AppState, run: &Run) -> String {
     let paths = Runs::paths(state, &run.id);
-    let materials = std::path::Path::new(&run.zone).join(".manager-zone").join(".workflow").join(&run.id);
+    let materials = material_directory(&run.zone, &run.id);
     let mut input = format!(
         "Run ID: {}\nMap: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n中间资料位置: {}",
         run.id, state.map_directory.join(&run.map).display(), state.run_instructions.display(),
@@ -236,6 +296,7 @@ async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &
     let input = crate::runs::preflight::RunPreflightRequest {
         manager_task_id: target.task.as_ref().ok_or("子 Run 缺少 manager Task")?.id.clone(), zone: zone_id.clone(), user_input: target.input.clone(),
         file_inputs: execution.inputs.clone().ok_or("缺少父执行输入")?,
+        github_exploration: None,
     };
     let gate = state.runs.map_lock(map).await;
     let _registration = gate.lock().await;
@@ -415,7 +476,7 @@ async fn protocol(
         std::borrow::Cow::Borrowed(launch.prompt.as_str())
     } else {
     let paths = Runs::paths(state, &run.id);
-    let materials = std::path::Path::new(&run.zone).join(".manager-zone").join(".workflow").join(&run.id);
+    let materials = material_directory(&run.zone, &run.id);
     let prompts = state.prompts.snapshot().map_err(|e| e.to_string())?;
     let fixed_prompt = prompts.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt).map_err(|e| e.to_string())?;
     let mut input = match &role {

@@ -28,6 +28,23 @@ pub(crate) struct RunPreflightRequest {
     pub user_input: String,
     #[serde(default, deserialize_with = "object_array")]
     pub file_inputs: Vec<ResolvedFile>,
+    pub github_exploration: Option<GitHubExploration>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct GitHubExploration {
+    pub github_url: String,
+    pub parent_directory: String,
+    pub exploration_direction: String,
+}
+
+impl GitHubExploration {
+    pub(super) const CLONE: &'static str = "clone_request";
+    pub(super) const BRIEF: &'static str = "exploration_brief";
+
+    pub(super) fn has_clone(&self) -> bool { !self.github_url.trim().is_empty() }
+    pub(super) fn has_brief(&self) -> bool { !self.exploration_direction.trim().is_empty() }
 }
 
 #[derive(Serialize)]
@@ -220,6 +237,29 @@ pub(crate) fn check_prepared_inputs(directory: &Path, name: &str, files: &[Resol
     }).map_err(|error| error.message)
 }
 
+fn github_material_issues(name: &str, declarations: &[MapFileInput], input: &RunPreflightRequest) -> Vec<PreflightIssue> {
+    let Some(github) = &input.github_exploration else { return Vec::new(); };
+    if name != "github-repository-exploration.json" {
+        return vec![PreflightIssue::new("github-inputs-unsupported", "map", "此 Map 不接受 GitHub 探索表单输入。")];
+    }
+    let mut issues = Vec::new();
+    let has_parent = !github.parent_directory.trim().is_empty();
+    if github.has_clone() != has_parent {
+        let mut issue = PreflightIssue::new("github-clone-pair-required", "run-input", "GitHub 仓库链接和克隆父目录须一起填写，或一起留空。");
+        issue.input_id = Some(if github.has_clone() { "parent_directory" } else { "github_url" }.into());
+        issues.push(issue);
+    }
+    for (present, id) in [(github.has_clone(), GitHubExploration::CLONE), (github.has_brief(), GitHubExploration::BRIEF)] {
+        if !present { continue; }
+        if !declarations.iter().any(|binding| binding.id == id) {
+            issues.push(PreflightIssue::new("run-input-undeclared", "map", format!("Map 未声明表单生成的文件输入：{id}")));
+        } else if input.file_inputs.iter().any(|binding| binding.id == id) {
+            issues.push(PreflightIssue::new("run-input-duplicate", "map", format!("不能同时生成和绑定已有文件输入：{id}")));
+        }
+    }
+    issues
+}
+
 /// Shared by the read-only form and the real launch operation. Every call reads
 /// current definitions, Task roles and registered roots; it never allocates a
 /// Run, Chat identity, Tab, or fallback binding. user_input remains opaque.
@@ -241,8 +281,8 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
     }
     let tasks = state.tasks.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "task", error.message())]))?;
     let zones = state.zones.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "zone", error.message())]))?;
-    let mut issues = Vec::new();
-    issues.extend(input_issues(&map_name, &map.input_files, &input.file_inputs, false));
+    let mut issues = github_material_issues(map_name, &map.input_files, input);
+    issues.extend(input_issues(map_name, &map.input_files, &input.file_inputs, false));
     if let Some(issue) = check_role(&tasks, &input.manager_task_id, crate::tasks::TaskType::Manager, "manager") { issues.push(issue); }
     let manager_zone = match check_zone(&zones, &input.zone, "manager") {
         Ok(zone) => Some(zone),

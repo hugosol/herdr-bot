@@ -262,6 +262,7 @@ async fn resolve(
         let input = crate::runs::preflight::RunPreflightRequest {
             manager_task_id: task.id.clone(), zone: request.zone_id.clone(), user_input: request.input.clone(),
             file_inputs: materials.iter().map(|m| crate::scheduler::maps::ResolvedFile { id: m.id.clone(), path: m.path.clone() }).collect(),
+            github_exploration: None,
         };
         let checked = crate::runs::preflight::check_run_preflight(state, file, &input).await.map_err(Error::Preflight)?;
         if let Some(message) = crate::runs::preflight::check_prepared_inputs(&state.map_directory, file, &input.file_inputs, true)

@@ -152,6 +152,8 @@
 .scheduler-run-form label { display: grid; gap: .5rem; min-width: 0; }
 .scheduler-run-form input, .scheduler-run-form select, .scheduler-run-form textarea { width: 100%; min-width: 0; min-height: 2.75rem; border: 1px solid var(--nier-border); border-radius: 0; padding: .75rem; background: var(--nier-ground); color: var(--nier-ink); font: inherit; }
 .scheduler-run-form textarea { min-height: 8rem; resize: vertical; }
+.scheduler-github-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); align-items: start; gap: .85rem; }
+.scheduler-github-fields textarea { min-height: 4rem; }
 .scheduler-run-form input[readonly] { color: var(--scheduler-muted); }
 .scheduler-run-form p, .scheduler-run-form li { margin: 0; line-height: 1.65; overflow-wrap: anywhere; }
 .scheduler-run-form select:focus-visible, .scheduler-run-form textarea:focus-visible { outline: 2px solid var(--scheduler-accent); outline-offset: 2px; }

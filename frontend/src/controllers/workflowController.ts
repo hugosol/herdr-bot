@@ -1,7 +1,13 @@
 import type { InputRule, OutputRule } from './schedulerController'
 
 export type RunFileInput = { id: string; path: string }
-export type RunPreflightInput = { managerTaskId: string; zone: string; userInput: string; fileInputs?: RunFileInput[] }
+export type RunPreflightInput = {
+  managerTaskId: string
+  zone: string
+  userInput: string
+  fileInputs?: RunFileInput[]
+  githubExploration?: { githubUrl: string; parentDirectory: string; explorationDirection: string }
+}
 export type PreflightIssue = { code: string; target: 'map' | 'node' | 'bot' | 'task' | 'manager' | 'zone' | 'run-input'; message: string; nodeId?: string; botId?: string; taskId?: string; inputId?: string; callChain?: string[] }
 export type RunPreflightResult = { kind: 'valid'; workspaceName: string } | { kind: 'rejected'; message: string; issues: PreflightIssue[] }
 

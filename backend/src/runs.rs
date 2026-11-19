@@ -614,7 +614,15 @@ pub(crate) async fn start_run(state: AppState, map: String, input: crate::runs::
             &message,
         ));
     }
-    let run = root_run(map, input, checked, &task, crate::chats::new_creation_id());
+    let mut input = input;
+    let id = crate::chats::new_creation_id();
+    if let Some(github) = input.github_exploration.take() {
+        match startup::write_github_materials(&state, &checked.zone_bindings[&input.zone], &id, github).await {
+            Ok(bindings) => input.file_inputs.extend(bindings),
+            Err(message) => return Err(error(FailureKind::Failed, "run-material-write-failed", &message)),
+        }
+    }
+    let run = root_run(map, input, checked, &task, id);
     register_root(&state, &run).await;
     drop(map_operation);
     launch_root(state, run, task, preset, None).await
