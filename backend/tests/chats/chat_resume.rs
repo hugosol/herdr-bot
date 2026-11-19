@@ -319,10 +319,252 @@ async fn unavailable_cwd_restores_exact_native_identity_in_configured_default_wo
     }
 }
 
+// S1 (P8/P10–P13/P15/P41): the scripted App/core expose the selected layout,
+// launch directory and actual focus independently of the HTTP response.
+// These terminal observations cannot prove that the requested Pi ID loaded.
+#[tokio::test]
+async fn app_resume_selects_only_the_current_hosts_space_and_directory() {
+    for (scenario, name, original, expected, has_cwd) in [
+        ("same-end", "bot-playground", Some("native-app-space"), "native-app-space", true),
+        ("cross-end", "bot-playground", Some("tui:w12"), "configured-space", true),
+        ("same-value", "Second configured name", Some("tui:w12"), "tui:w12", true),
+        ("no-original", "Second configured name", None, "configured-space", true),
+        ("no-cwd", "Second configured name", Some("native-app-space"), "configured-space", false),
+        ("focus-refused", "bot-playground", Some("native-app-space"), "native-app-space", true),
+        ("wrong-focal-pane", "bot-playground", Some("native-app-space"), "native-app-space", true),
+    ] {
+        let root = TempDir::new("App Resume placement");
+        let tui = HerdrFixture::new("Resume unselected TUI");
+        let app = HerdrFixture::new("Resume selected App");
+        let core = HerdrFixture::new("Resume selected core");
+        let mut config = config(&root, &tui);
+        config.herdr.backend = herdr_bot::HerdrBackend::App;
+        config.herdr.workspace_name = name.into();
+        config.herdr.app_executable = app.executable().to_owned();
+        config.herdr.core_executable = core.executable().to_owned();
+        let cwd = if has_cwd { root.path().to_path_buf() } else { root.path().join("deleted checkout") };
+        let actual = if has_cwd { cwd.clone() } else { root.path().join("App selected cwd") };
+        if !has_cwd {
+            std::fs::create_dir(&actual).unwrap();
+            let git = std::process::Command::new("git").args(["init", "--quiet"]).arg(root.path()).output().unwrap();
+            assert!(git.status.success(), "{}", String::from_utf8_lossy(&git.stderr));
+        }
+        let mut row = json!({"sessionId":"resume-native", "agentType":"pi", "cwd":cwd, "firstRecordedAt":123});
+        if let Some(id) = original { row["originalWorkspaceId"] = json!(id); }
+        let bytes = format!("  {}\n", json!([row]));
+        std::fs::write(&config.sessions.history_file, &bytes).unwrap();
+        let decoy_name = if name == "bot-playground" { "Second configured name" } else { "bot-playground" };
+        let mut spaces = vec![
+            json!({"id":"decoy-space", "name":decoy_name, "active":true, "tabs":[]}),
+            json!({"id":"configured-space", "name":name, "tabs":[]}),
+            json!({"id":"native-app-space", "name":"Original App", "tabs":[],
+                "worktree":{"checkout_path":cwd, "repo_key":root.path().join(".git")}}),
+        ];
+        if scenario == "same-value" {
+            spaces.push(json!({"id":"tui:w12", "name":"Unrelated label", "tabs":[]}));
+        }
+        app.set_behavior(json!({"app_transport":{
+            "ls":{"spaces":spaces},
+            "tab.new":{"space":expected,"tab":"tab-owned","terminal":"t27","fixture_pane":"pane-owned"},
+            "pane.focus":if scenario == "focus-refused" { json!({"fixture_error":"controlled focus refused"}) } else { json!({"ok":true}) },
+            "status":{"space":expected,"tab":"tab-owned",
+                "focused_pane":if scenario == "wrong-focal-pane" { "pane-other" } else { "pane-owned" }},
+        }}));
+        core.set_behavior(json!({"app_transport":{
+            "server status":{"core":{"id":"core-only"}},
+            "get":{"address":"t27","state":"live","cwd":actual,
+                "labels":{"herdr.space":expected,"herdr.tab":"tab-owned"}},
+        }}));
+        let server = TestServer::start_app(herdr_bot::app_with_power_off(&config, Arc::new(NeverPowerOff))).await;
+        let before = common::get_over_tcp(server.addr(), "/api/sessions/history").await;
+        assert_eq!(before.status, 200);
+        let history: Value = serde_json::from_str(&before.body).unwrap();
+        assert_eq!(history["sessions"][0].get("originalWorkspaceId").and_then(Value::as_str), original);
+        let response = resume(&server, "resume-native").await;
+        let body: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(response.status, 502, "{scenario}: {body}");
+        if let Some(code) = match scenario {
+            "focus-refused" => Some("herdr-command-failed"),
+            "wrong-focal-pane" => Some("herdr-unexpected-response"),
+            _ => None,
+        } {
+            assert_eq!(body["outcome"], "failed", "{scenario}: {body}");
+            assert_eq!(body["stage"], "focus", "{scenario}: {body}");
+            assert_eq!(body["code"], code, "{scenario}: {body}");
+        } else {
+            assert_eq!(body["outcome"], "unconfirmed", "{scenario}: {body}");
+            assert_eq!(body["stage"], "focused", "{scenario}: {body}");
+            assert_eq!(body["actualCwd"], json!(actual));
+            assert_eq!(body["progress"]["conversationConfirmed"], false);
+            assert!(body["message"].as_str().unwrap().contains("不表示 Windows 窗口已置前"));
+        }
+        assert_eq!(body["target"], json!({"workspaceId":expected,"tabId":"tab-owned","paneId":"pane-owned"}));
+        let calls = app.calls();
+        let tab = calls.iter().find(|call| call["kind"] == "tab.new").unwrap();
+        assert_eq!(tab["data"]["argv"], json!(["pi", "--session", "resume-native"]));
+        let focuses: Vec<_> = calls.iter().filter(|call| call["kind"] == "pane.focus").collect();
+        assert_eq!(focuses.len(), 1);
+        assert_eq!(focuses[0]["data"], json!({"pane":"pane-owned"}));
+        assert_eq!(tab["data"]["space"], expected, "{scenario}: {body}");
+        if has_cwd {
+            assert_eq!(tab["data"]["folder"], json!(cwd), "{scenario}: {body}");
+        } else {
+            assert!(tab["data"].get("folder").is_none(), "{scenario}: {body}");
+            assert!(body["message"].as_str().unwrap().contains("App 不提供"));
+        }
+        assert!(!calls.iter().any(|call| call["kind"] == "space.new"));
+        assert!(common::read_json_lines(&tui.path().join("invocations.jsonl")).is_empty());
+        let after = common::get_over_tcp(server.addr(), "/api/sessions/history").await;
+        assert_eq!(after.body, before.body, "{scenario}");
+        assert_eq!(std::fs::read(&config.sessions.history_file).unwrap(), bytes.as_bytes());
+    }
+}
+
+// P11: a usable default is present even when the selected App's original-ID
+// inventory is malformed; treating the bad row as an empty result would create.
+#[tokio::test]
+async fn app_original_lookup_fault_never_falls_back_to_a_valid_default() {
+    for (fault, code) in [
+        ("command", "herdr-command-failed"),
+        ("malformed", "herdr-unexpected-response"),
+    ] {
+        let root = TempDir::new("App original lookup fault");
+        let tui = HerdrFixture::new("no TUI lookup");
+        let app = HerdrFixture::new("App malformed inventory");
+        let core = HerdrFixture::new("no terminal mutation");
+        let mut config = config(&root, &tui);
+        config.herdr.backend = herdr_bot::HerdrBackend::App;
+        config.herdr.app_executable = app.executable().to_owned();
+        config.herdr.core_executable = core.executable().to_owned();
+        app.set_behavior(json!({"app_transport":{"ls":if fault == "command" {
+            json!({"fixture_error":"controlled inventory failure"})
+        } else {
+            json!({"spaces":[{"id":"space-bad"},{"id":"space-default","name":"bot-playground","tabs":[]}]})
+        }}}));
+        let bytes = json!([{"sessionId":"app-fault","agentType":"pi","cwd":root.path(),
+            "originalWorkspaceId":"space-original","firstRecordedAt":123}]).to_string();
+        std::fs::write(&config.sessions.history_file, &bytes).unwrap();
+        let server = TestServer::start_app(herdr_bot::app_with_power_off(&config, Arc::new(NeverPowerOff))).await;
+        let before = common::get_over_tcp(server.addr(), "/api/sessions/history").await;
+        let offset = app.calls().len();
+        let response = resume(&server, "app-fault").await;
+        assert_eq!(response.status, 502, "{}", response.body);
+        let body: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(body["stage"], "workspace", "{fault}: {body}");
+        assert_eq!(body["code"], code, "{fault}: {body}");
+        assert_eq!(app.calls()[offset..].iter().map(|c| c["kind"].as_str().unwrap()).collect::<Vec<_>>(), ["ls"]);
+        assert!(common::read_json_lines(&tui.path().join("invocations.jsonl")).is_empty());
+        assert!(common::read_json_lines(&core.path().join("invocations.jsonl")).is_empty());
+        assert_eq!(common::get_over_tcp(server.addr(), "/api/sessions/history").await.body, before.body);
+        assert_eq!(std::fs::read_to_string(&config.sessions.history_file).unwrap(), bytes);
+    }
+}
+
+// P41: Only a previously verified native owner may select the App pane. A
+// matching label, a successful command, and a colliding core address do not
+// prove ownership or the observed final focus.
+#[tokio::test]
+async fn app_resume_locates_the_existing_native_owner_without_creating_another_tab() {
+    use std::time::Duration;
+    let root = TempDir::new("App located Resume");
+    let tui = HerdrFixture::new("unselected TUI for locate");
+    let app = HerdrFixture::new("App for locate");
+    let core = HerdrFixture::new("core for locate");
+    let mut config = config(&root, &tui);
+    config.herdr.backend = herdr_bot::HerdrBackend::App;
+    config.herdr.app_executable = app.executable().to_owned();
+    config.herdr.core_executable = core.executable().to_owned();
+    config.tasks.storage_file = root.path().join("tasks.json");
+    let cwd = root.path();
+    let core_behavior = |argv: Value, tab: &str| json!({"app_transport":{
+        "server status":{"core":{"id":"core-selected"}},
+        "get":{"address":"t27","state":"live","cwd":cwd,"pid":std::process::id(),"argv":argv,
+            "labels":{"herdr.space":"space-real", "herdr.tab":tab}},
+    }});
+    let app_behavior = |focused: &str, refuse: bool| json!({"app_transport":{
+        "ls":{"spaces":[{"id":"space-real","name":"bot-playground","tabs":[]},
+            {"id":"space-decoy","name":"Other","tabs":[{"id":"tab-decoy","terminals":[{"pane":"pane-decoy","terminal":"t99"}]}]}]},
+        "tab.new":{"space":"space-real","tab":"tab-real","terminal":"t27","fixture_pane":"pane-real"},
+        "pane.focus":if refuse { json!({"fixture_error":"focus refused"}) } else { json!({"ok":true}) },
+        "status":{"space":"space-real","tab":"tab-real","focused_pane":focused},
+    }});
+    app.set_behavior(app_behavior("pane-real", false));
+    core.set_behavior(core_behavior(json!([]), "tab-real"));
+    let server = TestServer::start_app(herdr_bot::app_with_power_off(&config, Arc::new(NeverPowerOff))).await;
+    let stored = post_json_over_tcp(server.addr(), "/api/tasks", &json!({"name":"App origin","chatName":"Original", "agent":"pi", "model":"default", "thinking":"default","prompt":""}).to_string()).await;
+    assert!((200..300).contains(&stored.status), "{}", stored.body);
+    let stored: Value = serde_json::from_str(&stored.body).unwrap();
+    let native = cwd.join("history-native.jsonl");
+    std::fs::write(&native, format!("{}\n", json!({"type":"session","id":"app-owner","cwd":cwd}))).unwrap();
+    let bytes = json!([{"sessionId":"app-owner","agentType":"pi","cwd":cwd,"sessionFile":native,
+        "sourceTaskId":stored["tasks"][0]["id"],"originalWorkspaceId":"tui:w12","firstRecordedAt":123}]).to_string();
+    std::fs::write(&config.sessions.history_file, &bytes).unwrap();
+    let address = server.addr();
+    let before = common::get_over_tcp(address, "/api/sessions/history").await;
+    assert_eq!(serde_json::from_str::<Value>(&before.body).unwrap()["sessions"][0]["originalWorkspaceId"], "tui:w12");
+    let started = tokio::spawn(async move {
+        post_json_over_tcp(address, "/api/chats/resume", r#"{"sessionId":"app-owner"}"#).await
+    });
+    let argv = tokio::time::timeout(Duration::from_secs(8), async {
+        loop {
+            if let Some(call) = app.calls().into_iter().find(|call| call["kind"] == "tab.new") {
+                break call["data"]["argv"].clone();
+            }
+            tokio::time::sleep(Duration::from_millis(15)).await;
+        }
+    }).await.expect("App received the exact launch command");
+    let args = argv.as_array().expect("structured command");
+    let separator = args.iter().position(|arg| arg == "--").expect("launcher arguments");
+    core.set_behavior(core_behavior(argv.clone(), "tab-real"));
+    let accepted = post_json_over_tcp(server.addr(), "/api/sessions/events", &json!({
+        "sessionId":"app-owner", "kind":"launch_identity", "data":{
+            "launchId":args[separator+1], "targetId":args[separator+2], "agentType":"pi",
+            "cwd":cwd, "pid":std::process::id(), "sessionFile":native,
+        },
+    }).to_string()).await;
+    assert!((200..300).contains(&accepted.status), "{}", accepted.body);
+    let completed = started.await.unwrap();
+    assert_eq!(completed.status, 200, "{}", completed.body);
+    assert_eq!(serde_json::from_str::<Value>(&completed.body).unwrap()["outcome"], "restored");
+
+    for (kind, status, stage, focus_attempted) in [
+        ("located", 200, None, true),
+        ("wrong-core-tab", 502, Some("lookup"), false),
+        ("wrong-focus", 502, Some("focus"), true),
+        ("focus-refused", 502, Some("focus"), true),
+    ] {
+        core.set_behavior(core_behavior(argv.clone(), if kind == "wrong-core-tab" { "tab-decoy" } else { "tab-real" }));
+        app.set_behavior(app_behavior(if kind == "wrong-focus" { "pane-decoy" } else { "pane-real" }, kind == "focus-refused"));
+        let offset = app.calls().len();
+        let response = resume(&server, "app-owner").await;
+        let body: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(response.status, status, "{kind}: {body}");
+        if let Some(stage) = stage {
+            assert_eq!(body["outcome"], "failed", "{kind}: {body}");
+            assert_eq!(body["stage"], stage, "{kind}: {body}");
+        } else {
+            assert_eq!(body["outcome"], "located", "{kind}: {body}");
+            assert_eq!(body["target"], json!({"workspaceId":"space-real","tabId":"tab-real","paneId":"pane-real"}));
+        }
+        let calls = app.calls();
+        let effects: Vec<_> = calls[offset..].iter().filter(|call| !matches!(call["kind"].as_str(), Some("ls" | "status"))).collect();
+        if focus_attempted {
+            assert_eq!(effects.len(), 1, "{kind}");
+            assert_eq!(effects[0]["kind"], "pane.focus");
+            assert_eq!(effects[0]["data"], json!({"pane":"pane-real"}));
+        } else { assert!(effects.is_empty(), "{kind}: {effects:?}"); }
+    }
+    assert!(common::read_json_lines(&tui.path().join("invocations.jsonl")).is_empty());
+    assert_eq!(common::get_over_tcp(address, "/api/sessions/history").await.body, before.body);
+    assert_eq!(std::fs::read_to_string(&config.sessions.history_file).unwrap(), bytes);
+}
+
 #[tokio::test]
 async fn exact_worktree_metadata_proves_main_root_before_default_cwd_fallback() {
     for kind in ["omp", "pi"] {
-        for proof in ["exact", "stale-repo-root", "different-checkout", "missing-key", "relative-key", "non-git", "ambiguous"] {
+        // A directory inside a repository permits Git's normal upward discovery,
+        // but is not evidence of the checkout's actual shared Git directory.
+        for proof in ["exact", "stale-repo-root", "different-checkout", "missing-key", "relative-key", "non-git", "repo-key-subdir", "ambiguous"] {
             let root = TempDir::new("resume worktree evidence");
             let herdr = HerdrFixture::new("resume worktree evidence herdr");
             let mut config = config(&root, &herdr);
@@ -353,6 +595,11 @@ async fn exact_worktree_metadata_proves_main_root_before_default_cwd_fallback() 
                 "missing-key" => Value::Null,
                 "relative-key" => json!("relative/.git"),
                 "non-git" => json!(default_cwd),
+                "repo-key-subdir" => {
+                    let subdir = main_root.join("nested");
+                    std::fs::create_dir(&subdir).unwrap();
+                    json!(subdir)
+                },
                 _ => json!(main_root.join(".git")),
             };
             let mut workspaces = json!([

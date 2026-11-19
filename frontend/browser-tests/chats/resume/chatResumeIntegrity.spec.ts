@@ -92,7 +92,7 @@ for (const agent of ['pi', 'omp']) {
       expect(result.outcome).toBe('restored')
       expect(result.degradations.map((d: { element: string }) => d.element)).toEqual(['session-file', policy === 'filtered' ? 'extension' : 'extensions', 'workspace'])
       const status = row.getByRole('status')
-      for (const text of ['恢复存在降级', s.native, `精确原生 ID ${s.id}`, '原 Workspace 已删除', 'w-target', '唯一默认 Workspace', 'w-fallback', '已确认恢复同一']) await expect(status).toContainText(text)
+      for (const text of ['恢复存在降级', s.native, `精确原生 ID ${s.id}`, '当前宿主未找到原 Workspace', 'w-target', '唯一默认 Workspace', 'w-fallback', '已确认恢复同一']) await expect(status).toContainText(text)
       for (const item of result.degradations) {
         await expect(status).toContainText(item.reason)
         await expect(status).toContainText(item.strategy)
