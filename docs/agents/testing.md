@@ -63,6 +63,32 @@
 
 可用的 Windows 证据：保留本轮宿主日志和播放器错误；若有进程／文件访问跟踪，将已识别的宿主 PID（或其原生音频子进程）与打开所选 MP3 的时间关联，区分一次播放和宿主自己的资源回退。App Windows 音频可在进程内播放，找不到外部播放器不是静音证据。可用 Windows 音频端点的 WASAPI loopback 采集带时间基准的 WAV，记录设备、采样方式、其他音源与起止时间；不要让录制界面抢走被测焦点。缺设备、访问跟踪或录音时分别保留缺项；打开文件、Toast、截图或静音观测均不等同于可听。实际宿主自动取证按配对验收执行；两端音色与可听性仅在最终听音环节由用户确认，不预先判通过。
 
+### 配对精确关闭与原生提醒（P43–P45／P47–P48／P54–P55）
+
+在 Windows **交互桌面**上，从参与的 `herdr-bot` worktree 根执行。使用 Bun 1.4.4、已安装的 OMP／Pi、Herdr TUI／App／core、Chrome、FFmpeg；不要占用其他真实宿主验收的桌面时段。该专项会聚焦属于本次运行的两个宿主窗口。无需模型服务或用户认证：只用数值回环的受控 provider 延迟实际请求，或让实际 agent 调用已安装的原生 `approve` 工具。它不代写宿主状态，不走设置试听，也不执行系统关机。
+
+配置 JSON 的值全部为显式绝对路径；准备 `herdr`、`app`、`core`、`node`、`bun` 可执行文件，`omp_package`／`pi_package` 安装目录，`omp_state_extension`／`pi_state_extension` 两个官方 TUI 扩展文件，和 `toolkit_baseline_root`（可解析历史 baseline 的原 toolkit 根，不作源码替代）。产品从 `PATH` 启动 OMP／Pi，入口确认 shim 对应声明的安装。`sound` 对象包含 `ffmpeg`、可区分的 `done`／`request` 自定义 MP3 和四个捆绑音效解码对照 `tui_done`、`tui_request`、`app_done`、`app_request`；从各安装版本的发布源码取 `assets/sounds/{done,request}.mp3`，不改上游。可独占创建自定义探针，例如 `ffmpeg -f lavfi -i sine=frequency=683:duration=0.65 done.mp3` 和 `ffmpeg -f lavfi -i sine=frequency=1129:duration=0.9 request.mp3`。录音分析使用 `PyAudioWPatch==0.2.12.8` 和 `numpy==2.2.6`，可通过 `python -m pip install --target <独占绝对目录> PyAudioWPatch==0.2.12.8 numpy==2.2.6` 准备，设置 `PYTHONPATH` 到该目录。要求 Windows 默认输出支持 WASAPI loopback；关闭其他音源，不切走焦点。没有音频设备、测不到波形或缺资源时保留原始错误，不以静音判通过。
+
+```powershell
+# 下列变量均改为本次绝对路径。target 必须是新建或空目录；证据目录必须不存在。
+$HerdrBotWorktree = 'E:/worktrees/herdr-bot'
+$ToolkitWorktree = 'E:/worktrees/toolkit'
+$IsolatedConfig = 'E:/acceptance/paired-close-reminders.json'
+$Evidence = 'E:/acceptance/paired-close-reminders-new'
+$env:CARGO_TARGET_DIR = 'E:/acceptance/paired-close-reminders-cargo'
+$Backend = Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe'
+Set-Location $HerdrBotWorktree
+python scripts/accept-paired-close-reminders.py `
+  --herdr-bot-worktree $HerdrBotWorktree --toolkit-worktree $ToolkitWorktree `
+  --backend $Backend --isolated-config $IsolatedConfig `
+  --close-cases all --reminder-cases all --evidence-dir $Evidence
+```
+
+- 入口保存两仓 frozen 安装、页面与本后端／安全关机壳构建、三个 herdr-bot 回归入口、toolkit 四个入口及 `session-ready`／`binding-lifecycle`／`native-node-report`／`node-report-contract` docks 的原始日志。配对 dock 的 `HERDR_BOT_BINARY` 指向同一独占目标目录中的 `safe_shutdown_shell.exe`。失败继续留档，不用无关的绿项补齐；可按上述各入口的实际日志区分构建、测试和清理失败。
+- 关闭用真实 Pi 创建经理／节点，由公开审批、报告、节点完成触发。透明记录器只转发已安装 CLI 的请求和原始回执。对照额外 Tab 和另一容器的存活终端、最后一个 Tab 消失及其容器实际移除；App 在前置负对照中验证未确认请求不产生效果，实际完成必须只发送 `tab.close` 且 `confirmed: true`。TUI worktree group 独占创建，父 Workspace 与关联 checkout 的唯一真实 group 必须可见，拒绝扩大时没有发出 close。另核对终端和 SDK agent 进程的真实退出，不把布局或成功回执误作 PID 退出。
+- 提醒按 OMP／Pi × TUI／App × 自定义／捆绑／关闭运行，每格在实际 `working` 时切换焦点，再让同一真实轮次完成；后台完成观察一次 done，前台完成观察抑制。真实待审批 UI 可见且保持时观察一次 request，选择原生 No 后单独留档。公开会话状态、Pane/terminal 原生观察、CLI 请求、输入／释放时间、两种音效原文及哈希、WAV 和波形匹配时间分别保存；波形匹配不是用户的听音结论。
+- `--close-cases app-pi-last-tab --reminder-cases none --native-only` 或 `--close-cases none --reminder-cases app-omp-custom --native-only` 用于已有本 worktree 构建产物的定向诊断；所有未运行格仍在 `summary.json`，定向诊断始终不返回全量通过。运行会保留未确认退出或证据归档失败的独占环境，供定位；不操作用户会话。`automatedPassed` 只代表自动范围，唯一人工项 `P48Listening` 始终待确认：用每格时间线与 WAV 核对两端实际可听和触发场景，仅由用户确认，不能提前计为通过。
+
 ### Chief 委派与报告（S1）
 
 先构建本 worktree 的页面，用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test chief_delegation -- --nocapture`。公开 chief／Chat／历史／报告 HTTP 配合独占 TUI、App/core 记录确认委派授权、发起目标和外部输入；业务输入门闩期间读回已有原生身份的历史与委派关联。更换当前 chief 后保留原 Tab，从真实通知目标及报告读回确认路由。记录型宿主拒绝通知时，保留原报告，并在至少 46 秒窗口核对没有额外输入、重投或复发派；这不代表真实安装宿主业务链路已验收。
