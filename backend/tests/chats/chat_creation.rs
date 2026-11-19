@@ -938,6 +938,7 @@ async fn app_launch_uses_task_environment_and_selected_terminal_without_tui_file
     config.tasks.metadata_file = storage.path().join("task-options.toml");
     fs::write(&config.tasks.metadata_file, toml::to_string(&catalog).unwrap()).unwrap();
     config.suites.definition_file = storage.path().join("suites.json");
+    config.suites.generated_directory = storage.path().join("generated-suites");
     for entry in ["omp-test-suite.ts", "pi-test-suite.ts"] { fs::write(storage.path().join(entry), "// owned resource").unwrap(); }
     fs::write(&config.suites.definition_file, json!({"suites":[{"id":"paired","name":"Paired","agents":["omp","pi"],
         "extensions":{"omp":["omp-test-suite.ts"],"pi":["pi-test-suite.ts"]},"pi":{"codemode":"on"}}]}).to_string()).unwrap();
@@ -945,8 +946,9 @@ async fn app_launch_uses_task_environment_and_selected_terminal_without_tui_file
     let dir = storage.path().join("alpha");
     fs::create_dir(&dir).unwrap();
     let zone = register(&server, &dir).await;
-    for (index, (agent, thinking, placement, space)) in [
-        ("omp", "high", "current", "space-current"), ("pi", "xhigh", "default", "space-default"),
+    for (index, (agent, thinking, placement, space, manifest_name)) in [
+        ("omp", "high", "current", "space-current", "omp-skills.json"),
+        ("pi", "xhigh", "default", "space-default", "pi-suite.json"),
     ].into_iter().enumerate() {
         let task = save_task(&server, json!({"name":format!("App {agent}"),"chatName":"{task.name}","agent":agent,
             "model":"gpt-6.1-sol","thinking":thinking,"suite":"paired","skill":"teach","prompt":"Literal {unknown}"})).await;
@@ -970,6 +972,13 @@ async fn app_launch_uses_task_environment_and_selected_terminal_without_tui_file
         let argv = tab["options"]["argv"].as_array().unwrap();
         assert_eq!(argv[6], agent);
         assert_eq!(&argv[7..11], &[json!("--model"), json!("openai-codex/gpt-6.1-sol"), json!("--thinking"), json!(thinking)]);
+        // The native argv must point to a real manifest under the owned temp
+        // directory, not a generated file left beside the checked-in fixtures.
+        let manifest = argv.iter().filter_map(Value::as_str).map(Path::new)
+            .find(|path| path.file_name().is_some_and(|name| name == manifest_name))
+            .unwrap_or_else(|| panic!("native argv missing {manifest_name}: {argv:?}"));
+        assert!(manifest.is_file() && manifest.starts_with(storage.path().join("generated-suites/paired")),
+            "expected an isolated Suite manifest, found {}", manifest.display());
         let paths = argv.iter().filter_map(Value::as_str).filter_map(|s| Path::new(s).file_name()?.to_str()).collect::<Vec<_>>();
         assert!(paths.contains(&format!("{agent}-test-suite.ts").as_str()), "{paths:?}");
         assert!(paths.contains(&format!("{agent}-connect-bot.ts").as_str()), "{paths:?}");
