@@ -97,6 +97,7 @@ Toolkit 的 `manager-dispatch-recovery.test.ts` 和 `uncertain-effects.test.ts` 
 
 **真实触发与配置。** 每轮使用独占的 Windows 交互桌面环境、HOME／APPDATA／XDG、agent 配置和会话目录、短路径的 `HERDR_CONFIG_PATH`／`HERDR_APP_HOME`、唯一 `HERDR_SESSION`／`HC_SESSION`。只连本轮宿主与 owned backend；每次只运行所选宿主。TUI 要连接一个可实际取得焦点的 TUI 客户端，不能只启动 headless server；App 要有连接到所选 core 的实际窗口，不能用 `hc` 代替窗口。保留已装 agent、宿主和 core 的版本，TUI 固定扩展按安装的官方入口接入；App 不用 TUI 扩展，OMP `terminal.programStatus` 启用，Pi 保持自动协商。
 
+- **OMP 额外通知渠道：** 在本轮独占的 `config.yml` 中设 `completion.notify: "off"`，关闭 OMP 在状态上报之外另外发送的完成 toast（在 Herdr TUI 中它自身也会触发声音）。保留 `terminal.programStatus: true` 和官方状态扩展；仍由实际 agent 状态触发本专项测量的宿主提醒，不改任何用户设置。
 - **TUI：** 写入独占配置的 `[ui.sound]`：`enabled = true`，设置两个可区分的本地 MP3 `done_path`、`request_path`（相对配置文件目录或绝对路径）。确认未设 `HERDR_DISABLE_SOUND`，且没有适用的 `[ui.sound.agents]` 关闭项。默认资源对照移除两个路径和通用 `path`；关闭对照只改 `enabled = false`。
 - **App：** 在独占 `settings.json` 合并 `"sounds": {"enabled":true,"done":"done.mp3","blocked":"request.mp3"}`（文件相对 `HERDR_APP_HOME`，也可用绝对路径）。确认未设 `HERDR_APP_NO_SOUND`。默认资源对照移除 `done`／`blocked`；关闭对照只改 `enabled`。
 - **完成轮次：** 通过产品的 zone → Task 发起 Chat，在初始指示或后续原生输入提交带唯一标记的纯文本请求，例如 `仅回复 REMINDER-<本轮标记>`。用本机受控 provider 收到请求后暂缓响应，先核对目标已 `working` 并切到所需焦点，再放行正常响应。每次用新轮次，分别在目标 Tab 可见且宿主窗口有焦点、目标 Tab 不可见时完成。首次初始化和已停驻的旧状态均不算触发。

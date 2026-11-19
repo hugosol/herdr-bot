@@ -196,8 +196,12 @@ class Scenario(Acceptance):
         for name in ('models.json', 'models.yml'):
             save(agent / name, model)
         save(agent / 'settings.json', {'sessionDir': str(agent / 'sessions')})
+        # OMP also sends a separate completion toast to Herdr, which plays its
+        # own sound even in the focused pane. Isolate the host's state-driven
+        # sound without changing program status or the official TUI hooks.
         (agent / 'config.yml').write_text('autoResume: false\nstartup:\n  setupWizard: false\n  showSplash: false\n'
-            '  checkUpdate: false\nmarketplace:\n  autoUpdate: off\nterminal:\n  programStatus: true\n', encoding='utf-8')
+            '  checkUpdate: false\nmarketplace:\n  autoUpdate: off\nterminal:\n  programStatus: true\n'
+            'completion:\n  notify: "off"\n', encoding='utf-8')
 
     def deploy_toolkit(self):
         toolkit = self.root / 'toolkit'
