@@ -441,7 +441,11 @@ fn report_launch(settings: &Value, agent: &Value) {
 }
 
 fn pane_process_info(args: &[String]) {
-    let pane = args.get(2).map(String::as_str).unwrap_or_default();
+    // The installed CLI accepts an explicit --pane selector, not a positional ID.
+    // Rejecting unsupported syntax keeps public launch claims from passing only in tests.
+    let [_, _, flag, pane] = args else { usage(args) };
+    if flag != "--pane" || pane.is_empty() { usage(args); }
+    let pane = pane.as_str();
     let started = read_records("started.jsonl").into_iter().find(|agent| agent["pane_id"] == pane);
     let processes = started.map_or_else(Vec::new, |agent| {
         let behavior = behavior();

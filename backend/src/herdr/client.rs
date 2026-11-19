@@ -654,7 +654,7 @@ impl LaunchTarget {
                 if NavigationTarget::from_agent(agent)? != self.location || nonempty(agent.get("agent")) != Some(kind) {
                     return Err(native_error("TUI launch has another target or agent").into());
                 }
-                let process = herdr.run("pane process-info", &["pane".into(), "process-info".into(), self.location.pane_id.clone()], QUERY_TIMEOUT).await?;
+                let process = herdr.run("pane process-info", &["pane".into(), "process-info".into(), "--pane".into(), self.location.pane_id.clone()], QUERY_TIMEOUT).await?;
                 let pane = process.pointer("/result/process_info").ok_or_else(|| native_error("missing pane process information"))?;
                 if nonempty(pane.get("pane_id")) != Some(self.location.pane_id.as_str())
                     || !pane.get("foreground_processes").and_then(Value::as_array).is_some_and(|processes| processes.iter().any(|p| {
