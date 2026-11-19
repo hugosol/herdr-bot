@@ -19,8 +19,9 @@ def launch_tui_client(executable, session, title, root, environment):
         cwd=root, env=environment, creationflags=subprocess.CREATE_NEW_CONSOLE)
 
 
-def foreground_window(*, pid=None, title=None):
-    require((pid is None) != (title is None), 'identify the owned window by exactly one selector')
+def foreground_window(*, pid=None, title=None, anchor=None):
+    require(sum(selector is not None for selector in (pid, title, anchor)) == 1,
+        'identify the owned window by exactly one selector')
     user = ctypes.WinDLL('user32', use_last_error=True)
     user.GetForegroundWindow.restype = wintypes.HWND
     user.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
@@ -41,7 +42,13 @@ def foreground_window(*, pid=None, title=None):
                 user.GetWindowTextW(window, caption, len(caption))
                 owner = wintypes.DWORD()
                 user.GetWindowThreadProcessId(window, ctypes.byref(owner))
-                if (pid and owner.value == pid and caption.value) or (title and title in caption.value):
+                if anchor is not None:
+                    matches = window == anchor['hwnd'] and owner.value == anchor['ownerPid']
+                elif pid is not None:
+                    matches = owner.value == pid and bool(caption.value)
+                else:
+                    matches = title in caption.value
+                if matches:
                     windows.append({'hwnd': window, 'ownerPid': owner.value, 'caption': caption.value})
             return True
 

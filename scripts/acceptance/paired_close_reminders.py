@@ -9,6 +9,7 @@ import re
 import secrets
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import threading
@@ -56,11 +57,15 @@ def timestamp():
 def remove_owned_root(root):
     def remove_readonly(action, path, exception):
         error = exception[1]
-        if not isinstance(error, PermissionError) or os.access(path, os.W_OK):
+        if not isinstance(error, PermissionError):
             raise error
-        # Git makes object files read-only on Windows. The entire root was
-        # created by this invocation; never alter files beyond it.
-        os.chmod(path, 0o600)
+        info = os.lstat(path)
+        # os.access reports read-only Windows directories as writable. Use
+        # the actual mode, and never chmod through a symlink or junction.
+        if (info.st_mode & stat.S_IWRITE or getattr(info, 'st_reparse_tag', 0)
+            or not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode))):
+            raise error
+        os.chmod(path, info.st_mode | stat.S_IWRITE)
         action(path)
 
     shutil.rmtree(root, onerror=remove_readonly)
@@ -489,7 +494,7 @@ class Scenario(Acceptance):
                 detail = self.http('/api/workflow/runs/' + run)['run']['nodes']['work']
                 return detail if detail.get('autoCloseFailure') else None
             detail = until('close refusal recorded without rolling back completion', failure)
-            require(detail['status'] == 'completed' and detail['autoCloseFailure']['code'] == 'unsafe-close-scope', detail)
+            require(detail['status'] == 'completed' and detail['autoCloseFailure']['code'] == 'close-scope-denied', detail)
             calls = self.receipts(finished=False)
             require(not any(argv[:2] in (['tab', 'close'], ['workspace', 'close']) for _, argv in calls), calls)
             self.evidence['closeRefusal'] = detail['autoCloseFailure']
@@ -564,7 +569,8 @@ class Scenario(Acceptance):
             window = foreground_window(pid=self.window_process.child.pid)
         else:
             self.herdr('tab', 'focus', tab)
-            window = foreground_window(title=self.console_title)
+            require(self.console_client.poll() is None, 'owned TUI client exited before refocus')
+            window = foreground_window(anchor=self.tui_window)
         active, status = self.focused_tab()
         require(active == tab, ('focus affected another tab', tab, active, status))
         self.note('native-focus', tab=active, desktopWindow=window, status=status)
@@ -686,7 +692,8 @@ class Scenario(Acceptance):
         if self.host == 'tui':
             self.console_title = 'HB15 ' + uuid.uuid4().hex
             self.console_client = launch_tui_client(self.args.herdr, self.env['HERDR_SESSION'], self.console_title, self.root, self.env)
-            foreground_window(title=self.console_title)
+            self.tui_window = foreground_window(title=self.console_title)
+            self.note('owned-tui-window', desktopWindow=self.tui_window)
         run, manager, chat = self.dispatch(auto=False)
         self.history(manager, 'HB15-ACK')
         self.history(chat, 'HB15-ACK')

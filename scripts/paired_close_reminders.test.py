@@ -45,6 +45,16 @@ class SoundEvidence(unittest.TestCase):
 
 
 class EvidenceDirectory(unittest.TestCase):
+    def test_removes_read_only_owned_desktop_directory(self):
+        # Windows may create a read-only Desktop inside the isolated TUI HOME.
+        with tempfile.TemporaryDirectory(prefix='paired-close-desktop-') as folder:
+            owned = Path(folder) / 'owned'
+            desktop = owned / 'home' / 'Desktop'
+            desktop.mkdir(parents=True)
+            desktop.chmod(stat.S_IREAD)
+            remove_owned_root(owned)
+            self.assertFalse(owned.exists())
+
     def test_removes_read_only_owned_git_objects_without_touching_its_neighbor(self):
         with tempfile.TemporaryDirectory(prefix='paired-close-cleanup-') as folder:
             parent = Path(folder)
