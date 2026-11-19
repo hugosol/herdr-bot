@@ -27,17 +27,19 @@ export async function nativeVisibilityBrowser(installedExecutable?: string) {
   child.stdout.on('data', consume)
   child.stderr.on('data', consume)
   child.once('error', error => { clearTimeout(timeout); endpoint.reject(error) })
-  const childExited = Promise.withResolvers<void>()
+  const rootExited = Promise.withResolvers<void>()
+  let confirmedRootExit = false
   child.once('exit', code => {
     clearTimeout(timeout)
-    childExited.resolve()
+    confirmedRootExit = true
+    rootExited.resolve()
     endpoint.reject(new Error(`Chrome exited (${code}): ${diagnostics}`))
   })
   // Keep an independent Windows process handle: Chrome can terminate while
   // Node has not delivered its ChildProcess exit event yet.
   const handleReady = Promise.withResolvers<void>()
   const handleExited = Promise.withResolvers<void>()
-  let confirmedExit = false
+  let confirmedProfileExit = false
   let handleDiagnostics = ''
   const watcher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `
     $ErrorActionPreference = 'Stop'
@@ -46,6 +48,7 @@ export async function nativeVisibilityBrowser(installedExecutable?: string) {
       $null = $owned.Handle
       [Console]::Out.WriteLine('OWNED_READY')
       $owned.WaitForExit()
+      [Console]::Out.WriteLine('OWNED_ROOT_EXITED')
       # Chrome's root can exit before its profile-owning utility processes.
       # Keep real handles to this exclusive profile's remaining processes.
       $remaining = @(Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($env:OWNED_CHROME_PROFILE) } | ForEach-Object {
@@ -67,11 +70,15 @@ export async function nativeVisibilityBrowser(installedExecutable?: string) {
   watcher.stdout.on('data', chunk => {
     handleDiagnostics += chunk.toString()
     if (handleDiagnostics.includes('OWNED_READY')) handleReady.resolve()
-    if (handleDiagnostics.includes('OWNED_EXITED')) confirmedExit = true
+    if (handleDiagnostics.includes('OWNED_ROOT_EXITED')) {
+      confirmedRootExit = true
+      rootExited.resolve()
+    }
+    if (handleDiagnostics.includes('OWNED_EXITED')) confirmedProfileExit = true
   })
   watcher.stderr.on('data', chunk => { handleDiagnostics += chunk.toString() })
   watcher.once('error', error => handleReady.reject(error))
-  watcher.once('exit', code => {
+  watcher.once('close', code => {
     if (!handleDiagnostics.includes('OWNED_READY')) handleReady.reject(new Error(`Chrome handle acquisition failed (${code}): ${handleDiagnostics}`))
     handleExited.resolve()
   })
@@ -87,9 +94,8 @@ export async function nativeVisibilityBrowser(installedExecutable?: string) {
     }
     const grace = Promise.withResolvers<void>()
     const graceTimer = setTimeout(grace.resolve, 5000)
-    const hasExited = () => confirmedExit || child.exitCode !== null || child.signalCode !== null
-    try { await Promise.race([handleExited.promise, childExited.promise, grace.promise]) } finally { clearTimeout(graceTimer) }
-    if (child.pid && !hasExited()) {
+    try { await Promise.race([rootExited.promise, grace.promise]) } finally { clearTimeout(graceTimer) }
+    if (child.pid && !confirmedRootExit) {
       const killed = Promise.withResolvers<number | null>()
       let terminationDiagnostics = ''
       const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -98,10 +104,13 @@ export async function nativeVisibilityBrowser(installedExecutable?: string) {
       killer.once('error', killed.reject)
       killer.once('exit', killed.resolve)
       const code = await killed.promise
+      // Confirm and, if needed, terminate the root through the original
+      // ChildProcess handle rather than opening its potentially reused PID.
+      if (!confirmedRootExit) child.kill('SIGKILL')
       const confirmed = Promise.withResolvers<void>()
       const deadline = setTimeout(confirmed.resolve, 5000)
-      try { await Promise.race([handleExited.promise, childExited.promise, confirmed.promise]) } finally { clearTimeout(deadline) }
-      if (!hasExited()) {
+      try { await Promise.race([rootExited.promise, confirmed.promise]) } finally { clearTimeout(deadline) }
+      if (!confirmedRootExit) {
         watcher.kill()
         await handleExited.promise
         throw new Error(`Owned Chrome process ${child.pid} did not exit (taskkill ${code}): ${terminationDiagnostics}; handle: ${handleDiagnostics}; Chrome: ${diagnostics}`)
@@ -109,8 +118,14 @@ export async function nativeVisibilityBrowser(installedExecutable?: string) {
     }
     // The root exit event is not proof that Chrome released this profile.
     // Let the independent handle observer finish checking utility processes.
-    await handleExited.promise
-    if (!confirmedExit) throw new Error(`Owned Chrome profile processes did not exit: ${handleDiagnostics}`)
+    const profileDeadline = Promise.withResolvers<void>()
+    const profileTimer = setTimeout(profileDeadline.resolve, 15000)
+    try { await Promise.race([handleExited.promise, profileDeadline.promise]) } finally { clearTimeout(profileTimer) }
+    if (!confirmedProfileExit) {
+      watcher.kill()
+      await handleExited.promise
+      throw new Error(`Owned Chrome profile processes did not exit: ${handleDiagnostics}`)
+    }
     fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
     if (failure) throw failure
   }
@@ -121,7 +136,7 @@ export async function nativeVisibilityBrowser(installedExecutable?: string) {
     const context = browser.contexts()[0]
     const page = context.pages()[0] ?? await context.newPage()
     return { page, context, cleanup, processId: child.pid, profile,
-      diagnostics: () => ({ confirmedExit, chrome: diagnostics, handles: handleDiagnostics }) }
+      diagnostics: () => ({ confirmedExit: confirmedProfileExit, chrome: diagnostics, handles: handleDiagnostics }) }
   } catch (error) {
     try { await cleanup() } catch (cleanupError) { throw new AggregateError([error, cleanupError], 'Native visibility browser startup/cleanup failed.') }
     throw error
