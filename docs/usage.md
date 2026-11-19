@@ -429,7 +429,7 @@ chief Task 经既有 `POST /api/chats` 发起，也经既有 `POST /api/chats/re
 
 扩展入口位置仍位于 `meta-data/task-options.toml`；代码按稳定 ID `omp-manager-chat`、`pi-manager-chat`、`omp-node-chat`、`pi-node-chat` 识别固定角色，元数据不再支持 `taskType` 适用规则。实际工具、Prompt 和原生扩展运行能力须由 my-agent-toolkit 及宿主环境提供；配置保存或页面展示成功不代表原生加载已验证。缺失或不可用入口在发起时明确报错；Resume 沿既有规则报告扩展降级，不伪称已加载。
 
-需要新进程的 Resume 仍读取来源 Task 的最新会话环境，但从持久 Run 中的原 Chat 执行关联恢复节点角色，包含 retry 前保留的旧执行；不新建执行、不重放 trigger config。独立普通 Chat 不因此获得节点角色。本次不处理运行期间动态修改来源 Task 配置的冲突，也不引入配置快照或热更新协调。
+需要新进程的 Resume 仍读取来源 Task 的最新会话环境，但由原 Chat 的持久 Run／node／chief 委派关联决定执行角色，包含 retry 前保留的旧执行。子 Run 管理者保留管理者与父节点双角色；结束节点保留执行关联，但与独立普通 Chat 一样不加载节点角色。不能装配会话环境而改用原生默认发现时，反馈会列出未显式装配的原角色扩展；默认发现不代表这些扩展已加载，也不改变原执行归属。Resume 不新建 Run、执行或委派，不重放 trigger config，也不接管或跨宿主迁移 Run。本次不处理运行期间动态修改来源 Task 配置的冲突，也不引入配置快照或热更新协调。
 
 ### 共享 Bot 指南业务
 
