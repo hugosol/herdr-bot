@@ -284,9 +284,9 @@ class ChiefRun(Scenario):
         self.own_agent(chat)
         del self.first[marker]
 
-    def own_agent(self, chat, start=0):
-        event = until('owned toolkit launch ready PID', lambda: next((event for event in
-            self.accepted_events(chat['sessionId'], start) if event['kind'] == 'launch_ready'), None), self.args.timeout)
+    def own_agent(self, chat, start=0, phase='launch_ready'):
+        event = until('owned toolkit ' + phase + ' PID', lambda: next((event for event in
+            self.accepted_events(chat['sessionId'], start) if event['kind'] == phase), None), self.args.timeout)
         self.evidence.setdefault('ownedAgentProcesses', {})[chat['tabId']] = event
         handle = self.remember(event['data']['pid'])
         require(handle.alive(), ('agent exited before observation', event))
@@ -512,15 +512,23 @@ class ChiefRun(Scenario):
         agent = self.agent_processes[chat['tabId']]
         require(agent in handles and agent.alive(), ('lost owned agent exit handle', chat))
         begin = len(self.wire.records)
+        def ended():
+            return until('App agent released its own launch owner', lambda: next((event for event in
+                self.accepted_events(chat['sessionId'], begin) if event['kind'] == 'launch_ended'), None), self.args.timeout)
+        if self.host == 'app' and self.agent == 'pi':
+            # Pi can terminate before a best-effort HTTP withdrawal is sent.
+            # Explicitly transfer away from this known native session while the
+            # process is still live; never synthesize a lifecycle event.
+            self.native_command(self.args.core, 'send', '--json', target['address'], '--', '/new')
+            self.note('owned-app-pi-launch-transfer', report=ended())
+            require(agent.alive(), 'the old Pi launch owner was not withdrawn while its process was live')
         if self.host == 'app':
             self.core('keys', target['address'], 'ctrl+d')
         else:
             self.herdr('agent', 'send-keys', chat['paneId'], 'ctrl+d')
         until('owned native agent gracefully exited', lambda: not agent.alive(), self.args.timeout)
-        if self.host == 'app':
-            ended = until('App agent released its own launch owner', lambda: next((event for event in
-                self.accepted_events(chat['sessionId'], begin) if event['kind'] == 'launch_ended'), None), self.args.timeout)
-            self.note('owned-app-launch-ended', event=ended)
+        if self.host == 'app' and self.agent != 'pi':
+            self.note('owned-app-launch-ended', report=ended())
         if chat['tabId'] in self.layout()[chat['workspaceId']]:
             if self.host == 'app':
                 require(self.app_do('tab.close', id=chat['tabId'], confirmed=True)['ok'], chat)
@@ -591,7 +599,7 @@ class ChiefRun(Scenario):
             self.own_tui_recovery(chat, new[0][1], original)
         elif not degraded:
             recovered = {'tabId': new[0][1], 'sessionId': identity}
-            handle = self.own_agent(recovered, wire_start)
+            handle = self.own_agent(recovered, wire_start, phase='launch_identity')
             require(handle.pid != self.agent_processes[chat['tabId']].pid, ('same process after Resume', recovered))
             owned_event = self.evidence['ownedAgentProcesses'][recovered['tabId']]
             require(Path(owned_event['data']['sessionFile']).resolve() == original.resolve(), owned_event)

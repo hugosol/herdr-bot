@@ -157,7 +157,7 @@ python scripts/accept-paired-chief-run.py `
 
 - 每格启动实际所选 Herdr 和 OMP／Pi、生产 HTTP、toolkit 和实际 TUI 客户端／App 窗口。只操作本格创建的容器、Pane、任务、Run、HOME、APPDATA、XDG、agent 和 core；不读用户认证，不接现存 Chat。每格保存真实安装指纹、公开与持久关联、原生历史、终端调用的请求／处置／原始回执及所属进程退出证据。`nativeRoot` 另保留本次独占短路径状态根，供复核后删除；留存目录不是进程退出证明，未确认退出的格不会通过。
 - 第一条业务消息经实际宿主终端提交。外部 CLI 门闩在转发前读回 Chat／原生 header／Run 或委派关联，正常调用不改参数或回执。有分派的普通 Chat 第一次明确拒绝时不调用宿主，下一次通过实际宿主，同一目标／原文只有一次进入历史；比较独立创建、发起和输入次数。原分派 chief 保留为同名存活对照，更换当前 chief 后核对实际输入与报告读回。受控故障分别拒绝 chief／Run 通知，确认报告已保存且观察 46 秒无重投；成功业务和失败证据分开记录。
-- 聚焦以所选宿主原生布局与焦点为准，不声称 Windows 置前。通过原生输入正常退出旧 agent 后再恢复；App 另核对实际会话自行发出的 `launch_ended`，不替它上报。原生 Resume 后用真正的 manager／node 扩展工具读 Run 和交接，检查原执行；不做跨端 Run 迁移。另以明确聚焦失败核对没有复发 Resume，删除自有来源 Task 后检查降级提示、无显式角色装配和原 Run 不变。独立 CLI 门闩回归：把 `PAIRED_NATIVE_RECEIPT` 指向本次 `debug/examples/paired_native_receipt.exe` 后执行 `python scripts/accept-paired-chief-run.test.py`。
+- 聚焦以所选宿主原生布局与焦点为准，不声称 Windows 置前。通过原生输入正常退出旧 agent 后再恢复；App 另核对实际会话自行发出的 `launch_ended`，不替它上报。App Pi 用原生 `/new` 先离开旧 Session、确认旧 owner 撤回后再退出；此格只证明已撤回 owner 后的恢复，不认证强制关闭或未送达退出上报后的旧 owner 回收。原生 Resume 后用真正的 manager／node 扩展工具读 Run 和交接，检查原执行；不做跨端 Run 迁移。另以明确聚焦失败核对没有复发 Resume，删除自有来源 Task 后检查降级提示、无显式角色装配和原 Run 不变。独立 CLI 门闩回归：把 `PAIRED_NATIVE_RECEIPT` 指向本次 `debug/examples/paired_native_receipt.exe` 后执行 `python scripts/accept-paired-chief-run.test.py`。
 - 场景使用数值回环的受控机械 provider 和受控外部拒绝。它能驱动真实扩展工具、持久报告和手动推进的生产机制，不证明真实模型对需求的理解、结果质量或外部传播。该命令不触发真实模型网络；只有逐次明确授权的配置才能用于另外的真实网络验收，缺授权和未跑的原生格子均不能由全仓绿补齐。
 
 ### Chief 委派与报告（S1）
