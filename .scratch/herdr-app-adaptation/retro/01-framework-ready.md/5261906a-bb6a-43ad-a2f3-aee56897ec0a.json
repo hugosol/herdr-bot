@@ -1,0 +1,66 @@
+{
+  "feature": "herdr-app-adaptation",
+  "ticket": "01-framework-ready.md",
+  "run_id": "5261906a-bb6a-43ad-a2f3-aee56897ec0a",
+  "parent_session_id": "01a1f517-4f9b-776b-9d5f-858f9dc06c2b",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-19T18-35-08-059Z_01a1f517-4f9b-776b-9d5f-858f9dc06c2b.jsonl",
+  "workspace": "E:\\Developer\\myhub\\herdr-bot",
+  "tool_call_id": "4fbdec8f-17ce-41ee-81ca-9e71cca8def5",
+  "started_at": "2026-11-19T18:42:16.965Z",
+  "tdd_status": "completed",
+  "retro_status": "failed",
+  "tdd_finished_at": "2026-11-19T19:15:37.998Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "01-framework-readymd-4fbdec8f-17ce-41ee-81ca-9e7",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\herdr-app-adaptation\\implementation\\01-framework-ready.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"toolkit\",\n    \"branch\": \"hyper/herdr-app-adaptation/01-framework-ready-109b34-5e2c44e05019\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-dhoVtl\"\n  }\n]\n协调仓集成分支：dev\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\herdr-app-adaptation\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\herdr-app-adaptation\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\herdr-app-adaptation\\implementation\\01-framework-ready.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"toolkit\",\n    \"branch\": \"hyper/herdr-app-adaptation/01-framework-ready-109b34-5e2c44e05019\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-dhoVtl\"\n  }\n]\n协调仓集成分支：dev\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\herdr-app-adaptation\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\herdr-app-adaptation\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement framework-ready ticket in toolkit worktree",
+    "lastIntent": "Awaiting the last owning partition",
+    "exitCode": 0,
+    "output": "已提交 `2a2d926bdc`，未合入 `dev`。\n\n- **P16–P18**：新增会话级 `session_ready`，不改变既有启动、扩展初始化、登记或活动状态语义。真实 OMP 在启动 hook 挂起时不发布，原生提交闸门打开后才发布；真实 Pi 首启与恢复均验证了终端输入及原生历史，后续原生模态证明 ready 不保证持续可输入。\n- **P19**：生产 connect-bot 通过现有事件接口上报启动关联、真实会话 ID、原生文件路径（可用时）和 PID。owner 切换或结束后撤回证据并取消待完成的请求，替换 owner 不能复用关联，普通登记仍可用。已与 03 对齐协议；硬退出时仍由接收端验证目标和进程是否存活。\n\n最终验证通过：typecheck、`check:integrations`、framework **768/768**、integration **72/72**、connect-bot **174/174**、受影响原生 dock **21/21**。环境为 Bun 1.4.4、OMP 19.0.0、Pi 1.5.2 / Node 24.18.0；新增原生用例使用受控 loopback provider 和 HTTP peer，不构成 Herdr TUI/App 配对验收。",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 2000704,
+    "tokens": 507673,
+    "requests": 164,
+    "contextTokens": 242375,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.2-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.2-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.2-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 451725,
+      "output": 55948,
+      "cacheRead": 25948928,
+      "cacheWrite": 0,
+      "totalTokens": 26456601,
+      "reasoningTokens": 13545,
+      "cost": {
+        "input": 0.9034499999999998,
+        "output": 0.5594800000000003,
+        "cacheRead": 2.594892800000001,
+        "cacheWrite": 0,
+        "total": 4.0578228
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-19T18-35-08-059Z_01a1f517-4f9b-776b-9d5f-858f9dc06c2b\\01-framework-readymd-4fbdec8f-17ce-41ee-81ca-9e7.md",
+    "outputMeta": {
+      "lineCount": 6,
+      "charCount": 564
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "01-framework-readymd-4fbdec8f-17ce-41ee-81ca-9e7",
+  "session_id": "01a1f51d-db2c-71cd-a0cb-d65cb7ca82ec",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-19T18-35-08-059Z_01a1f517-4f9b-776b-9d5f-858f9dc06c2b\\01-framework-readymd-4fbdec8f-17ce-41ee-81ca-9e7.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-dhoVtl",
+  "retro_error": "schema_violation: retro_markdown: expected string, received object",
+  "retro_finished_at": "2026-11-19T19:15:42.689Z"
+}
