@@ -39,6 +39,52 @@
 
 先构建本 worktree 的 `frontend` 与生产 `herdr-bot`，并使用独占绝对 `CARGO_TARGET_DIR`。运行 `python scripts/accept-herdr-host-selection.py --backend <herdr-bot.exe> --herdr <herdr.exe> --app <herdr-app.exe> --core <hc.exe> --evidence-dir <新的证据目录>`，所有路径显式且绝对；证据目录使用 `%TEMP%` 下简短的独占名称，避免 App 的 `herdr-app.sock` 路径超过 Windows Unix socket 长度限制。专项用独占 TUI、App 和两个 core；从公开 HTTP 触发放置，以实际容器、Tab、Pane、终端归属及 core-local ID 碰撞核对配置路由和错配拒绝。固定操作分别核对脚本标记、HTTP 回执与独立宿主探测（成功脚本不必启动或停止进程），退出用所属进程和 core／holder 句柄确认。它不证明真实 Task 初始化或业务输入；有关 agent 行为另验。
 
+### 配对 Task 发起、ready 与初始输入（S1／S2／S3）
+
+在 Windows 交互桌面上，从参与的 `herdr-bot` worktree 根执行。准备 Windows Chrome 或已安装的 Playwright Chromium、Bun 1.4.4、已安装的 OMP／Pi、Herdr TUI／App／core；两套宿主不得连到已有会话。下面两个 worktree、配置、后端和证据路径必须是绝对路径；完整执行的 Cargo 目录必须是新建或空目录，证据目录不能已存在：
+
+```powershell
+$Bot = 'C:/absolute/herdr-bot-worktree'
+$Toolkit = 'C:/absolute/toolkit-worktree'
+$Config = 'C:/absolute/paired-launch-owned.json'
+$Evidence = 'C:/absolute/paired-launch-new-evidence'
+$env:CARGO_TARGET_DIR = 'C:/absolute/paired-launch-exclusive-cargo'
+$Backend = Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe'
+Set-Location $Bot
+python scripts/accept-paired-task-launch.py `
+  --herdr-bot-worktree $Bot --toolkit-worktree $Toolkit --backend $Backend `
+  --isolated-config $Config --combinations all --cases all --evidence-dir $Evidence
+```
+
+`$Config` 是本轮的显式安装选择，不是现有用户配置的副本。填入实际版本与路径（示例版本不表示支持范围）：
+
+```json
+{
+  "authorization": "owned-local-mechanics-only",
+  "herdr": "C:/absolute/herdr.exe",
+  "app": "C:/absolute/herdr-app.exe",
+  "core": "C:/absolute/hc.exe",
+  "node": "C:/absolute/node.exe",
+  "bun": "C:/absolute/bun.exe",
+  "chrome": "C:/absolute/chrome.exe",
+  "omp_cli": "C:/absolute/runtime/omp.cmd",
+  "pi_cli": "C:/absolute/runtime/pi.cmd",
+  "omp_package": "C:/absolute/runtime/node_modules/@oh-my-pi/pi-coding-agent",
+  "pi_package": "C:/absolute/runtime/node_modules/@earendil-works/pi-coding-agent",
+  "omp_state_extension": "C:/absolute/owned-omp/herdr-omp-agent-state.ts",
+  "pi_state_extension": "C:/absolute/owned-pi/herdr-agent-state.ts",
+  "toolkit_baseline": "C:/absolute/original-toolkit-checkout",
+  "versions": {"herdr":"0.9.5","app":"0.1.16","core":"0.1.21","node":"v24.18.0","bun":"1.4.4","omp":"19.0.0","pi":"1.5.2"}
+}
+```
+
+两 `.cmd` 必须解析到声明的同一目录下的实际 npm 安装。按发布版本取两份官方 TUI 状态扩展；可把 HOME／USERPROFILE、APPDATA、LOCALAPPDATA、`HERDR_CONFIG_PATH` 指向自有目录并分别设置独占 `PI_CODING_AGENT_DIR` 或 `OMP_CODING_AGENT_DIR`（OMP 还需建 `agent/extensions`，不要同时选 Pi 目录），再从安装二进制运行 `herdr integration install pi`／`herdr integration install omp`。Runner 不安装宿主、不找用户认证；业务只访问数值回环的自有机械文本 provider，证明原生模型请求、Skill 展开与原生历史，不证明真实模型判断。App 四组合格中的两个 App 格把 TUI 扩展路径明确指向未安装文件，不加载 TUI 扩展。
+
+- 专项保留 frozen 依赖、页面和安全后端构建以及各仓独立原始日志。Toolkit 全量与受影响 lifecycle/connect-bot docks 只接本轮 `safe_shutdown_shell.exe`；`HARNESS_ACCEPTANCE_EVIDENCE_DIR` 将安装版本证据留在本轮目录。生产后端仅接自有实例上的产品 HTTP／页面，不触发系统关机。
+- 默认名 `bot-playground`、另一个名字、zone 名称对应“当前”、旧配置省略 backend、仅切换 backend、core-local 地址碰撞却属于另一个实例分别取证。独立观察真实 Tab／Pane、core ID 与终端标签、实际 agent 进程和 cwd、模型/thinking、Suite 及固定扩展运行、命名模板、Skill 展开和原生文件，再与公开状态核对。
+- 公开 framework 订阅和真实启动钩子记录 OMP composer 闸门与 Pi 初始化。原生确认在 ready 后打开；只延迟转发生产 ready 上报来确定测试时序，不更换 editor/handler，不改原生状态或强制输入。保留实际拒绝进程的完成时间和同一目标下一次调用时间；仅显式 Escape 关闭自有确认。第二次拒绝、关闭／换原生目标、原页面刷新分别核查外部提交次数与原生记录。必要的断线、部分写入、超时及模糊回执由命名控制边界覆盖；`started:false` 另用真实发送后的受控回执，分别保留原始 core 响应与业务历史，不以没有即时历史推断未提交。
+- `--native-only` 使用已经构建的同一 worktree 产物；`--checks-only` 仅跑独立回归；用 `--combinations pi-app --cases app-modal-release` 选择诊断格。所有子集均保留缺格、非零退出，不能替代整票。`summary.json` 区分失败和未验证；每格另有原生记录、HTTP、运行日志、可取得的页面截图和所属进程退出证据。保留独占状态根供复核；确认对应进程实际退出后才可删除，不用目录可删除或旧实验代替退出或当前验证证据。
+
 ### 同一历史 Chat 的双端恢复（S1／S3）
 
 从参与的 `herdr-bot` worktree 根运行。先在 `frontend` 与 toolkit 根各执行 `bun install --frozen-lockfile`（Bun 1.4.4），然后在 PowerShell 中构建并启动专项：

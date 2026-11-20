@@ -399,7 +399,7 @@ working_directory = {q(self.root)}
 script = {q(denied)}
 working_directory = {q(self.root)}
 [herdr]
-backend = {q(host)}
+{f'backend = {q(host)}' if host is not None else ''}
 workspace_name = {q(name)}
 executable = {q(self.recorders['tui'])}
 app_executable = {q(self.recorders['app'])}
