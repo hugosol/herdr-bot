@@ -47,6 +47,11 @@ class DeliveryCheck(unittest.TestCase):
             report = json.loads((evidence / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(report["assets"][output]["sha256"], expected)
             self.assertTrue(any(row["target"] == "generated/" + output for row in report["references"]))
+            self.assertTrue(any(
+                row["source"] == "generated/skills/poteto-mode/SKILL.md"
+                and row["target"] == "generated/skills/principle-prove-it-works/SKILL.md"
+                for row in report["references"]
+            ))
             self.assertEqual(report["human"], {"H1": "unverified", "H2": "unverified"})
             occupied, _ = run("good")
             self.assertNotEqual(occupied.returncode, 0)

@@ -296,7 +296,17 @@ class PackageCheck:
                     self.errors.append(f"unreadable embedded probe: {source}: {literal}")
                 else:
                     self.report["references"].append({**row, **fingerprint(body[1])})
-            elif kind in ("setup-product", "project-product", "skill-template"):
+            elif kind == "principle-index":
+                text = content.decode("utf-8")
+                heads = re.search(r"^## Principles\r?\n(.+?)(?=^## |\Z)", text, re.M | re.S)
+                titles = re.findall(r"^- \*\*(.+?)\*\*([^\r\n]*)", heads[1] if heads else "", re.M)
+                if not titles:
+                    self.errors.append(f"unreadable principle index: {source}")
+                for title, description in titles:
+                    named = re.search(r"\*\*(principle-[a-z-]+)\*\*", description)
+                    slug = named[1] if named else "principle-" + re.sub(r"[^a-z -]", "", title.lower()).replace(" ", "-")
+                    self.reference(source, title, f"{target}/{slug}/SKILL.md", allowed)
+            elif kind in ("setup-product", "project-product"):
                 self.report["non_package_references"].append(row)
             else:
                 self.errors.append(f"unknown reference category: {kind}")
