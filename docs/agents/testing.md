@@ -136,6 +136,30 @@ python scripts/accept-paired-close-reminders.py `
 - 提醒按 OMP／Pi × TUI／App × 自定义／捆绑／关闭运行，每格在实际 `working` 时切换焦点，再让同一真实轮次完成；后台完成观察一次 done，前台完成观察抑制。TUI 在连接客户端前按独占标题认领实际窗口，此后按窗口句柄和所属 PID 核对焦点。原生状态出现后继续录音四秒，覆盖 Windows 延迟启动播放器和完整捆绑资源；静音对照还检查信号幅度，避免把未匹配的声音计为静音。真实待审批 UI 可见且保持时观察一次 request，选择原生 No 后单独留档。公开会话状态、Pane/terminal 原生观察、CLI 请求、输入／释放时间、两种音效原文及哈希、WAV 和波形匹配时间分别保存；波形匹配不是用户的听音结论。
 - `--close-cases app-pi-last-tab --reminder-cases none --native-only` 或 `--close-cases none --reminder-cases app-omp-custom --native-only` 用于已有本 worktree 构建产物的定向诊断；所有未运行格仍在 `summary.json`，定向诊断始终不返回全量通过。运行会保留未确认退出或证据归档失败的独占环境，供定位；不操作用户会话。`automatedPassed` 只代表自动范围，唯一人工项 `P48Listening` 始终待确认：用每格时间线与 WAV 核对两端实际可听和触发场景，仅由用户确认，不能提前计为通过。
 
+### 配对 chief 与 Run 真实链路（P23／P37–P42／P52／P54–P55）
+
+在 Windows 交互桌面、参与的 `herdr-bot` worktree 根运行。准备可运行的 Chrome、Bun 1.4.4 及实际安装的 Herdr TUI／App／core、OMP／Pi；只在桌面与检查资源独占时运行。隔离配置是一个 **不含认证** 的 JSON 对象：`herdr`、`app`、`core`、`node`、`bun` 是各已安装可执行文件；`omp_package`、`pi_package` 是 PATH 上的 `omp.cmd`／`pi.cmd` 对应的包目录；`omp_state_extension`、`pi_state_extension` 是与 TUI 版本对应的官方扩展文件；`toolkit_baseline_root` 是解析 toolkit 历史基线外部路径的原仓根，不替换本次 worktree 源码。配置的每个值均为绝对路径。
+
+```powershell
+$bot = 'C:/absolute/herdr-bot-worktree'
+$toolkit = 'C:/absolute/toolkit-worktree'
+$config = 'C:/absolute/chief-run-isolated-installations.json'
+$evidence = 'C:/absolute/chief-run-new-evidence'
+$env:CARGO_TARGET_DIR = 'C:/absolute/chief-run-new-cargo-target'
+$backend = Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe'
+Set-Location $bot
+python scripts/accept-paired-chief-run.py `
+  --herdr-bot-worktree $bot --toolkit-worktree $toolkit --backend $backend `
+  --isolated-config $config --scenarios all --evidence-dir $evidence
+```
+
+完整调用要求新的证据目录和新的或空的绝对 Cargo 目录。先按冻结锁文件安装两仓依赖，构建页面、生产 backend、配对安全关机壳和 CLI 记录器，再运行本页三个 herdr-bot 入口、toolkit `typecheck`／`test:framework`／`check:integrations`／`test` 和 connect-bot、报告与 Run 角色 docks。关机相关 dock 只用同次构建的安全壳。原始入口日志、后端分目标和 Playwright 日志，与 `summary.json` 的命令、来源和独立退出码一起归档。可以用 `--scenarios tui-omp,app-pi --native-only` 定向复跑已有构建，或 `--checks-only` 单独复跑仓库检查；两种模式均保留缺格且不认证整票。
+
+- 每格启动实际所选 Herdr 和 OMP／Pi、生产 HTTP、toolkit 和实际 TUI 客户端／App 窗口。只操作本格创建的容器、Pane、任务、Run、HOME、APPDATA、XDG、agent 和 core；不读用户认证，不接现存 Chat。每格保存真实安装指纹、公开与持久关联、原生历史、终端调用的请求／处置／原始回执及所属进程退出证据。`nativeRoot` 另保留本次独占短路径状态根，供复核后删除；留存目录不是进程退出证明，未确认退出的格不会通过。
+- 第一条业务消息经实际宿主终端提交。外部 CLI 门闩在转发前读回 Chat／原生 header／Run 或委派关联，正常调用不改参数或回执。有分派的普通 Chat 第一次明确拒绝时不调用宿主，下一次通过实际宿主，同一目标／原文只有一次进入历史；比较独立创建、发起和输入次数。原分派 chief 保留为同名存活对照，更换当前 chief 后核对实际输入与报告读回。受控故障分别拒绝 chief／Run 通知，确认报告已保存且观察 46 秒无重投；成功业务和失败证据分开记录。
+- 聚焦以所选宿主原生布局与焦点为准，不声称 Windows 置前。通过原生输入正常退出旧 agent 后再恢复；App 另核对实际会话自行发出的 `launch_ended`，不替它上报。原生 Resume 后用真正的 manager／node 扩展工具读 Run 和交接，检查原执行；不做跨端 Run 迁移。另以明确聚焦失败核对没有复发 Resume，删除自有来源 Task 后检查降级提示、无显式角色装配和原 Run 不变。独立 CLI 门闩回归：把 `PAIRED_NATIVE_RECEIPT` 指向本次 `debug/examples/paired_native_receipt.exe` 后执行 `python scripts/accept-paired-chief-run.test.py`。
+- 场景使用数值回环的受控机械 provider 和受控外部拒绝。它能驱动真实扩展工具、持久报告和手动推进的生产机制，不证明真实模型对需求的理解、结果质量或外部传播。该命令不触发真实模型网络；只有逐次明确授权的配置才能用于另外的真实网络验收，缺授权和未跑的原生格子均不能由全仓绿补齐。
+
 ### Chief 委派与报告（S1）
 
 先构建本 worktree 的页面，用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test chief_delegation -- --nocapture`。公开 chief／Chat／历史／报告 HTTP 配合独占 TUI、App/core 记录确认委派授权、发起目标和外部输入；业务输入门闩期间读回已有原生身份的历史与委派关联。更换当前 chief 后保留原 Tab，从真实通知目标及报告读回确认路由。记录型宿主拒绝通知时，保留原报告，并在至少 46 秒窗口核对没有额外输入、重投或复发派；这不代表真实安装宿主业务链路已验收。
