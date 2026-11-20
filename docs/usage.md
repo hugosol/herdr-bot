@@ -211,6 +211,8 @@ TUI 的 Task 固定扩展向对应 Pane 报告 agent 状态；App 的 OMP／Pi �
 
 声音只由当前宿主决定。TUI 使用自己的 `[ui.sound]`，App 使用自己的 `settings.json` 中的 `sounds`；两端各自处理自定义声音和焦点抑制。herdr-bot 不播放声音；初始化 ready、connect-bot 会话状态和报告投递不是播音指令。复现和取证步骤见[原生提醒专项](agents/testing.md#原生提醒专项p47p48)。
 
+代码导航统一从 [`backend/src/herdr/native_status/mod.rs`](../backend/src/herdr/native_status/mod.rs) 开始：这里负责宿主状态扩展选择，并标明两端原生状态路径、声音配置与验收入口；`tui.rs` 集中识别官方 TUI 状态扩展。扩展路径与执行角色适用性仍归 Task 元数据，实际播放仍归外部宿主。各发起／恢复入口在原有位置执行选择，保留原校验顺序及 Resume 降级规则。
+
 ### server 固定操作
 
 在 `server` 内容页点击“启动”或“停止”，调用服务端预先配置的脚本。`[operations.start]`／`[operations.stop]` 可作为两端共享的固定绑定；如果两端需要不同脚本，另外成对声明 `[operations.app.start]`／`[operations.app.stop]`（两段均指定 `script` 与 `working_directory`），仅 App 模式使用该对绑定。

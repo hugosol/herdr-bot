@@ -434,7 +434,7 @@ mod degradation {
                     .filter(|extension| extension.applies_to(agent, role) && extension.kind == ExtensionKind::Fixed)
                     .cloned().collect(),
             };
-            env.select_host(herdr);
+            crate::herdr::native_status::select_host(herdr, &mut env);
             env.extensions.retain(|extension| match extension.check_entrypoint() {
                 Ok(()) => true,
                 Err(reason) => {

@@ -23,6 +23,8 @@
 
 专用夹具留在所属测试 module，只有跨业务使用的设施放入共享 support／common。`workflow_dispatch` 的组合入口为 `backend/tests/workflow/dispatch.rs`：用例按派发、材料、报告、生命周期等归组，静态定义用例位于 `scheduler`；其中保留 crate-scope `include!` 以维持既有 libtest 名称及子进程 `--exact` 选择。目录归属不要求每个目录对应独立 target。测试继续通过已有 interface；拆分文件不降低断言、改变故障预算或把受控 adapter 证据外推为真实宿主／模型验收。Vitest 与 Playwright 递归发现各自目录中的测试；`@time-contract` 与手动网络授权是独立于领域目录的运行分区。迁移路径时同时更新 import、源码／产物定位、证据清单、具名网络例外及命令选择器。
 
+读取交付配置的测试必须显式绑定所用夹具的宿主类型及可执行路径，不能只替换 TUI 的 `executable` 却继承交付配置的 `backend = 'app'`。`runtime_data` 的交付配置场景固定使用受控 TUI，不连接已安装的 App／core；实际双宿主行为由对应专项验证。
+
 ## 选择入口
 
 | 场景 | 入口 |

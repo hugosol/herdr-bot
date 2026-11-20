@@ -9,6 +9,7 @@ mod app;
 mod client;
 mod identity;
 pub(crate) mod launch;
+pub(crate) mod native_status;
 pub(crate) mod placement;
 
 pub use client::{CreatedTab, HerdrClient, HerdrError, NavigationTarget, Workspace};

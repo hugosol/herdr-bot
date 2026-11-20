@@ -239,7 +239,7 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
         let role = if target.map.is_some() { crate::tasks::catalog::ExecutionRole::NestedManager } else if target.end_node { crate::tasks::catalog::ExecutionRole::Standalone } else { crate::tasks::catalog::ExecutionRole::Node };
         let mut preset = state.tasks.catalog().and_then(|catalog| catalog.resolve_for_role(task, role)).map_err(|e| e.message())?;
         preset.env.suite_args = suite_args;
-        preset.env.select_host(&state.herdr);
+        crate::herdr::native_status::select_host(&state.herdr, &mut preset.env);
         preset.env.check_entrypoints()?;
         let mut child = match &target.map {
             Some(map) => Some(prepare_child(state, &mut candidate, id, map, &target, &mut effects, &mut stage).await?),

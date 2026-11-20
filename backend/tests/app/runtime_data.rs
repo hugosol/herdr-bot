@@ -131,6 +131,9 @@ fn configure_delivery(root: &Path, herdr: &HerdrFixture) {
         .as_table_mut()
         .unwrap()
         .insert("mdns".into(), toml::Value::Table(mdns));
+    // The delivered configuration may select App; this fixture owns only TUI.
+    // Pin both the host and its executable so no installed App/core is contacted.
+    config["herdr"]["backend"] = toml::Value::String("tui".into());
     config["herdr"].as_table_mut().unwrap().insert(
         "executable".into(),
         toml::Value::String(herdr.executable().to_string_lossy().into_owned()),

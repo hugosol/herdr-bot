@@ -170,7 +170,7 @@ pub(crate) async fn create_chat(state: AppState, input: CreateChatRequest) -> Re
         Ok(args) => args,
         Err(error) => return Err(Error::Task(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。")),
     };
-    preset.env.select_host(&state.herdr);
+    crate::herdr::native_status::select_host(&state.herdr, &mut preset.env);
     if let Err(message) = preset.env.check_entrypoints() {
         return Err(Error::Internal(
             "extension-entrypoint-invalid",
