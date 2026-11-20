@@ -626,6 +626,46 @@ async fn history_reads_only_resolve_workspace_names_without_any_persistent_enric
     assert!(!history_file.exists(), "empty history read initialized persistence");
 }
 
+// P46/S2: a readable, selected Suite is not a broken authority document.
+// Removing its declared extension after actual launch must not admit Resume to
+// the default-discovery path. The native cross-repo runner separately verifies
+// both faults against the installed host.
+#[tokio::test]
+async fn resume_rejects_unavailable_declared_suite_resources_before_starting() {
+    let root = TempDir::new("unavailable declared suite resource");
+    let herdr = HerdrFixture::new("unavailable suite herdr");
+    configure(root.path(), &herdr);
+    catalog(root.path(), "omp", "valid", true);
+    let entry = root.path().join("declared-available.ts");
+    fs::write(&entry, "export default function () {}\n").unwrap();
+    fs::write(root.path().join("suites.json"), json!({"suites":[{
+        "id":"selected", "name":"Selected", "agents":["omp"], "extensions":{"omp":[entry]}
+    }]}).to_string()).unwrap();
+    let session = "native-declared-resource-001";
+    native(root.path(), &herdr, "omp", session);
+    let panel = Panel::start(root.path(), &herdr);
+    let zones = post(&panel, "/api/zones", json!({"id":"owned-pstack-zone", "path":root.path()})).await;
+    let zone = zones["zones"][0]["id"].as_str().unwrap();
+    let mut preset = task("omp", "Known source");
+    preset["suite"] = json!("selected");
+    let saved = post(&panel, "/api/tasks", preset).await;
+    create(&panel, zone, saved["tasks"][0]["id"].as_str().unwrap()).await;
+    history(&panel, 1).await;
+    let history_path = root.path().join("history.json");
+    let before = fs::read(&history_path).unwrap();
+    fs::remove_file(entry).unwrap();
+    let offset = herdr.calls().len();
+    let reply = post_json_over_tcp(panel.addr, "/api/chats/resume", &json!({"sessionId":session}).to_string()).await;
+    let response: Value = serde_json::from_str(&reply.body).unwrap();
+    let calls = herdr.calls();
+    assert!(reply.status >= 400 && response["outcome"] == "failed" && response["stage"] == "settings",
+        "{response}; observed host calls: {:?}", &calls[offset..]);
+    assert!(response["message"].as_str().unwrap().contains("declared-available.ts"), "{response}");
+    assert!(response["target"].is_null(), "{response}");
+    assert!(!calls[offset..].iter().any(|c| matches!(c["kind"].as_str(), Some("tab_create" | "agent_start" | "agent_prompt"))), "{calls:?}");
+    assert_eq!(fs::read(history_path).unwrap(), before);
+}
+
 // S1 / B1 (P33/P36/P52): a known source with broken env config or Suite uses
 // default discovery, not deletion, and neither writes history nor replays input.
 // Breaking one real file after a successful launch distinguishes both a hard

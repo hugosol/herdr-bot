@@ -380,10 +380,18 @@ impl Tasks {
     /// Re-read authority immediately before launch; do not hold coordination
     /// across Herdr or any other external effect.
     pub fn prepare_environment(&self, task: &Task) -> Result<Vec<String>, TaskError> {
-        let suite = self.files.with(&[self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
+        let suite = self.resolve_environment_suite(task)?;
+        self.prepare_selected_environment(suite.as_ref(), task.agent)
+    }
+
+    pub(crate) fn resolve_environment_suite(&self, task: &Task) -> Result<Option<crate::suites::Suite>, TaskError> {
+        self.files.with(&[self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
             self.suites.resolve_selection(access, task.env.suite.as_deref(), task.agent)
-        }).map_err(TaskError::Unreadable)??;
-        self.suites.prepare_environment(suite.as_ref(), task.agent, &self.roots)
+        }).map_err(TaskError::Unreadable)?
+    }
+
+    pub(crate) fn prepare_selected_environment(&self, suite: Option<&crate::suites::Suite>, agent: Agent) -> Result<Vec<String>, TaskError> {
+        self.suites.prepare_environment(suite, agent, &self.roots)
     }
 
     /// 新增一个 Task；成功返回保存后的完整列表。

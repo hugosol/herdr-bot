@@ -411,11 +411,15 @@ mod degradation {
                 Err(error) => return Ok(self.default_discovery(
                     format!("无法读取来源 Task（ID {}）的会话环境（env config）：{}", task.id, error.message()), agent, associated_role)),
             };
-            let suite_args = match state.tasks.prepare_environment(task) {
-                Ok(args) => args,
+            let suite = match state.tasks.resolve_environment_suite(task) {
+                Ok(suite) => suite,
                 Err(error) => return Ok(self.default_discovery(
                     format!("来源 Task（ID {}）的 Suite 配置不可用：{}", task.id, error.message()), agent, associated_role)),
             };
+            // A known selection must not turn an unavailable declared resource
+            // into an unrelated native environment. No Herdr start has run yet.
+            let suite_args = state.tasks.prepare_selected_environment(suite.as_ref(), agent)
+                .map_err(|error| (error.code(), error.message()))?;
             let role = associated_role.unwrap_or_else(|| task.task_type.into());
             let env = self.environment(&catalog, agent, role, suite_args, &state.herdr);
             Ok(Some(crate::chats::agent_launch_args(&env, None)))
