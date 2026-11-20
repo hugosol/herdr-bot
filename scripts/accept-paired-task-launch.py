@@ -18,7 +18,8 @@ ADDITIONAL = {
     'legacy-tui': 'P2', 'backend-switch': 'P4', 'alternate-tui': 'P8', 'alternate-app': 'P8', 'foreign-core': 'P5',
     'tui-modal-release': 'P18/P20/P24/P25/P50', 'app-modal-release': 'P18/P20/P24/P25/P50',
     'tui-modal-twice': 'P24/P26/P50', 'app-modal-twice': 'P24/P26/P50',
-    'tui-modal-exit': 'P28', 'app-modal-replace': 'P19/P28', 'app-ambiguous-start': 'P27/P50',
+    'tui-modal-exit': 'P28', 'app-modal-exit': 'P28', 'app-modal-replace': 'P19/P28',
+    'app-ambiguous-start': 'P27/P50',
 }
 DOCKS = ('session-ready', 'binding-lifecycle', 'connect-bot-startup', 'connect-bot-lifecycle')
 

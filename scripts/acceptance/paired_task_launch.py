@@ -403,8 +403,11 @@ class Launch(Recovery):
             self.no_native_business(native)
             require(self.modal_screen(target), 'second attempt answered native modal')
         elif ending == 'exit':
-            self.herdr('tab', 'close', target['tabId'])
-            owned = self.handles['origin', native['pid']][1]
+            if self.host_kind == 'tui':
+                self.herdr('tab', 'close', target['tabId'])
+            else:
+                self.native(self.args.app, 'do', 'tab.close', json.dumps({'id': target['tabId'], 'confirmed': True}))
+            owned = self.handles[self.phase, native['pid']][1]
             until('original Task process really exited', lambda: not owned.alive(), seconds=12)
         elif ending == 'replace':
             self.dismiss(native, target)
@@ -448,7 +451,7 @@ class Launch(Recovery):
 
     def observe_inventory(self, before, expected, target):
         after = self.inventory(self.host_kind)
-        removed = self.label == 'tui-modal-exit'
+        removed = self.modal and self.label.endswith('-exit')
         exact = {key: sorted(values | ({target['tabId']} if key == expected and not removed else set())) for key, values in before.items()}
         require({key: sorted(values) for key, values in after.items()} == exact, ('unexpected native tabs or replacement process', before, after, target))
         external = self.calls_since({})
