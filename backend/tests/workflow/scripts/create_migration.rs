@@ -181,6 +181,16 @@ async fn migrated_workflow(fault: Option<&str>) {
         if !path.ends_with(".json") { assert_eq!(actual, original, "Unrelated definition changed: {path}"); continue; }
         let mut expected: Value = serde_json::from_str(original).unwrap();
         let mut current: Value = serde_json::from_str(&actual).unwrap();
+        if path == "meta-data/suites.json" {
+            // The archive predates the independent pstack release. Keep every
+            // existing Suite exact and account for just the new OMP-only entry.
+            expected["suites"].as_array_mut().unwrap().insert(3, json!({
+                "id": "pstack", "name": "pstack", "agents": ["omp"],
+                "skills": {"omp": ["${roots.toolkit}/pstack-suite/generated/skills"]},
+                "extensions": {"omp": ["${roots.toolkit}/pstack-suite/omp.ts", "${roots.toolkit}/pstack-suite/generated"]},
+                "prompts": [], "lsp": {}, "mcp": [],
+            }));
+        }
         // This archive predates the independent approval cutover. Preserve the
         // business interfaces, not obsolete report-policy-specific assertions.
         // The literal responsibility test above owns every current mode.

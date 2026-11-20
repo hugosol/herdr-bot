@@ -1,7 +1,9 @@
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
 import { startServer, type E2EServer } from '../support/support'
+import { zoneRowFor } from '../support/ui'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
@@ -51,6 +53,118 @@ test('P1 browser offers only one compatible Suite or none and never silently cha
   const read = await page.request.get(`${server.baseURL}/api/tasks/${id}`)
   expect(read.status()).toBe(200)
   expect((await read.json()).task.suite ?? null).toBeNull()
+})
+
+// pstack P1, approved S2: the built Task/zone page, public HTTP and the
+// external Herdr CLI. The shipped authority must offer pstack to OMP, not Pi.
+// A save-only compatibility check would let the same preview start a Pi Chat
+// after an offline Task edit; compare actual CLI calls and created Tabs.
+test('pstack P1: only OMP can select, save and launch the shipped pstack Suite', async ({ page }, info) => {
+  server = await startServer({ herdr: {} })
+  const root = path.dirname(server.configPath)
+  const definitions = path.join(root, 'meta-data')
+  fs.mkdirSync(definitions)
+  for (const name of ['suites.json', 'mcp.json']) {
+    fs.copyFileSync(new URL(`../../../meta-data/${name}`, import.meta.url), path.join(definitions, name))
+  }
+  // Isolate the CLI boundary: P1 exercises host compatibility, not native
+  // consumption of the delivered toolkit (which has separate acceptance).
+  const toolkit = path.join(root, 'toolkit')
+  const suite = path.join(toolkit, 'pstack-suite')
+  fs.mkdirSync(path.join(suite, 'generated', 'skills'), { recursive: true })
+  fs.writeFileSync(path.join(suite, 'omp.ts'), '// Controlled CLI does not execute extensions.\n')
+  fs.appendFileSync(path.join(root, 'paths.toml'), `toolkit = '${toolkit}'\n`)
+  const zonePath = path.join(root, 'pstack-zone')
+  fs.mkdirSync(zonePath)
+  execFileSync('git', ['init', '--quiet', zonePath])
+  await server.restart()
+  const baseURL = server.baseURL
+  const zone = 'pstack-p1'
+  const registered = await page.request.post(`${baseURL}/api/zones`, { data: { id: zone, path: zonePath } })
+  expect(registered.ok(), await registered.text()).toBe(true)
+
+  await page.goto(`${baseURL}?layout=expanded`)
+  await page.getByTestId('tab-tasks').click()
+  await page.getByTestId('task-create-open').click()
+  await page.getByTestId('task-name').fill('P1 pstack Task')
+  await page.getByTestId('task-next').click()
+  const choice = page.getByTestId('task-suite')
+  const pstack = choice.locator('option[value="pstack"]')
+  await expect(pstack).toBeEnabled()
+  await choice.selectOption('pstack')
+  await page.screenshot({ path: info.outputPath('omp-selects-pstack.png') })
+  await page.getByTestId('task-next').click()
+  await page.getByTestId('save-task').click()
+  await expect(page.getByTestId('task-dialog')).toBeHidden()
+  const { tasks } = await server.getTasks()
+  expect(tasks).toHaveLength(1)
+  const [saved] = tasks
+  expect(saved).toMatchObject({ agent: 'omp', suite: 'pstack' })
+  const { id, ...input } = saved
+  const taskURL = `${baseURL}/api/tasks/${id}`
+  const persisted = fs.readFileSync(server.storageFile, 'utf8')
+
+  await page.getByTestId('task-edit').click()
+  await page.getByTestId('task-agent').selectOption('pi')
+  await page.getByTestId('task-next').click()
+  await expect(choice).toHaveValue('pstack')
+  await expect(pstack).toBeDisabled()
+  await expect(page.getByTestId('task-suite-issue')).toContainText('Suite「pstack」不适用于 pi')
+  await page.screenshot({ path: info.outputPath('pi-rejects-pstack.png') })
+  await page.getByTestId('task-cancel').click()
+
+  const incompatibility = { code: 'task-suite-invalid', message: expect.stringContaining('Suite「pstack」不适用于 pi') }
+  const piInput = { ...input, agent: 'pi' }
+  const rejected = []
+  for (const [method, url] of [['POST', `${baseURL}/api/tasks`], ['PUT', taskURL]]) {
+    const response = await page.request.fetch(url, { method, data: piInput })
+    expect(response.status(), await response.text()).toBe(400)
+    const error = await response.json()
+    expect(error).toMatchObject(incompatibility)
+    rejected.push({ method, error })
+  }
+  expect((await (await page.request.get(taskURL)).json()).task).toEqual(saved)
+  expect(fs.readFileSync(server.storageFile, 'utf8')).toBe(persisted)
+
+  await page.getByTestId('tab-files').click()
+  await zoneRowFor(page, zone).getByTestId('zone-create-chat').click()
+  const dialog = page.getByTestId('chat-creation-dialog')
+  await dialog.locator('#chat-workspace-target').selectOption('default')
+  await dialog.getByTestId('chat-input').fill('P1 owned input')
+  await dialog.getByTestId('chat-create-submit').click()
+  await expect(dialog.getByTestId('chat-create-success')).toHaveText('创建成功，初始指示已提交')
+  const calls = server.herdrCalls()
+  const tabs = server.herdrTabs()
+  expect(tabs).toHaveLength(1)
+  expect(calls.filter(call => call.kind === 'agent_start')).toEqual([
+    expect.objectContaining({ agent_kind: 'omp', pane: tabs[0].pane_id }),
+  ])
+
+  const previewURL = `${baseURL}/api/chats/preview`
+  const selection = { zone, taskId: id }
+  const preview = await page.request.post(previewURL, { data: selection })
+  expect(preview.ok(), await preview.text()).toBe(true)
+  const { chatId, name } = await preview.json()
+  // Model an already persisted incompatible Task, bypassing save deliberately.
+  const stale = JSON.stringify({ tasks: [{ ...saved, agent: 'pi' }] })
+  fs.writeFileSync(server.storageFile, stale)
+  expect((await (await page.request.get(taskURL)).json()).task).toMatchObject({ agent: 'pi', suite: 'pstack' })
+  const refusedPreview = await page.request.post(previewURL, { data: selection })
+  expect(refusedPreview.status(), await refusedPreview.text()).toBe(400)
+  expect(await refusedPreview.json()).toMatchObject(incompatibility)
+  const refused = await page.request.post(`${baseURL}/api/chats`, {
+    data: { ...selection, chatId, expectedName: name, workspaceTarget: 'default', input: 'Must not start' },
+  })
+  expect(refused.status(), await refused.text()).toBe(400)
+  const launchError = await refused.json()
+  expect(launchError).toMatchObject(incompatibility)
+  expect(server.herdrCalls()).toEqual(calls)
+  expect(server.herdrTabs()).toEqual(tabs)
+  expect(fs.readFileSync(server.storageFile, 'utf8')).toBe(stale)
+  await info.attach('pstack-p1-http-and-herdr', {
+    body: JSON.stringify({ saved, rejected, previewError: await refusedPreview.json(), launchError, calls, tabs }, null, 2),
+    contentType: 'application/json',
+  })
 })
 
 // S1/P33: the browser must surface the server's real refusal and every Task,
