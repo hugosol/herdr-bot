@@ -5,6 +5,8 @@
 mod common;
 #[path = "dispatch/portability.rs"]
 mod portability;
+#[path = "dispatch/dynamic_zones.rs"]
+mod dynamic_zones;
 #[path = "recovery/recovery.rs"]
 mod recovery;
 #[path = "lifecycle/retry.rs"]
@@ -23,12 +25,18 @@ mod pi;
 mod roles;
 #[path = "reports/report_policy.rs"]
 mod report_policy;
+#[path = "reports/approval.rs"]
+mod approval;
+#[path = "reports/approval_restart.rs"]
+mod approval_restart;
 #[path = "../scheduler/maps/map_deletion.rs"]
 mod map_deletion;
 #[path = "../scheduler/maps/map_title.rs"]
 mod map_title;
 #[path = "history/history_integrity.rs"]
 mod history_integrity;
+#[path = "scripts/typescript.rs"]
+mod typescript;
 #[path = "scripts/rust_create.rs"]
 mod rust_create;
 #[path = "scripts/rust_save.rs"]
@@ -75,6 +83,8 @@ mod report_restart;
 mod resume_restart;
 #[path = "lifecycle/completion_gate.rs"]
 mod completion_gate;
+#[path = "lifecycle/end_node.rs"]
+mod end_node;
 
 // Crate-scope includes retain libtest names, including --exact child selectors.
 include!("support/dispatch.rs");

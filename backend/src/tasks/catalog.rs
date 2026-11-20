@@ -415,6 +415,14 @@ pub struct ResolvedEnvConfig {
 }
 
 impl ResolvedEnvConfig {
+    // TUI uses the official Pane lifecycle/session-reference hook. For App,
+    // OMP/Pi publish native OSC 7501 to the owning core terminal instead.
+    pub(crate) fn select_host(&mut self, herdr: &crate::herdr::HerdrClient) {
+        if herdr.is_app() {
+            self.extensions.retain(|extension| !matches!(extension.id.as_str(), "omp-herdr-agent-state" | "pi-herdr-agent-state"));
+        }
+    }
+
     /// Inspect this creation's extension files or directory roots for readability.
     /// Directory discovery and package interpretation remain owned by the target agent.
     /// Never import, execute, or probe extension services.

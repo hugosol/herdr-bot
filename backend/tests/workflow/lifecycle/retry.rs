@@ -26,7 +26,7 @@ async fn report(s: &Scenario, identity: &str, body: &str) -> Value {
 // loses report access. Use the real report/collect/complete HTTP interfaces.
 #[tokio::test]
 async fn late_old_reports_remain_history_without_controlling_new_execution() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let (started, old) = failed_execution(&s).await;
     let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
     let first = report(&s, "retry-old", "OLD-1: partial output only").await;
@@ -63,33 +63,34 @@ async fn late_old_reports_remain_history_without_controlling_new_execution() {
     tokio::time::sleep(Duration::from_millis(150)).await;
     assert_eq!(s.herdr.calls(), calls);
     assert_eq!(action(&s, "status", json!({"sessionId":"retry-manager"}), 200).await["snapshot"], retry["snapshot"]);
+    approve_execution(&s, "retry-new").await;
     let completed = action(&s, "complete", json!({"sessionId":"retry-manager","nodeId":"A","reason":"Accept only NEW-2"}), 200).await;
     assert!(completed["pendingReports"].get("A").is_none());
     report(&s, "retry-old", "OLD-4: after handoff").await;
     assert!(action(&s, "status", json!({"sessionId":"retry-manager"}), 200).await["pendingReports"].get("A").is_none());
 }
 
-// P14.02/P41.01: a third Chat cannot reuse the first execution's native
-// identity just because the second execution is now current. The host remains
-// real; only its external identity response is controlled.
 #[tokio::test]
-async fn retry_rejects_reuse_of_any_retained_native_identity() {
+async fn startup_retry_ignores_unreadable_history_and_preserves_old_execution() {
     let s = Scenario::new().await;
     let (_, old) = failed_execution(&s).await;
+    let historical = s.config.scheduler.run_directory.join("unreadable-history");
+    fs::create_dir(&historical).unwrap();
+    fs::write(historical.join("run.json"), b"{}").unwrap();
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"retry-second"},"native_cwd":s.data.path().join("node-zone")}));
-    let second = action(&s, "retry", retry_body(), 200).await;
-    action(&s, "fail", json!({"sessionId":"retry-manager","nodeId":"A","reason":"Second attempt also failed"}), 200).await;
-    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"retry-old"},"native_cwd":s.data.path().join("node-zone")}));
     let result = action(&s, "retry", retry_body(), 200).await;
-    assert_eq!(result["result"]["status"], "failed");
-    assert_eq!(result["result"]["failure"]["stage"], "identity");
-    assert_eq!(result["result"]["effects"]["sessionId"], "retry-old");
-    assert_eq!(result["result"]["effects"]["inputAttempted"], false);
-    assert!(result["snapshot"]["nodes"]["A"]["execution"]["chat"].is_null());
+    assert_eq!(result["result"]["status"], "running", "{result}");
+    assert_eq!(result["result"]["effects"]["associationSaved"], true);
+    assert_eq!(result["result"]["effects"]["inputSubmitted"], true);
+    assert_eq!(result["snapshot"]["nodes"]["A"]["execution"]["chat"]["sessionId"], "retry-second");
     assert_eq!(result["snapshot"]["nodes"]["A"]["previousExecutions"][0]["execution"], old);
-    assert_eq!(result["snapshot"]["nodes"]["A"]["previousExecutions"][1]["execution"], second["snapshot"]["nodes"]["A"]["execution"]);
-    assert_eq!(s.herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count(), 3);
-    assert_eq!(report(&s, "retry-old", "Original remains unambiguous").await["executionId"], old["id"]);
+    let calls = s.herdr.calls();
+    let prompts: Vec<_> = calls.iter().filter(|c| c["kind"] == "agent_prompt").collect();
+    assert_eq!(prompts.len(), 3);
+    let text = common::prompt_body(prompts[2]);
+    assert!(text.starts_with("/skill:teach NODE-FIXED\n\nNode ID: A\n"));
+    assert!(text.ends_with("\nNODE-INPUT\n第二行"));
+    assert_eq!(fs::read(historical.join("run.json")).unwrap(), b"{}");
 }
 
 // P13.03/P45.03/P41.01: controlled identity/history/submit failure must retain a
@@ -134,8 +135,7 @@ async fn retry_startup_failures_keep_both_attempts_and_do_not_rollback() {
         assert_eq!(serde_json::from_slice::<Value>(&fs::read(root.join("run.json")).unwrap()).unwrap(), retried["snapshot"]);
         let calls = s.herdr.calls();
         assert_eq!(calls.iter().filter(|c| c["kind"] == "agent_prompt").count(), if stage == "submit" { 3 } else { 2 });
-        let expected = if stage == "submit" { vec!["workspace_list", "tab_create", "agent_start", "agent_get", "agent_prompt"] } else { vec!["workspace_list", "tab_create", "agent_start", "agent_get"] };
-        assert_eq!(calls[before_calls..].iter().map(|call| call["kind"].as_str().unwrap()).collect::<Vec<_>>(), expected);
+        assert_retry_launch_calls(&calls[before_calls..], stage == "submit");
         tokio::time::sleep(Duration::from_millis(150)).await;
         assert_eq!(s.herdr.calls(), calls);
         assert_eq!(fs::read_to_string(artifact).unwrap(), "keep old side effects");
@@ -158,10 +158,10 @@ async fn retry_association_failure_exposes_new_attempt_without_overwriting_old_s
     let history = fs::read(root.join("history.jsonl")).unwrap();
     let release = s.data.path().join("retry-identity-release");
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"retry-uncommitted"},"native_cwd":s.data.path().join("node-zone"),"native_session_gate":{"wait_for_file":release,"timeout_ms":10000}}));
+    let before_retry = s.herdr.calls().len();
     let addr = s.server.addr();
     let request = tokio::spawn(async move { post_json_over_tcp(addr, "/api/workflow/manager/retry", &retry_body().to_string()).await });
-    common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().filter(|c| c["kind"] == "agent_get").count() == 3).await;
-    assert_eq!(s.herdr.calls().iter().filter(|c| c["kind"] == "agent_get").count(), 3);
+    assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().skip(before_retry).any(|call| call["kind"] == "agent_get")).await);
     fs::remove_file(&path).unwrap(); fs::create_dir(&path).unwrap();
     fs::write(release, b"release").unwrap();
     let response = request.await.unwrap();
@@ -231,13 +231,15 @@ async fn paused_retry_requires_explicit_resume_and_human_confirmation() {
 // Retry cannot create another Chat or alter the first finish/old failure facts.
 #[tokio::test]
 async fn terminal_run_rejects_retry_without_new_chat_or_record_changes() {
-    let s = Scenario::new().await;
+    let s = Scenario::without_output_contract().await;
     let (started, _) = failed_execution(&s).await;
     submit_report(&s, "retry-old", "Repaired result ready for manual handoff", true).await;
+    approve_execution(&s, "retry-old").await;
     action(&s, "complete", json!({"sessionId":"retry-manager","nodeId":"A","reason":"User supplied final result"}), 200).await;
     for (node, native) in [("B", "terminal-B"), ("C", "terminal-C")] {
         s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":native},"native_cwd":s.data.path().join("node-zone")}));
         s.dispatch("retry-manager", &[node]).await;
+        approve_execution(&s, native).await;
         submit_report(&s, native, "Final output verified", true).await;
         action(&s, "complete", json!({"sessionId":"retry-manager","nodeId":node,"reason":"Verified final output"}), 200).await;
     }
@@ -315,6 +317,21 @@ async fn unavailable_retry_targets_fail_without_fallback_or_reusing_old_executio
     }
 }
 
+// Readiness and submission may both verify the same new owner. Only
+// identity reads can repeat; creation and submission effects must not.
+fn assert_retry_launch_calls(calls: &[Value], submitted: bool) {
+    let [workspace, tab, start, rest @ ..] = calls else { panic!("missing retry launch: {calls:?}") };
+    assert_eq!([workspace, tab, start].map(|call| call["kind"].as_str()), [Some("workspace_list"), Some("tab_create"), Some("agent_start")]);
+    let identity = if submitted {
+        let (prompt, identity) = rest.split_last().expect("missing retry prompt");
+        assert_eq!(prompt["kind"], "agent_prompt");
+        assert_eq!(prompt["target"], start["name"]);
+        identity
+    } else { rest };
+    assert!(!identity.is_empty(), "retry must verify the new native owner");
+    assert!(identity.iter().all(|call| call["kind"] == "agent_get" && call["target"] == start["name"]), "unexpected retry calls: {calls:?}");
+}
+
 fn retry_body() -> Value {
     json!({"sessionId":"retry-manager","nodeId":"A","confirmed":true,"reason":"User checked old Chat and partial output; start independent work"})
 }
@@ -342,12 +359,14 @@ async fn retry_saves_new_identity_before_full_trigger_and_retains_original_facts
     assert_eq!(saved["nodes"]["A"]["previousExecutions"][0]["execution"], old);
     assert_eq!(saved["nodes"]["A"]["previousExecutions"][0]["failure"]["message"], "Original execution left partial output");
     let calls = s.herdr.calls();
-    assert_eq!(calls[before_calls..].iter().map(|call| call["kind"].as_str().unwrap()).collect::<Vec<_>>(), ["workspace_list", "tab_create", "agent_start", "agent_get", "agent_prompt"]);
+    assert_retry_launch_calls(&calls[before_calls..], true);
     let prompt = calls.iter().filter(|c| c["kind"] == "agent_prompt").nth(2).unwrap();
     let text = common::prompt_body(prompt);
     assert!(text.starts_with(&format!("/skill:teach NODE-FIXED\n\nNode ID: A\nNode: Worker A\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n", s.config.scheduler.run_instructions.display(), root.join("run.json").display(), root.join("history.jsonl").display(), root.join("messages.jsonl").display())));
     assert!(text.ends_with("\nNODE-INPUT\n第二行"));
-    assert_eq!(new["reportPolicy"], "auto");
+    assert_eq!(new["autoApproved"], true);
+    assert_eq!(new["approved"], false);
+    assert_eq!(new["approvalSource"], Value::Null);
     let launch = calls.iter().filter(|c| c["kind"] == "agent_start").nth(2).unwrap();
     assert_eq!(&launch["args"].as_array().unwrap()[..4], &[json!("--model"), json!("openai-codex/gpt-6.1-sol"), json!("--thinking"), json!("high")]);
     let native = common::read_json_lines(&s.herdr.path().join("started.jsonl")).pop().unwrap();

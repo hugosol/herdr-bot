@@ -39,6 +39,8 @@ class NativeTaskUpdateTransport(unittest.TestCase):
             with tempfile.TemporaryDirectory(prefix='outer-put-wire-') as directory:
                 proxy = WireProxy(f'http://127.0.0.1:{server.server_port}', Path(directory) / 'wire')
                 try:
+                    self.assertEqual(proxy.server.server_address[0], '127.0.0.1')
+                    self.assertTrue(49152 <= proxy.server.server_port <= 65535)
                     payload = b'{"prompt":"literal revised prompt","suite":"preserved-suite"}'
                     request = urllib.request.Request(proxy.base + '/api/tasks/owned-task', data=payload, method='PUT')
                     with urllib.request.urlopen(request) as response:

@@ -2,11 +2,39 @@
 
 本文记录日常操作细节；安装与启动见 [README](../README.md#构建与运行)。
 
-## Rust 空白 Bot 创建
+## 动态 TypeScript 脚本
 
-后端内置 `create_blank_bot`；定义保存使用原 `POST /api/scheduler/bots/save`，内容示例为 `{"name":"空白创建","when":"","plan_guide":"","node_guide":"","rust_script":"create_blank_bot"}`，独立传入新 Bot ID 和 `revision:null`。不填假 Task／Map，也不上传代码。未知能力或混合目标拒绝，原定义保留。仓库发布的创建图已迁移：create-blank-bot 保留身份并改绑 Rust，save_bot 引用新三空指南共享 Bot save-created-bot-guides；原空白创建 Task 已删除，不改无关历史或修订 replace-text。仓库更新不自动部署用户配置；材料格式与验证边界见[创建指南](create-bot-wrapper.md)。
+脚本功能要求后端进程的 PATH 中已有 Bun（开发验证版本 1.4.4）；不下载、不安装、不捆绑运行时。脚本放在配置 Bot 目录的同级 scripts 目录，默认是 meta-data/scripts。用户手工编辑文件和 Bot 的 script 字段，不新增脚本管理 UI。
 
-在真实 Map 的 node 中引用它，声明命名 `request` 输入及 `baseline`、`handoff` 输出；`node.input` 可为空，不是业务参数，报告策略只能 auto，自动关闭只能 false。request 的严格 JSON、普通 Task／Map 目标范围和授权见[业务材料](business-materials.md#request-与共同-baseline)。从现有 manager 发起 Run、准备输入并 dispatch 后，后台真实创建唯一绑定的三指南空字符串 Bot，保存真实 revision 与完整配置材料，再按原报告／collect 流程交接。manager 显式 complete 前下游仍不准入，报告或执行结束都不自动派发。
+例如在 meta-data/scripts/export-result.ts 中写入：
+
+```ts
+import { join } from "node:path";
+
+export default async function (context) {
+  const path = join(context.zone, `result-${context.executionId}.txt`);
+  await Bun.write(path, context.input);
+  return { status: "success", outputs: [{ id: "result", path }] };
+}
+```
+
+Bot 绑定 `"script": "export-result.ts"`，node 声明 `"output_rule": [{"id":"result"}]`。脚本默认导出函数，可同步或异步返回；最小结果是 `{status:"success"}` 或 `{status:"failure"}`。有文件交付时返回 `outputs:[{id,path}]`；path 为本机绝对路径。Rust 校验状态、ID 唯一且已声明、文件实际可读；成功必须交齐 output_rule，失败可以登记有效的部分输出。非零退出、异常或结果格式错误均不能报告成功。handoff、说明正文和 canComplete 不是通用脚本必填字段。
+
+context 提供 runId、executionId、zone（节点工作目录）、input（node.input 原文）、inputs（已解析命名地址）、outputRule 和 outputDirectory（本次 Run/execution 的材料目录）。输入绑定冻结不等于文件内容冻结。每次派发新建 Bun 进程，入口源码按接受时读取的内容执行；相对 import 仍从脚本原目录解析，依赖文件不作历史快照。修改用于之后的派发，不提供恢复旧脚本进程。
+
+脚本是可信代码，不是沙箱：可以使用 Bun 的文件、网络和进程能力，拥有后端账户权限；外部程序和 npm 依赖需预先准备，执行时禁止 Bun 自动安装包。console 日志与结果协议分离。修改 herdr-bot 系统定义应通过 context.host，而不是直接覆盖内部 JSON。
+
+两个发布业务脚本通过 host(operation,args) 复用宿主持久化：read_json({path})／parse_json({text}) 严格拒绝重复 JSON key，read_text({path}) 严格读取 UTF-8，target(唯一 Task／Map 定位) 读取完整目标，bot_read({id}) 返回 bot 与 revision，bot_save({id,content,revision}) 执行唯一绑定、活动定义保护和 revision 检查，material({id,document}) 安全新建并完整读回 JSON 材料。此处 content 不含顶层 id，revision 创建时为 null、修改时使用真实读回值。宿主操作失败会抛出带 code/message 的错误；它不是权限限制，也不是通用脚本的必经步骤。
+
+脚本 node 仅允许 `auto_approved:true`（省略时默认 true），不能配置人工批准；`auto_close` 只能 false，不能指定 manager Task。派发时本次 execution 的 `approved:false`、`approvalSource:null`；只有 Bun 正常退出、结果为合法 success 且全部输出校验通过后，才保存 `approved:true`、`approvalSource:"auto"` 并自动报告，不创建 Task／Chat／Session 或人工确认。失败保留真实部分效果和有效部分输出，不批准、不回滚、不自动重试。合法 fail／retry 保留旧执行，但新执行不继承旧批准或报告，须等待本次成功。
+
+批准与报告不自动完成节点、派发下游或结束 Run，仍需 manager 显式 complete。报告保存或通知失败不撤销真实业务效果及已保存的执行事实，也不自动重投。不要在脚本返回后继续后台写入，返回值应代表本次业务已结束。
+
+## 脚本空白 Bot 创建
+
+发布脚本位于 `meta-data/scripts/create-blank-bot.ts` 与 `save-bot-guides.ts`。Bot 定义使用 `script` 路径，与 `task_id`、`map_file` 互斥，例如 `{"name":"空白创建","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}`。现有创建图已绑定两份 TS 脚本，保留原 Bot 身份及修订 replace-text。V1 保存干净切换为仅 baseline、when_text、plan_guide_text、node_guide_text 四项输入，三份正文按命名原样写入字段；不消费指南 handoff 或批准凭据，不兼容旧七项输入。saved／handoff 输出身份不变。旧部署需手工把 `rust_script: "create_blank_bot"` 改为 `script: "create-blank-bot.ts"`，把 `rust_script: "save_bot_guides"` 改为 `script: "save-bot-guides.ts"`，并部署 scripts 目录；没有旧能力执行回退。历史 Run 不自动重写或重跑。
+
+在真实 Map 的 node 中引用它，声明命名 `request` 输入及 `baseline`、`handoff` 输出；`node.input` 可为空，不是业务参数，成果批准模式 `auto_approved` 只能 true，自动关闭只能 false。request 的严格 JSON、普通 Task／Map 目标范围和执行数据约束见[业务材料](business-materials.md#request-与共同-baseline)。从现有 manager 发起 Run、准备输入并 dispatch 后，后台真实创建唯一绑定的三指南空字符串 Bot，保存真实 revision 与完整配置材料，再按原报告／collect 流程交接。manager 显式 complete 前下游仍不准入，报告或执行结束都不自动派发。
 
 真实 Task／Map 的成功与拒绝实例、在途 HTTP 返回和实际文件消费者证据可用[后端隔离回归](agents/testing.md#rust-空白创建公开-http文件回归)重现。记录型外部宿主只证明协议；不等于真实 manager 会话或页面验收。
 
@@ -18,7 +46,7 @@
 
 `body` 必须包含 `background`（需求背景）、`execution`（执行对象）、`result`（`success`／`failure`／`blocked`）、`summary`（结果说明）、`deliverables`（交付物字符串数组）和 `pendingDecisions`（待用户判断事项字符串数组）。三个文字说明字段（background／execution／summary）不得为空；无交付物或待判断项时明确传空数组。后端逐字保存内容，自动生成不可变的 `id`、时间 `at`、真实 `delegationId` 和发送方 `from`，不接受指定报告 ID 或覆盖原报告。
 
-后端先将报告保存至历史目录旁的 `*.chief-reports.jsonl`，释放文件协调后才查询当前有效 chief 的真实原生身份并尝试一次通知；没有 chief、定位失败或通知失败都不撤销报告。响应分别包含 `saved`、`report`、`notification.status`／`reason` 和诊断写入状态；通知状态为 `submitted`（Herdr 确认输入提交）、`failed`（明确未提交）、`uncertain`（外部效果不可确认）或 `not-attempted`（未发起通知）。`submitted` 不等于可靠接收、已呈现、用户已读或业务验收。真实保存失败返回非成功状态、`saved:false` 和 `not-attempted`，不发送通知；HTTP 回执丢失时先查询持久事实，不应再次提交而制造另一份报告。
+后端先将报告保存至历史目录旁的 `*.chief-reports.jsonl`，释放文件协调后才按当前有效 chief 的原生会话身份定位，并只在 `[herdr].backend` 选定的宿主尝试一次通知。TUI 使用匹配的 Pane，App 使用已核对归属的 App Pane 与 core 终端；不会按标题、原分派者或另一个宿主补选目标。没有 chief、定位失败或通知失败都不撤销报告。响应分别包含 `saved`、`report`、`notification.status`／`reason` 和诊断写入状态；通知状态为 `submitted`（Herdr 确认输入提交）、`failed`（明确未提交）、`uncertain`（外部效果不可确认）或 `not-attempted`（未发起通知）。`submitted` 不等于可靠接收、已呈现、用户已读或业务验收。真实保存失败返回非成功状态、`saved:false` 和 `not-attempted`，不发送通知；HTTP 回执丢失时先查询持久事实，不应再次提交而制造另一份报告。
 
 `GET /api/chief/reports` 返回全部已存报告；`?sessionId=<发送方原生身份>` 过滤发送方。`GET /api/chief/reports/{id}` 读取同一稳定报告，包括新 chief 没有原始委派上下文时。原报告只读；没有更新／删除入口。初始化、后端重启、会话恢复和时间流逝均不扫描或补投；本入口没有后台重试。接收确认与用户明确批准的人工重发使用原报告 ID／内容，不应重新提交业务报告。
 
@@ -41,7 +69,7 @@
 
 ## 界面外观
 
-全站保留原有 NieR 米灰底色、浅骨色面板、深棕文字与方角控件，不切换为白底主题。名称、对象 ID、引用、标题、主要正文和输入内容维持原有中性色层级，不按对象类型整体换色。三种辅助色仅分配给部分小字号信息：孔雀青（`--nier-detail-label: #15534f`）用于 12–13px 配置字段标签、表头；深蓝（`--nier-resource: #254c76`）用于工作目录、扩展入口等小字号路径副行；棕灰（`--nier-description: #564a40`）用于小字号帮助、来源／执行说明和元数据。普通次要文字仍用原有 `--nier-muted`，不整体染色；字号、字重和字体不因配色调整而改变。颜色集中定义在 `frontend/src/app/styles.css` 的 `--nier-*` 变量中；原有链接／焦点／运行状态蓝色、成功绿、等待琥珀和失败红保持不变，选项扫动、反色选中与悬浮保留原高对比文字。状态仍由文字、符号和节点形状共同表达，不仅依赖颜色。Scheduler 的 `report_policy` 标识中，手动报告使用蓝色，自动报告使用琥珀色；`auto_close` 配色不受此互换影响。
+全站保留原有 NieR 米灰底色、浅骨色面板、深棕文字与方角控件，不切换为白底主题。名称、对象 ID、引用、标题、主要正文和输入内容维持原有中性色层级，不按对象类型整体换色。三种辅助色仅分配给部分小字号信息：孔雀青（`--nier-detail-label: #15534f`）用于 12–13px 配置字段标签、表头；深蓝（`--nier-resource: #254c76`）用于工作目录、扩展入口等小字号路径副行；棕灰（`--nier-description: #564a40`）用于小字号帮助、来源／执行说明和元数据。普通次要文字仍用原有 `--nier-muted`，不整体染色；字号、字重和字体不因配色调整而改变。颜色集中定义在 `frontend/src/app/styles.css` 的 `--nier-*` 变量中；原有链接／焦点／运行状态蓝色、成功绿、等待琥珀和失败红保持不变，选项扫动、反色选中与悬浮保留原高对比文字。状态仍由文字、符号和节点形状共同表达，不仅依赖颜色。Scheduler 的成果批准模式标识中，人工模式使用蓝色，自动模式使用琥珀色；`auto_close` 配色不受此互换影响。
 
 Zone 的 Git 变更文件名保留状态色例外：新增绿（`#0c5423`）、编辑／重命名蓝（`#10468a`）、删除红（`#8f1526`），变更文件行使用 600 字重；选中后仍保留类别色。变更祖先目录仍为蓝色，冲突仍用原警告色。diff 新增／删除内容分别使用浅绿／浅红行底及对应深色文字，手机端的 `+`／`−` 标记随行着色；未变更正文不改色。这套高辨识配色仅作用于文件浏览器，不修改全站成功、运行、失败等状态色。
 
@@ -101,7 +129,7 @@ Task 型 Bot 委派使用公开 HTTP：
 
 `GET /api/chief/delegations/{id}` 读取独立于 chief 上下文保存的委派事实、实际 `sessionId` 和最后观察到的创建状态；`GET /api/chief/delegations?sessionId=<真实原生身份>` 精确查询发送方关联。委派记录保存在历史文件旁的 `.delegations.json` 文件，经过统一文件持久化边界。业务完成情况不由启动回执判断；后端意外中断时最后记录的 `starting` 也不是确定未启动，须核查外部现场，不要重新派发冒充恢复。来源 chief、Bot、Task、cwd、业务输入、材料及执行 Chat 不依靠 Task 名称推断，不产生父 Run／node／execution。材料只绑定地址，不复制或冻结文件内容；之后更改内容由实际执行者观察。
 
-实际原生身份与批准目录在提交业务输入前核对并保存，`Resume` 原 Chat 继续使用原关联与既有来源 Task 环境恢复规则，不重放初始业务输入。其他使用相同 Task 发起的 Chat 不获得该关联。当前 chief 已更替时，旧进程即使还在线或握有旧预览，也不能再委派；已经提交外部的输入则不能声称被物理撤回。
+委派按所选宿主装配 Task 环境；App 不要求 TUI 专用状态扩展。业务输入不预填到启动参数，须等所选终端就绪、实际原生身份与批准目录核对、历史与委派关联保存后才提交。`Resume` 原 Chat 继续使用原关联与既有来源 Task 环境恢复规则，不重放初始业务输入。其他使用相同 Task 发起的 Chat 不获得该关联。当前 chief 已更替时，旧进程即使还在线或握有旧预览，也不能再委派；已经提交外部的输入则不能声称被物理撤回。
 
 ### chief 按 Bot 委派 Map Run
 
@@ -131,19 +159,31 @@ Bot 页面沿用公共导航样式，不覆盖外侧 Tab 的字号、选中标�
 
 Map 的空 `input_requirements` 与缺省值等价；节点编辑或删除不会为了空输入要求新增该字段，有内容时仍保留。输入声明编辑接口始终返回可编辑的输入要求文本。
 
-### 节点报告策略的显示
+### 成果批准配置与运行事实
 
-scheduler 的 Map 图和 workflow 的 Run 图以形状区分报告策略：`auto` 为圆角矩形，`manual` 为四角切角矩形；图内不增加策略文字，选择节点后在详情查看 `report_policy: auto/manual`。Map JSON 的可选 `report_policy` 默认 `auto`。Run 中已有执行的节点使用该执行保存的策略，旧执行未保存策略时按 `auto` 显示；尚未派发的节点使用当前 Map 配置。编辑 Map 不会改变已有执行的策略。`manual` 调用 report 后在宿主原生确认界面展示完整待发送 payload，用户须明确批准该次 payload，自然语言同意不授权发送。拒绝、确认超时（toolkit 的 reportConfirmationTimeoutMs 统一配置，默认 20000 毫秒）或无确认 UI 均不发送；等待用户重新请求，不自行重试。业务批准与管理者交接验收仍是独立要求，不增加后端审批状态或授权令牌。
+在 scheduler 选中 Map 的普通 node，修改“成果批准 · auto_approved”：省略时默认自动，显式自动为 `true`，人工为 `false`。保存后可重开核对；设置与内容 JSON 分开，保存冲突或无效 JSON 保留草稿，不静默覆盖。图中自动模式为圆角矩形、人工为切角矩形；形状表达模式，不表示已经批准。脚本只能自动批准，冲突草稿须显式修正；结束节点显示批准不适用，保留原配置以便取消结束节点后恢复。
+
+workflow 的“当前定义（非执行快照）”显示当前 Map 配置；“当前执行事实”显示本次派发冻结的 `autoApproved`、`approved` 与 `approvalSource`，旧执行历史分别显示各自保存的事实，不从当前 Map 补造。修改 Map 不改变在途执行；合法 retry 采用当前模式，新 execution 从未批准开始，不继承旧批准或报告。自动来源 `auto` 不是用户 Yes，人工来源 `manual` 表示人工批准；模式本身不等于批准。结束节点不显示伪批准或批准等待。
+
+人工模式由用户在节点 Chat 的宿主原生确认中明确 Yes；不是另设浏览器审批页面。报告发送不再要求确认，可随时报告进展、问题或失败。成果批准独立于报告和产物，不通知管理者、不自动完成节点或派发下游；manager 仍须核实最新报告的严格 canComplete:true 与约定交付后显式 complete。打开、轮询、刷新或查看历史均只读，不重派业务。不提供旧运行兼容或批量改写。
 
 节点报告先由后端保存，再向该 Run 自己的 manager 尝试一次通知；嵌套流程内部报告不会改投外层 manager。保存失败时不通知，保存成功后即使通知失败或请求断开，原报告与输出登记仍可从 Run 读回；通知不代表用户已读或节点已完成。外部通知不占用文件协调或 Run 操作锁，也不会触发后台重试、队列或补投。
 
+### 结束节点：交给用户继续
+
+在 scheduler 的 node 设置中标记 `end_node`，可将一个普通 Task 型末端节点设为结束节点。每张 Map 至多一个，不能是脚本型或 Map 型节点，也不能有后继。其余节点全部完成后才可发起；发起成功后，由 manager 显式结束 Run，不等待该 Chat 工作结束。
+
+workflow 显示“已交给用户”，而非把结束节点伪标为 completed。用户可打开或恢复该 Chat 继续任务；启动与恢复均不加载 node-chat，无需向 manager 报告，也不会因 Run 完成而自动关闭。节点业务输入和实际文件材料仍会传入。Run 的完成不是最终业务交付完成的证明。
+
+该 Map 作为子 Run 时仍遵守原有嵌套上报和父节点验收规则，不自动完成父节点。未标记结束节点的 Map 保持全部节点交接完成后才能 finish 的原规则。
+
 ### workflow 中的脚本执行
 
-脚本节点从已保存 execution 显示 `kind: rust_script`、固定能力 `rustScript`、执行 ID、业务生命周期、冻结的 `inputRule`／`outputRule` 与实际文件 `inputs`，不从当前 Bot 重建历史身份。当前定义仍单独标注，不是执行快照；脚本不消费 `node.input` 自然语言。
+脚本节点从已保存 execution 显示 `kind: typescript`、脚本路径 `script`、执行 ID、业务生命周期、冻结规则与实际文件 inputs，不从当前 Bot 重建历史身份。旧 `rust_script` 执行与来源只供历史读取；不能重新执行旧固定能力。node.input 是否消费由用户脚本决定。
 
 业务在途、业务成功／失败结束、报告 `canComplete`、节点状态与下游依赖资格分别显示。自动报告的严格 `canComplete: true` 只表示可交接；manager 仍须显式 `complete`，此前节点仍为 `running`、依赖仍阻塞。失败保留原错误及可得实际效果，不回滚、不自动 retry。manager 核实后显式 fail／retry 产生新的 execution；旧报告与 outputs 只属于旧 execution，不授予新执行完成资格。
 
-当前／旧脚本执行及脚本来源报告没有 Chat Resume，也没有 Chat 关闭动作；manager、真实 Task／Map Chat 的原入口保留。查看、轮询、刷新和导航只读取运行事实，不派发、不重跑、不完成节点，也不调用外部 Chat。资源结束不是等待启动 Chat 或 manual 报告确认。
+当前／旧脚本执行及脚本来源报告没有 Chat Resume，也没有 Chat 关闭动作；manager、真实 Task／Map Chat 的原入口保留。查看、轮询、刷新和导航只读取运行事实，不派发、不重跑、不完成节点，也不调用外部 Chat。资源结束不表示等待启动 Chat；脚本没有人工批准等待。
 
 ### 完成后的 Tab 清理与诊断
 
@@ -153,13 +193,29 @@ Tab 仍存在不代表工作未完成。缺少可靠 Tab 关联时系统直接�
 
 ### 暂停或恢复 Map Run
 
-workflow 是只读观察入口，没有暂停/恢复按钮。要暂停新派发，请进入当前 Run 已关联的管理者 Chat 表达意图，由管理者的 pause 工具落实；暂停不退出已有节点 Chat，它们仍可报告及完成交接。处理后由管理者显式 resume 恢复派发资格，再单独选择 dispatch；resume 本身不启动工作。全部节点 completed 时 paused Run 也可直接 finish。普通 Chat 的 **Resume** 仅定位/恢复原生对话，不等于恢复 Run 派发或接管重启前的 Run。
+workflow 是只读观察入口，没有暂停/恢复按钮。要暂停新派发，请进入当前 Run 已关联的管理者 Chat 表达意图，由管理者的 pause 工具落实；暂停不退出已有节点 Chat，它们仍可报告及完成交接。处理后由管理者显式 resume 恢复派发资格，再单独选择 dispatch；resume 本身不启动工作。满足完成条件（普通工作节点全部 completed，结束节点如有则已成功发起）时，paused Run 也可直接 finish。普通 Chat 的 **Resume** 仅定位/恢复原生对话，不等于恢复 Run 派发或接管重启前的 Run。
 
 角色工具须先实际部署；没有 manager-chat/node-chat 入口时不要手填身份或编辑运行记录冒充执行。拒绝、重复调用与部分生效的解释见[暂停新执行与恢复派发资格](workflow-runtime.md#暂停新执行与恢复派发资格)。
 
+### 选择 Herdr 宿主
+
+在 `herdr-bot.toml` 的 `[herdr]` 设置 `backend = 'tui'` 或 `backend = 'app'`；省略等同 `tui`，非法值拒绝启动。TUI CLI 路径为 `executable`，App 窗口控制与配套 core 分别为 `app_executable`、`core_executable`。三条路径可一次填好；也可省略，分别按 PATH 查找 `herdr`、`herdr-app`、`hc`。切换前先结束旧 agent、停止旧宿主，再改 `backend` 并重启 herdr-bot；不迁移正在运行的 Chat 或 Run。
+
+App 模式下，`HERDR_APP_HOME` 指向所选窗口，App 实际连接的 core 和 herdr-bot 调用的 `hc` 必须使用相同 core 环境（非默认实例可通过 `HC_SESSION` 或 `HC_SOCKET` 选择）。仅关闭 App 窗口不会退出 core。herdr-bot 用 App 中的实际 Space／Tab 及 core 中记录的终端归属核对目标；短终端地址相同不能证明是同一实例。App Tab 回执本身既不能证明归属，也不能证明 agent 已可输入。
+
+`workspace_name` 是默认容器名称的唯一来源：TUI 匹配 Workspace label，App 匹配 Space name。按字面精确匹配，零个或多个都报错，不任取一个或新建容器。它不是 zone 路径，也不是原生 Chat 身份。
+
+### 原生 agent 提醒
+
+TUI 的 Task 固定扩展向对应 Pane 报告 agent 状态；App 的 OMP／Pi 将原生 OSC 7501 写入所选 App Tab 的 core 终端，不加载 TUI 状态扩展。App 需要支持 OSC 7501 的 agent 与 core；OMP 保持 `terminal.programStatus` 启用（默认），Pi 默认与终端协商（不要设置 `PI_PROGRAM_STATUS=0`）。
+
+声音只由当前宿主决定。TUI 使用自己的 `[ui.sound]`，App 使用自己的 `settings.json` 中的 `sounds`；两端各自处理自定义声音和焦点抑制。herdr-bot 不播放声音；初始化 ready、connect-bot 会话状态和报告投递不是播音指令。复现和取证步骤见[原生提醒专项](agents/testing.md#原生提醒专项p47p48)。
+
 ### server 固定操作
 
-在 `server` 内容页点击“启动”或“停止”，调用服务端预先配置的脚本；页面仅反馈脚本调用，
+在 `server` 内容页点击“启动”或“停止”，调用服务端预先配置的脚本。`[operations.start]`／`[operations.stop]` 可作为两端共享的固定绑定；如果两端需要不同脚本，另外成对声明 `[operations.app.start]`／`[operations.app.stop]`（两段均指定 `script` 与 `working_directory`），仅 App 模式使用该对绑定。
+
+页面仅反馈脚本调用，
 即使退出码为 0，也不代表后台程序已经启动、就绪或彻底停止。请求未结束时两按钮禁用，
 结果区分别说明完成、失败、忙碌拒绝或结果无法确认，不自动重试或排队补做。
 切回 tab 再进入 server 仍可查看本页最近一次调用的反馈。
@@ -335,6 +391,10 @@ Zone 行与 Task 行的“发起 Chat”打开同一个弹窗，zone 与 Task �
 
 只切换 zone 不重置 model、thinking 或初始 input。重复选择当前 Task 或 zone 不会清除已有名称预览。发起时先校验已保存 Task 的选项，再校验本次覆盖值；损坏的预设须先修正，不能通过本次覆盖值绕过。模型、思考级别及本次名称规则的修改仅用于本次发起，不保存到 Task 或其他配置；关闭后重新打开不保留临时修改。初始 input、名称预览、Herdr Workspace 选择及创建进度仍在同一弹窗中完成。
 
+Task 发起时，当前容器按 zone 根目录名匹配，默认容器按 `[herdr].workspace_name` 匹配；App 使用 Space，TUI 使用 Workspace。所选宿主启动目标后，页面会显示“正在初始化输入”，直到后端确认本次原生会话的输入管线已就绪。初始指示只经该目标终端提交，沿用命令、Skill 和模板的原生交互语义。`inputSubmitted: true` 只表示后端已确认终端提交，不表示模型已读或完成；初始化也不改变会话的在线状态或关机监听。
+
+只有宿主明确证明在写入前因 blocked 拒绝初始指示时，后端才会重试。每次从收到该拒绝起等待至少 1 秒，并在重试前核对原 Tab、进程和原生会话仍匹配；最多重试 5 次（含首次提交共 6 次尝试）。页面在等待时显示本次拒绝的原因，刷新不会重新发起 Chat；目标退出或更换会话／进程时取消，不创建替代 Tab。若第 6 次仍明确被拒绝，则保留现场与最后一次拒绝的原因，不再发送。超时、断线、部分输入、响应不明确或 `started:false` 都可能已经产生输入效果，只显示投递结果未确认，不自动重发。恢复与报告通知不使用此重试规则。
+
 ## chief bot 入口
 
 页头 `server` 左侧的 `chief bot` 按钮每次点击都读取后端当前 chief，不使用浏览器本地选择。有当前 chief 的原生身份时，经现有 Resume 路径定位或恢复该 Chat；仍在启动、结果不确定或查询失败时显示反馈，不另建 Chat。
@@ -367,11 +427,11 @@ chief Task 经既有 `POST /api/chats` 发起，也经既有 `POST /api/chats/re
 
 随仓 `meta-data/tasks.json` 提供唯一默认预设：稳定 ID 与初始名称均为 `chief-bot`，`taskType: "chief"`，Chat 名称规则为 `chat with chief bot`，默认 omp / GPT-6-luna / medium，不选择 Suite 或初始 Skill，固定 prompt 为空。通过既有 `GET /api/tasks`、`GET /api/tasks/{id}`、`POST /api/tasks` 和 `PUT /api/tasks/{id}` 管理，沿用当前模型、思考级别、Suite 与持久化校验。编辑名称不改变其 ID 或用途。该预设是可编辑的定义数据，不是在发起 Chat 时生成的新 Task；自定义或空的存储文件也不会被运行时隐式补入默认预设。定义保存成功不表示 chief 原生扩展、唯一会话权威或模型职责已验收。
 
-角色扩展的适用规则由代码固定：独立发起普通 Task 不加载 manager-chat/node-chat，manager Task 加载 manager-chat；workflow 派发普通 Task 时强制加载对应宿主的 node-chat。角色扩展不能勾选、取消或混装；Task 编辑器不展示节点角色固定项。其他固定项仍沿用 Task 选项目录；场景资源只由 `suite` 引用提供。Task 不再接受、保存或运行旧 `extensions` 选择，空数组同样被拒绝。
+角色扩展的适用规则由代码固定：独立发起普通 Task 不加载 manager-chat/node-chat，manager Task 加载 manager-chat；workflow 派发普通工作节点时强制加载对应宿主的 node-chat；显式结束节点例外，启动和恢复均使用普通 Chat 环境，不加载 node-chat。角色扩展不能勾选、取消或混装；Task 编辑器不展示节点角色固定项。其他固定项仍沿用 Task 选项目录；场景资源只由 `suite` 引用提供。Task 不再接受、保存或运行旧 `extensions` 选择，空数组同样被拒绝。
 
 扩展入口位置仍位于 `meta-data/task-options.toml`；代码按稳定 ID `omp-manager-chat`、`pi-manager-chat`、`omp-node-chat`、`pi-node-chat` 识别固定角色，元数据不再支持 `taskType` 适用规则。实际工具、Prompt 和原生扩展运行能力须由 my-agent-toolkit 及宿主环境提供；配置保存或页面展示成功不代表原生加载已验证。缺失或不可用入口在发起时明确报错；Resume 沿既有规则报告扩展降级，不伪称已加载。
 
-需要新进程的 Resume 仍读取来源 Task 的最新会话环境，但从持久 Run 中的原 Chat 执行关联恢复节点角色，包含 retry 前保留的旧执行；不新建执行、不重放 trigger config。独立普通 Chat 不因此获得节点角色。本次不处理运行期间动态修改来源 Task 配置的冲突，也不引入配置快照或热更新协调。
+需要新进程的 Resume 仍读取来源 Task 的最新会话环境，但由原 Chat 的持久 Run／node／chief 委派关联决定执行角色，包含 retry 前保留的旧执行。子 Run 管理者保留管理者与父节点双角色；结束节点保留执行关联，但与独立普通 Chat 一样不加载节点角色。不能装配会话环境而改用原生默认发现时，反馈会列出未显式装配的原角色扩展；默认发现不代表这些扩展已加载，也不改变原执行归属。Resume 不新建 Run、执行或委派，不重放 trigger config，也不接管或跨宿主迁移 Run。本次不处理运行期间动态修改来源 Task 配置的冲突，也不引入配置快照或热更新协调。
 
 ### 共享 Bot 指南业务
 
@@ -422,7 +482,9 @@ Task 配置分为两组：
 
 新启动的 omp / pi 会话可能尚未写入原生文件；pi 在首次用户或助手消息出现后才创建文件。herdr-bot 可按[受限原生路径规则](adr/0014-unpersisted-omp-startup-identity.md)保存身份及预期路径，但这不代表文件已落盘或当前可从磁盘恢复。历史文件中的内部 `startupIdentityPath` 仅由可信发起流程写入，普通 register 上报不能设置或覆盖；历史列表不公开该字段。Resume 只对保存的 ID、启动路径与当前官方引用完全吻合的未落盘候选允许定位，不把任意缺失文件当作在线 Chat。实际读取对应文件时若发现身份冲突，明确拒绝，不跳过冲突后启动替代 Chat、不改绑历史；不新增后台落盘检查。原进程已不存在时仍按既有精确 ID 加载及恢复确认流程处理，未确认同一会话不报告成功。
 
-新进程优先使用仍然有效的历史工作目录。目录缺失、已删除或不可用时，只有 Herdr Workspace 的 worktree 元数据能够精确关联历史 checkout 路径，且通过元数据中的共享 Git 目录查询 worktree 信息，能够核实唯一且可用的主仓库根目录，才回退到该主目录；不会从目录名称推测关联。无法可靠证明主目录时，在配置的默认 Herdr Workspace 中新建 Tab，不传 `--cwd`，由 Herdr 选择实际工作目录。默认 Workspace 按配置名称唯一匹配，不采用当前焦点或列表中的第一个 Workspace；无法唯一找到时明确失败。主目录回退仍优先使用原 Workspace，原 Workspace 不可用时才使用默认 Workspace；交给 Herdr 选目录时则直接使用配置的默认 Workspace。
+新进程优先使用有效的历史绝对工作目录。目录不可用时，只有 TUI 的 worktree 元数据能把历史 checkout 精确关联到 Git 元数据目录，并核实唯一、有效的主工作树，才回退到该目录；App 不提供这项归属证据，也不会按 Space 或目录名称猜测 Git 归属。无法可靠找回目录时，在配置的默认容器（TUI Workspace／App Space）中新建 Tab，不指定工作目录，由当前宿主选择并显示实际目录，两端的结果可能不同。
+
+使用明确的工作目录时，原容器 ID 只在当前宿主中原样查找；另一端恰好有同值 ID 时也会使用这个匹配。只有 ID 缺失或成功查询确认无匹配时才回退，命令失败或畸形响应不会触发兜底。默认容器必须唯一、精确匹配 `[herdr].workspace_name`，不会使用当前焦点、任取第一项或自动创建容器。选择容器不改变 zone 绑定或历史原位置。
 
 恢复成功前必须核实同一原生会话身份。显式指定目录时，还必须确认实际目录与指定目录相同；交给 Herdr 选目录时，必须观察到有效的实际目录。位置回退与实际工作目录会在页面显示，身份或目录核实失败不会报告成功。Resume 不执行代码 checkout，不弹出目录回退确认，也不改写 herdr-bot 历史记录（包括旧 cwd、Workspace、备忘与来源信息）；回退只影响本次恢复。herdr-bot 不直接改写原生聊天文件，agent 自身恢复时的原生存储行为仍由 agent 管理。
 

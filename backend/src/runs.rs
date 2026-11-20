@@ -19,6 +19,7 @@ pub(crate) mod completion;
 mod operation;
 pub(crate) mod preparation;
 pub(crate) mod collect;
+pub(crate) mod script_output;
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -36,7 +37,14 @@ pub struct NodeState {
     pub execution: Option<NodeExecution>,
     pub failure: Option<StartupFailure>,
     pub completion: Option<Completion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    auto_close_failure: Option<AutoCloseFailure>,
     pub previous_executions: Vec<ExecutionFact>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+struct AutoCloseFailure {
+    code: String,
+    message: String,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -59,7 +67,11 @@ pub struct Completion {
 }
 mod execution;
 use execution::{ChatExecution, ExecutionTarget, Lifecycle, ScriptExecution, ScriptKind};
-mod scripts;
+pub(crate) mod scripts;
+
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalSource { Auto, Manual }
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,6 +79,8 @@ pub struct NodeExecution {
     pub id: String,
     #[serde(flatten)]
     pub target: ExecutionTarget,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zone_id: Option<String>,
     pub zone: String,
     #[serde(default)]
     pub input_rule: Option<Vec<crate::scheduler::maps::InputRule>>,
@@ -74,10 +88,13 @@ pub struct NodeExecution {
     pub output_rule: Option<Vec<crate::scheduler::maps::OutputRule>>,
     #[serde(default, deserialize_with = "crate::scheduler::optional_object_array")]
     pub inputs: Option<Vec<crate::scheduler::maps::ResolvedFile>>,
-    #[serde(default)]
-    pub report_policy: crate::scheduler::maps::ReportPolicy,
+    pub auto_approved: bool,
+    pub approved: bool,
+    pub approval_source: Option<ApprovalSource>,
     #[serde(default)]
     pub auto_close: bool,
+    #[serde(default)]
+    pub end_node: bool,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -89,6 +106,8 @@ pub struct ParentExecution {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Finished {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
     pub id: String,
     pub at: u64,
     pub actor: ChatReference,
@@ -97,6 +116,8 @@ pub struct Finished {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Run {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub naming: Option<RunNaming>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     pub map: String,
@@ -120,6 +141,88 @@ pub struct Run {
     pub finished: Option<Finished>,
     pub nodes: BTreeMap<String, NodeState>,
 }
+impl Run {
+    fn session_claimed_by_other_execution(&self, session_id: &str, execution_id: &str) -> bool {
+        self.manager.as_ref().is_some_and(|chat| chat.session_id == session_id)
+            || self.nodes.values().any(|node| node.executions().any(|other| {
+                other.id != execution_id && other.chat().is_some_and(|chat| chat.session_id == session_id)
+            }))
+    }
+}
+
+/// Display-only launch snapshot, independent of mutable Run names and definitions.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RunNaming {
+    pub map_path: Vec<String>,
+    pub node_titles: BTreeMap<String, String>,
+}
+
+impl RunNaming {
+    fn manager_title(&self) -> String {
+        let (current, ancestors) = self.map_path.split_last().expect("new Run has a Map title");
+        if ancestors.is_empty() {
+            format!("[M]{current}")
+        } else {
+            format!("[S]{current}-{}", ancestors.join("/"))
+        }
+    }
+
+    fn node_title(&self, id: &str, current_title: &str) -> String {
+        let title = self.node_titles.get(id).map(String::as_str).unwrap_or(current_title);
+        format!("{title}-{}", self.map_path.join("/"))
+    }
+}
+
+// Resume needs durable identity, not the business schema of each Run.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RunChatAssociations {
+    id: String,
+    manager_task_id: String,
+    parent: Option<ParentExecution>,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
+    manager: Option<ChatReference>,
+    nodes: BTreeMap<String, ChatNodeAssociations>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatNodeAssociations {
+    #[serde(deserialize_with = "Deserialize::deserialize")]
+    execution: Option<ChatExecutionAssociation>,
+    previous_executions: Vec<ChatExecutionFact>,
+}
+
+#[derive(Deserialize)]
+struct ChatExecutionFact {
+    #[serde(deserialize_with = "Deserialize::deserialize")]
+    execution: Option<ChatExecutionAssociation>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatExecutionAssociation {
+    id: String,
+    kind: Option<AssociationScriptKind>,
+    task_id: Option<String>,
+    agent: Option<crate::tasks::Agent>,
+    #[serde(default, deserialize_with = "present_chat")]
+    chat: Option<Option<ChatReference>>,
+    child_run_id: Option<String>,
+    #[serde(default)]
+    end_node: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum AssociationScriptKind { Typescript, RustScript }
+
+// A missing Chat field is not the same as a recorded absence of native identity.
+fn present_chat<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Option<ChatReference>>, D::Error> {
+    Option::deserialize(deserializer).map(Some)
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Effects {
@@ -160,6 +263,7 @@ pub struct Runs {
     active: Mutex<BTreeMap<String, Option<StartupFailure>>>,
     operations: Mutex<BTreeMap<String, std::sync::Arc<Mutex<()>>>>,
     signals: Mutex<BTreeMap<String, std::sync::Arc<collect::Signals>>>,
+    script_output: script_output::Store,
     map_operations: Mutex<BTreeMap<String, std::sync::Arc<Mutex<()>>>>,
     registered_maps: Mutex<BTreeMap<String, String>>,
     // Serializes reference publication with history scans/removal, never host effects.
@@ -254,6 +358,7 @@ impl Runs {
                 }
                 // This scope also excludes launch initialization and late saves.
                 owned.runs.deleted.lock().await.insert(id.clone());
+                owned.runs.script_output.remove(&id);
                 match access.remove_dir_all(&directory) {
                     Ok(()) => {},
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
@@ -277,53 +382,75 @@ impl Runs {
         ]
     }
     /// Recover role from persisted execution identity, including retired attempts.
-    pub(crate) async fn chat_role(&self, state: &AppState, session_id: &str, task_id: &str, agent: crate::tasks::Agent) -> Result<Option<crate::tasks::catalog::ExecutionRole>, String> {
-        self.chat_role_with_current(state, session_id, task_id, agent, None).await
-    }
-
-    // A dispatch owns its current Run operation gate. Use that committed
-    // snapshot for identity checks; a concurrent storage failure must still be
-    // reported at association, with the actual newly started Chat preserved.
-    async fn chat_role_with_current(&self, state: &AppState, session_id: &str, task_id: &str, agent: crate::tasks::Agent, current: Option<&Run>) -> Result<Option<crate::tasks::catalog::ExecutionRole>, String> {
+    pub(crate) async fn chat_role(&self, state: &AppState, session_id: &str, task_id: Option<&str>, agent: crate::tasks::Agent) -> Result<Option<crate::tasks::catalog::ExecutionRole>, String> {
         let root = state.run_directory.clone();
         let entries = match self.files.with_async(&[root.clone()], move |access| Box::pin(async move { access.read_dir(&root) })).await.map_err(|e| e.to_string())? {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(error.to_string()),
         };
-        let mut managers = Vec::new();
-        let mut nodes = Vec::new();
+        const INVALID_LINK: &str = "原生 Chat 的持久执行关联不唯一或缺少合法父子关系。";
+        struct NodeMatch {
+            node_id: String,
+            execution_id: String,
+            child_run_id: Option<String>,
+            end_node: bool,
+            chat: ChatReference,
+        }
+        let mut manager_match = None;
+        let mut node_match = None;
         for entry in entries {
             if !entry.file_type().map_err(|error| error.to_string())?.is_dir() { continue; }
             let id = entry.file_name().to_string_lossy().into_owned();
-            let run = match current.filter(|run| run.id == id) {
-                Some(run) => run.clone(),
-                None => self.read(state, &id).await?,
-            };
-            for (node_id, node) in &run.nodes {
-                for execution in node.executions().filter(|execution| execution.chat().is_some_and(|chat| chat.session_id == session_id)) {
-                    if execution.task_id() != Some(task_id) || execution.agent() != Some(agent) {
-                        return Err("原生 Chat 的持久执行关联与来源 Task 或 agent 不一致。".into());
+            let run: RunChatAssociations = self.read_record(state, &id).await?;
+            if run.id != id { return Err(format!("Run {id} 保存身份不一致：{}。", run.id)); }
+            let mut run_match = None;
+            for (node_id, node) in run.nodes {
+                let mut matched = None;
+                for execution in node.execution.into_iter().chain(node.previous_executions.into_iter().filter_map(|fact| fact.execution)) {
+                    match (execution.kind, execution.task_id, execution.agent, execution.chat) {
+                        (Some(_), None, None, None) if execution.child_run_id.is_none() => {},
+                        (None, Some(source), Some(host), Some(chat)) => {
+                            if let Some(chat) = chat.filter(|chat| chat.session_id == session_id) {
+                                if task_id.is_some_and(|id| id != source) || host != agent {
+                                    return Err("原生 Chat 的持久执行关联与来源 Task 或 agent 不一致。".into());
+                                }
+                                if matched.is_some() || run_match.is_some() || node_match.is_some() { return Err(INVALID_LINK.into()); }
+                                matched = Some((execution.id, execution.child_run_id, execution.end_node, chat));
+                            }
+                        }
+                        _ => return Err(format!("Run {id} / node {node_id} / execution {} 的 Chat 关联无效。", execution.id)),
                     }
-                    nodes.push((run.clone(), node_id.clone(), execution.clone()));
+                }
+                if let Some((execution_id, child_run_id, end_node, chat)) = matched {
+                    run_match = Some(NodeMatch { node_id, execution_id, child_run_id, end_node, chat });
                 }
             }
-            if run.manager.as_ref().is_some_and(|chat| chat.session_id == session_id) {
-                if run.manager_task_id != task_id { return Err("原生 Chat 的持久角色关联与来源 Task 不一致。".into()); }
-                managers.push(run);
+            if let Some(matched) = run_match { node_match = Some((id, matched)); }
+            if let Some(chat) = run.manager.filter(|chat| chat.session_id == session_id) {
+                if task_id.is_some_and(|id| id != run.manager_task_id) { return Err("原生 Chat 的持久角色关联与来源 Task 不一致。".into()); }
+                if manager_match.is_some() { return Err(INVALID_LINK.into()); }
+                manager_match = Some((run.id, run.parent, chat));
             }
         }
         use crate::tasks::catalog::ExecutionRole;
-        match (managers.as_slice(), nodes.as_slice()) {
-            ([], []) => Ok(None),
-            ([manager], []) if manager.parent.is_none() => Ok(Some(ExecutionRole::Manager)),
-            ([], [(_, _, execution)]) if execution.child_run_id().is_none() => Ok(Some(ExecutionRole::Node)),
-            ([child], [(parent, node_id, execution)]) if nested_pair(child, parent, node_id, execution) => Ok(Some(ExecutionRole::NestedManager)),
-            _ => Err("原生 Chat 的持久执行关联不唯一或缺少合法父子关系。".into()),
+        match (manager_match, node_match) {
+            (None, None) => Ok(None),
+            (Some((_, None, _)), None) => Ok(Some(ExecutionRole::Manager)),
+            (None, Some((_, node))) if node.child_run_id.is_none() => Ok(Some(if node.end_node { ExecutionRole::Standalone } else { ExecutionRole::Node })),
+            (Some((child_id, Some(link), manager)), Some((parent_id, node)))
+                if child_id != parent_id && link.run_id == parent_id && link.node_id == node.node_id
+                    && link.execution_id == node.execution_id && node.child_run_id.as_deref() == Some(child_id.as_str())
+                    && manager == node.chat => Ok(Some(ExecutionRole::NestedManager)),
+            _ => Err(INVALID_LINK.into()),
         }
     }
 
     async fn read(&self, state: &AppState, id: &str) -> Result<Run, String> {
+        self.read_record(state, id).await
+    }
+
+    async fn read_record<T: serde::de::DeserializeOwned + Send>(&self, state: &AppState, id: &str) -> Result<T, String> {
         let paths = Self::paths(state, id);
         let owned = state.clone();
         let id = id.to_owned();
@@ -442,6 +569,75 @@ pub(crate) async fn get_run(state: AppState, id: String) -> RunResult {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LocateRequest {
+    execution_id: Option<String>,
+}
+
+impl ChatReference {
+    fn location(&self) -> crate::herdr::NavigationTarget {
+        crate::herdr::NavigationTarget {
+            workspace_id: self.workspace_id.clone(), tab_id: self.tab_id.clone(), pane_id: self.pane_id.clone(),
+        }
+    }
+
+    async fn saved_history(&self, state: &AppState) -> Result<crate::chats::history::HistorySelection, crate::chats::Error> {
+        use crate::chats::Error;
+        state.history.selection(&self.session_id).await
+            .map_err(|error| Error::Internal("history-unreadable", error.to_string()))?
+            .ok_or_else(|| Error::NotFound("run-chat-not-found", "找不到关联 Chat 的原生历史。".into()))
+    }
+
+    async fn app_target(&self, state: &AppState, location: &crate::herdr::NavigationTarget) -> Result<std::sync::Arc<crate::herdr::LaunchTarget>, crate::chats::Error> {
+        let selected = self.saved_history(state).await?;
+        let kind = run_agent(&selected)?;
+        let native = state.herdr.selected_native_id(kind, &selected).await.map_err(run_chat_lookup_failure)?;
+        state.launches.app_target_at(&state.herdr, kind, &native, location).await
+            .map_err(run_chat_lookup_failure)?.ok_or_else(run_chat_not_live)
+    }
+}
+
+fn run_agent(selected: &crate::chats::history::HistorySelection) -> Result<&str, crate::chats::Error> {
+    selected.agent_type.as_deref().filter(|kind| matches!(*kind, "omp" | "pi"))
+        .ok_or_else(|| crate::chats::Error::Invalid("unsupported-agent", "无法确定目标 Chat 的 agent 类型。".into()))
+}
+
+fn run_chat_lookup_failure(error: crate::herdr::HerdrError) -> crate::chats::Error {
+    crate::chats::Error::Internal("run-chat-lookup-failed", error.message())
+}
+
+fn run_chat_not_live() -> crate::chats::Error {
+    crate::chats::Error::NotFound("run-chat-not-found", "所选 Run／执行关联的宿主目标不在运行或已变化；未使用其他目标。".into())
+}
+
+pub(crate) async fn locate_chat(state: AppState, id: &str, input: LocateRequest) -> Result<serde_json::Value, crate::chats::Error> {
+    use crate::chats::Error;
+    let run = state.runs.read(&state, id).await.map_err(|message| Error::Internal("run-read-failed", message))?;
+    let chat = match input.execution_id {
+        None => run.manager.as_ref(),
+        Some(id) => {
+            let mut executions = run.nodes.values().flat_map(NodeState::executions).filter(|execution| execution.id == id);
+            let execution = executions.next();
+            if executions.next().is_some() {
+                return Err(Error::Conflict("run-chat-ambiguous", "同一执行 ID 有多个保存关联；尚未定位。".into()));
+            }
+            execution.and_then(NodeExecution::chat)
+        }
+    }.ok_or_else(|| Error::NotFound("run-chat-not-found", "没有所选 Run／执行的 Chat 关联；尚未定位。".into()))?;
+    let location = chat.location();
+    if state.herdr.is_app() {
+        let target = chat.app_target(&state, &location).await?;
+        state.herdr.focus_app_target(&target).await.map(drop)
+    } else {
+        let selected = chat.saved_history(&state).await?;
+        let targets = state.herdr.matching_targets(run_agent(&selected)?, &selected).await.map_err(run_chat_lookup_failure)?;
+        if !targets.contains(&location) { return Err(run_chat_not_live()); }
+        state.herdr.focus_target(&location).await
+    }.map_err(|error| Error::Internal("run-chat-focus-failed", error.message()))?;
+    Ok(serde_json::json!({"outcome":"located","target":location,"message":"已聚焦所选宿主内的 Run Chat；不保证 Windows 窗口置前。"}))
+}
+
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RenameRequest {
     pub(crate) name: String,
@@ -499,6 +695,7 @@ pub(crate) async fn start_run(state: AppState, map: String, input: crate::runs::
         Err(e) => return Err(RunError::Task(e)),
     };
     preset.env.suite_args = suite_args;
+    preset.env.select_host(&state.herdr);
     if let Err(message) = preset.env.check_entrypoints() {
         return Err(error(
             FailureKind::Failed,
@@ -506,7 +703,15 @@ pub(crate) async fn start_run(state: AppState, map: String, input: crate::runs::
             &message,
         ));
     }
-    let run = root_run(map, input, checked, &task, crate::chats::new_creation_id());
+    let mut input = input;
+    let id = crate::chats::new_creation_id();
+    if let Some(github) = input.github_exploration.take() {
+        match startup::write_github_materials(&state, &checked.zone_bindings[&input.zone], &id, github).await {
+            Ok(bindings) => input.file_inputs.extend(bindings),
+            Err(message) => return Err(error(FailureKind::Failed, "run-material-write-failed", &message)),
+        }
+    }
+    let run = root_run(map, input, checked, &task, id);
     register_root(&state, &run).await;
     drop(map_operation);
     launch_root(state, run, task, preset, None).await
@@ -523,7 +728,8 @@ pub(crate) fn root_run(
 ) -> Run {
     Run {
         id: id.clone(),
-        name: None,
+        name: Some(checked.naming.manager_title()),
+        naming: Some(checked.naming),
         map,
         created_at: SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -552,6 +758,7 @@ pub(crate) fn root_run(
                         execution: None,
                         failure: None,
                         completion: None,
+                        auto_close_failure: None,
                         previous_executions: Vec::new(),
                     },
                 )
@@ -715,7 +922,7 @@ async fn snapshot(state: &AppState, run: &Run, include_reports: bool) -> Result<
     value["snapshot"] = serde_json::to_value(run).map_err(|e| e.to_string())?;
     value["ready"] = serde_json::json!(ready);
     value["blocked"] = serde_json::json!(blocked_by);
-    value["canFinish"] = serde_json::json!(matches!(run.status.as_str(), "running" | "paused") && run.nodes.values().all(|node| node.status == "completed"));
+    value["canFinish"] = serde_json::json!(completion::can_finish(run));
     Ok(value)
 }
 
@@ -724,6 +931,8 @@ async fn snapshot(state: &AppState, run: &Run, include_reports: bool) -> Result<
 pub(crate) struct DispatchRequest {
     pub(crate) session_id: String,
     pub(crate) nodes: Vec<String>,
+    #[serde(default)]
+    pub(crate) zone_ids: BTreeMap<String, String>,
 }
 pub(crate) async fn manager_dispatch(state: AppState, input: DispatchRequest) -> RunResult {
     let run = match manager_run(&state, &input.session_id).await {
@@ -736,6 +945,8 @@ pub(crate) async fn manager_dispatch(state: AppState, input: DispatchRequest) ->
         let lock = state.runs.operations.lock().await.entry(run.id.clone()).or_default().clone();
         let _operation = lock.lock().await;
         let mut run = state.runs.read(&state, &run.id).await?;
+        // Validate every dynamic selection before starting any external execution.
+        let mut zones = crate::scheduler::validate_zone_selections(&state, &run, &input.nodes, &input.zone_ids).await?;
         let mut results = Vec::with_capacity(input.nodes.len());
         for id in input.nodes {
             let dependencies = crate::scheduler::maps::node_dependencies(&state.map_directory, &run.map)?;
@@ -744,7 +955,8 @@ pub(crate) async fn manager_dispatch(state: AppState, input: DispatchRequest) ->
                 results.push(serde_json::json!({"nodeId":id,"status":"rejected","reasons":reasons}));
                 continue;
             }
-            results.push(startup::node(&state, &mut run, &id, None).await);
+            let target = crate::scheduler::dispatch_target(&state, &run, &id, zones.remove(&id)).await;
+            results.push(startup::node(&state, &mut run, &id, None, target).await);
         }
         let mut response = snapshot(&state, &run, true).await?;
         response["results"] = serde_json::Value::Array(results);
@@ -777,6 +989,7 @@ async fn save_run(state: &AppState, run: &Run) -> Result<(), String> {
     state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
         owned.runs.ensure_retained(&run.id).await?;
         access.replace(&paths[0], &serde_json::to_vec_pretty(&run).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        owned.runs.script_output.retain_current(&run);
         owned.runs.changed(&run.id, false).await;
         Ok(())
     })).await.map_err(|e| e.to_string())?

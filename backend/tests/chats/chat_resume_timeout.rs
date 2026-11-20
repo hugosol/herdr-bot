@@ -98,13 +98,10 @@ fn assert_retained(herdr: &HerdrFixture) {
     assert_eq!(calls.iter().filter(|c| c["kind"] == "agent_start").count(), 1);
     assert!(calls.iter().all(|c| ["agent_list","workspace_list","tab_create","agent_start","agent_get","agent_focus"].contains(&c["kind"].as_str().unwrap())), "no close, terminate or input commands: {calls:?}");
 }
-// P17-P19/P22 + P16 timeout interleaving. Source: a submitted launch without
-// native identity is uncertain, not failed or restored. A plausible violation
-// reports success after agent.start, discards the target, leaks eligibility or
-// replays startup on retry. Keep real polling/locking/CLI execution in the path;
-// only the external native reference is withheld, then attached to the SAME
-// externally created target. Explicit lookup gates distinguish concurrent retry
-// rejection from queued execution, and actual records prove target retention.
+// S1 / B1 (P35/P36/P52): withhold only the native reference, not the live
+// process or focus. Reporting restored, failing to focus or starting another
+// process would all violate the contract. The same target later gets reliable
+// evidence, so a fresh user click can locate it without a replacement launch.
 #[tokio::test]
 async fn pi_and_omp_timeout_retain_target_release_eligibility_and_retry_by_lookup_not_replay() {
     for kind in ["pi", "omp"] {
@@ -120,20 +117,23 @@ async fn pi_and_omp_timeout_retain_target_release_eligibility_and_retry_by_looku
         }
         busy(addr).await;
         let reply = first.await.unwrap();
-        assert_eq!(reply.status, 502, "{kind}: {}", reply.body);
+        assert_eq!(reply.status, 200, "{kind}: {}", reply.body);
         let body: Value = serde_json::from_str(&reply.body).unwrap();
         assert_eq!(body["outcome"], "unconfirmed", "{kind}: {body}");
         assert_eq!(body["code"], "restore-unconfirmed");
-        assert_eq!(body["stage"], "confirm");
-        assert!(body["message"].as_str().unwrap().contains("启动结果未确认"));
-        assert!(!body["message"].as_str().unwrap().contains("阶段失败"));
+        assert_eq!(body["stage"], "focused");
+        let message = body["message"].as_str().unwrap();
+        assert!(message.contains("已请求恢复并定位") && message.contains("原生身份未确认"));
+        assert!(!message.contains("已确认恢复同一"));
         let mut target = common::read_json_lines(&herdr.path().join("started.jsonl"))[0].clone();
         for (public, external) in [("workspaceId","workspace_id"),("tabId","tab_id"),("paneId","pane_id")] {
             assert_eq!(body["target"][public], target[external]);
         }
         assert_eq!(body["agentName"], target["name"]);
-        assert_eq!(body["progress"], json!({"tabCreated":true,"startSubmitted":true,"conversationConfirmed":false,"focused":false}));
-        assert!(!herdr.calls().iter().any(|c| c["kind"] == "agent_focus"));
+        assert_eq!(body["progress"], json!({"tabCreated":true,"startSubmitted":true,"conversationConfirmed":false,"focused":true}));
+        assert_eq!(body["actualCwd"], json!(root.path()));
+        assert_eq!(herdr.calls().iter().filter(|c| c["kind"] == "agent_focus").count(), 1);
+        assert_eq!(serde_json::from_slice::<Value>(&std::fs::read(herdr.path().join("focused.json")).unwrap()).unwrap(), target["pane_id"]);
         assert_retained(&herdr);
         let queries = herdr.calls().iter().filter(|c| c["kind"] == "agent_list").count();
         assert_eq!(queries, 1, "busy operation did not query or queue");

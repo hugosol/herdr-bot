@@ -40,9 +40,19 @@ impl CommandAction for Collect {
     const ACTION: &'static str = "收取报告";
 }
 
+pub(crate) struct ScriptOutput;
+impl CommandAction for ScriptOutput {
+    const ACTION: &'static str = "读取脚本输出";
+}
+
 pub(crate) struct NodeContext;
 impl CommandAction for NodeContext {
     const ACTION: &'static str = "节点上下文";
+}
+
+pub(crate) struct NodeApprove;
+impl CommandAction for NodeApprove {
+    const ACTION: &'static str = "节点成果批准";
 }
 
 pub(crate) struct NodeReport;
@@ -93,6 +103,11 @@ impl CommandAction for Status {
 pub(crate) struct Dispatch;
 impl CommandAction for Dispatch {
     const ACTION: &'static str = "派发节点";
+}
+
+pub(crate) struct Locate;
+impl CommandAction for Locate {
+    const ACTION: &'static str = "定位 Run Chat";
 }
 
 pub(crate) struct Rename;

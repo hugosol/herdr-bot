@@ -225,6 +225,7 @@ function startProcess(configPath: string, executable: string, cwd: string): Serv
     // The copied fixture must never inherit a developer's external data root.
     env: {
       ...process.env,
+      ...Object.fromEntries(['HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'OMP_CODING_AGENT_DIR', 'PI_CODING_AGENT_DIR'].map(key => [key, path.join(path.dirname(configPath), 'environment', key)])),
       HERDR_FIXTURE_DIR: path.join(path.dirname(configPath), 'herdr'),
       HERDR_BOT_FIXTURE_RECORD_DIR: path.join(path.dirname(configPath), 'operations'),
     },
@@ -317,6 +318,7 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
   const cwd = options.separateCwd ? path.join(directory, 'process-cwd') : directory
   try {
     fs.mkdirSync(cwd, { recursive: true })
+    for (const key of ['HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'OMP_CODING_AGENT_DIR', 'PI_CODING_AGENT_DIR']) fs.mkdirSync(path.join(directory, 'environment', key), { recursive: true })
     // Real isolated entry files: browser acceptance must not depend on a developer toolkit installation.
     const extensionDirectory = path.join(directory, 'extensions')
     fs.mkdirSync(extensionDirectory)
@@ -384,6 +386,9 @@ async function startServerImpl(options: StartServerOptions, listenAddr: string):
           continue
         }
         await waitForTasks(`http://${localHost}:${running.port}`)
+        if (herdrExecutable !== undefined) {
+          fs.writeFileSync(path.join(herdrDirectory, 'launch_endpoint.txt'), `${localHost}:${running.port}`, 'utf8')
+        }
         return
       }
     }

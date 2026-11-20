@@ -7,6 +7,8 @@ use super::operation::rejection;
 pub(crate) struct RetryRequest {
     pub(crate) session_id: String,
     pub(crate) node_id: String,
+    #[serde(default)]
+    pub(crate) zone_id: Option<String>,
     pub(crate) confirmed: bool,
     pub(crate) reason: String,
 }
@@ -41,7 +43,13 @@ pub(crate) async fn manager_retry(state: AppState, input: RetryRequest) -> RunRe
         if !run.inputs_ready {
             return rejection(&state, &run, "run-inputs-not-ready", "Run 输入尚未检查并确认；请先 prepare_inputs。").await;
         }
-        let result = startup::node(&state, &mut run, &input.node_id, Some(&input.reason)).await;
+        let overrides = input.zone_id.as_ref().map(|zone| BTreeMap::from([(input.node_id.clone(), zone.clone())])).unwrap_or_default();
+        let mut zones = match crate::scheduler::validate_zone_selections(&state, &run, std::slice::from_ref(&input.node_id), &overrides).await {
+            Ok(zones) => zones,
+            Err(message) => return rejection(&state, &run, "zone-selection-invalid", &message).await,
+        };
+        let target = crate::scheduler::dispatch_target(&state, &run, &input.node_id, zones.remove(&input.node_id)).await;
+        let result = startup::node(&state, &mut run, &input.node_id, Some(&input.reason), target).await;
         let mut response = snapshot(&state, &run, true).await?;
         response["result"] = result;
         Ok(RunOutcome::Value(response))

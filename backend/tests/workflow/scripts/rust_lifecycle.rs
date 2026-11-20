@@ -12,7 +12,7 @@ struct Backend {
     reader: Option<std::thread::JoinHandle<()>>,
 }
 impl Backend {
-    fn start(root: &Path, generation: u32) -> Self {
+    fn start(root: &Path, herdr: &HerdrFixture, generation: u32) -> Self {
         let mut command = Command::new(env!("CARGO_BIN_EXE_herdr-bot"));
         command.args(["--config", "panel.toml"]).current_dir(root)
             .stdin(Stdio::null()).stdout(Stdio::piped())
@@ -41,6 +41,7 @@ impl Backend {
         backend.addr = rx.recv_timeout(Duration::from_secs(30)).unwrap_or_else(|error| {
             panic!("backend readiness {error}: {}", fs::read_to_string(root.join(format!("stderr-{generation}.log"))).unwrap())
         });
+        fs::write(herdr.path().join("launch_endpoint.txt"), backend.addr.to_string()).unwrap();
         println!("script lifecycle backend generation={generation} pid={} addr={} root={}", backend.child.id(), backend.addr, root.display());
         backend
     }
@@ -96,6 +97,7 @@ impl Lifecycle {
         let herdr = HerdrFixture::new("Rust lifecycle external");
         for name in ["maps", "bots", "node", "home"] { fs::create_dir(root.path().join(name)).unwrap(); }
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        common::install_bot_scripts(&root.path().join("bots"));
         let config = json!({
             "listen_addr":"127.0.0.1:0", "data_directory":root.path().join("data"),
             "static_directory":repo.join("backend/static"), "prompts_file":root.path().join("prompts.toml"),
@@ -112,7 +114,7 @@ impl Lifecycle {
         fs::write(root.path().join("options.toml"), "skills = []\n[[agents]]\nid = 'pi'\nlabel = 'Pi'\n[[models]]\nid = 'default'\nlabel = 'Default'\n[[extensions]]\nid = 'pi-manager-chat'\nlabel = 'Manager role'\nagent = 'pi'\nkind = 'fixed'\nentrypoint = 'fixed.ts'\n").unwrap();
         herdr.set_workspaces(json!([{"workspace_id":"w-lifecycle","label":root.path().file_name().unwrap().to_str().unwrap()}]));
         herdr.set_behavior(json!({"native_session":{"source":"herdr:pi","agent":"pi","kind":"id","value":"script-lifecycle-manager"},"native_cwd":root.path()}));
-        let backend = Backend::start(root.path(), 1);
+        let backend = Backend::start(root.path(), &herdr, 1);
         let mut s = Self { backend, root: std::mem::ManuallyDrop::new(root), herdr: std::mem::ManuallyDrop::new(herdr), clock: Instant::now(), target: Value::Null, run_id: String::new(), outputs: Default::default() };
         // Real static delivery from this worktree, not an HTML placeholder.
         assert_eq!(get_over_tcp(s.backend.addr, "/").await.status, 200);
@@ -125,10 +127,10 @@ impl Lifecycle {
             let task = saved["tasks"].as_array().unwrap().iter().find(|task|task["name"] == name).unwrap().clone();
             if name == "manager" { manager = task; } else { s.target = task; }
         }
-        s.post("/api/scheduler/bots/save", json!({"id":"creator","revision":null,"content":json!({"name":"Rust creator","when":"","plan_guide":"","node_guide":"","rust_script":"create_blank_bot"}).to_string()}), 200).await;
+        s.post("/api/scheduler/bots/save", json!({"id":"creator","revision":null,"content":json!({"name":"Rust creator","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}).to_string()}), 200).await;
         let mut nodes = serde_json::Map::new();
         for (node, bot) in [("create", "first-result"), ("later", "second-result")] {
-            let request = json!({"schema_version":1,"kind":"request","target":{"type":"task","task_id":s.target["id"]},"bot":{"id":bot,"name":bot},"requirements":"Create only an empty reusable Bot","constraints":["Do not run target"],"non_goals":["Business execution"],"resource_limits":[],"authorization":{"create_blank":true,"write_materials":true,"save_guides":false},"confirmation":{"evidence":"User authorized this isolated blank Bot","scope":"create_blank"}});
+            let request = json!({"schema_version":1,"kind":"request","target":{"type":"task","task_id":s.target["id"]},"bot":{"id":bot,"name":bot},"requirements":"Create only an empty reusable Bot","constraints":["Do not run target"],"non_goals":["Business execution"],"resource_limits":[]});
             fs::write(s.root.path().join(format!("{node}-request.json")), request.to_string()).unwrap();
             nodes.insert(node.into(), json!({"title":node,"bot_id":"creator","zone":"node","input":"This is not script parameters","input_rule":[{"id":"request","type":"file","zone_id":"manager","path":format!("{node}-request.json")}],"output_rule":[{"id":"baseline"},{"id":"handoff"}],"blocked_by":[]}));
         }
@@ -283,7 +285,7 @@ async fn script_lifecycle_disconnect_and_pause_preserve_accepted_business_withou
         caller.abort();
         let during = s.detail().await;
         let execution = during["run"]["nodes"]["create"]["execution"].clone();
-        assert_eq!(execution["kind"], "rust_script");
+        assert_eq!(execution["kind"], "typescript");
         assert_eq!(execution["lifecycle"]["status"], "running");
         assert_eq!(during["reports"], json!([]));
         assert!(!s.root.path().join("bots/first-result.json").exists());
@@ -345,7 +347,7 @@ async fn script_lifecycle_real_restart_preserves_finished_and_interrupted_facts_
         assert!(common::wait_until(Duration::from_secs(5), ||gate.reached()).await, "second compiled business must actually enter external file gate");
         let before = s.detail().await;
         assert_eq!(before["managed"], true);
-        assert_eq!(before["run"]["nodes"]["later"]["execution"]["kind"], "rust_script");
+        assert_eq!(before["run"]["nodes"]["later"]["execution"]["kind"], "typescript");
         assert_eq!(before["run"]["nodes"]["later"]["execution"]["lifecycle"]["status"], "running");
         assert_eq!(before["reports"], finished["reports"]);
         assert!(!s.root.path().join("bots/second-result.json").exists());
@@ -365,7 +367,7 @@ async fn script_lifecycle_real_restart_preserves_finished_and_interrupted_facts_
         Ok(value) => value,
         Err(error) => std::panic::resume_unwind(error),
     };
-    s.backend = Backend::start(s.root.path(), 2);
+    s.backend = Backend::start(s.root.path(), &s.herdr, 2);
     assert_ne!(s.backend.child.id(), old_pid, "new process, not reconstructed AppState");
     let after = s.detail().await;
     s.mark(&format!("after actual restart detail={after}"));

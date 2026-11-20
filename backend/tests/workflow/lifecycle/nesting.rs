@@ -27,6 +27,129 @@ async fn role_request(s: &Scenario, route: &str, body: Value, status: u16) -> Va
     serde_json::from_str(&response.body).unwrap()
 }
 
+async fn edit_titles_and_rename_run(s: &Scenario, map: &str, node: &str, run_id: &str) {
+    let endpoint = format!("/api/scheduler/maps/{map}");
+    let title_route = format!("{endpoint}/title");
+    let draft = get_over_tcp(s.server.addr(), &title_route).await;
+    assert_eq!(draft.status, 200, "{}", draft.body);
+    let draft: Value = serde_json::from_str(&draft.body).unwrap();
+    let saved = role_request(s, &title_route, json!({
+        "title":"Edited Map", "revision":draft["revision"]
+    }), 200).await;
+    assert_eq!(saved["title"], "Edited Map");
+
+    let draft = role_request(s, &format!("{endpoint}/nodes/edit"), json!({"id":node}), 200).await;
+    let mut content = draft["content"].clone();
+    content["title"] = json!("Edited Node");
+    let saved = role_request(s, &format!("{endpoint}/nodes/save"), json!({
+        "id":node, "content":content.to_string(), "revision":draft["revision"], "create":false
+    }), 200).await;
+    assert_eq!(saved["nodes"][node]["title"], "Edited Node");
+
+    let renamed = common::request_json_over_tcp(
+        s.server.addr(), "PATCH", &format!("/api/workflow/runs/{run_id}"),
+        Some(r#"{"name":"Renamed Run"}"#),
+    ).await;
+    assert_eq!(renamed.status, 200, "{}", renamed.body);
+    assert_eq!(serde_json::from_str::<Value>(&renamed.body).unwrap()["run"]["name"], "Renamed Run");
+}
+
+async fn dispatch_for_naming(s: &Scenario, manager_session: &str, node: &str, chat_session: &str) -> Value {
+    native(s, "omp", chat_session, "");
+    let result = s.dispatch(manager_session, &[node]).await;
+    assert_eq!(result["results"][0]["status"], "running", "{result}");
+    result["snapshot"]["nodes"][node]["execution"].clone()
+}
+
+// A launch that derives names from live definitions or the editable Run name
+// would leak those edits into Chats created after the owning Run started.
+#[tokio::test]
+async fn nested_chat_names_use_titles_frozen_at_each_run_creation() {
+    let s = Scenario::new().await;
+    for (bot, map) in [("build", "build.json"), ("release", "release.json")] {
+        fs::write(s.config.scheduler.bot_directory.join(format!("{bot}.json")), json!({
+            "id":bot, "name":bot, "when":"", "plan_guide":"", "node_guide":"", "map_file":map
+        }).to_string()).unwrap();
+    }
+    let maps = &s.config.scheduler.map_directory;
+    fs::write(maps.join("work.json"), json!({"title":"Design", "description":"", "nodes":{
+        "inspect":{"title":"Inspect inputs", "bot_id":"worker", "input":"Inspect", "zone":"manager", "blocked_by":[]},
+        "call":{"title":"Call build", "bot_id":"build", "manager_task_id":s.manager_task, "input":"Build", "zone":"manager", "blocked_by":[]}
+    }}).to_string()).unwrap();
+    fs::write(maps.join("build.json"), json!({"title":"Build", "description":"", "nodes":{
+        "compile":{"title":"Compile source", "bot_id":"worker", "input":"Compile", "zone":"manager", "blocked_by":[]},
+        "call":{"title":"Call release", "bot_id":"release", "manager_task_id":s.manager_task, "input":"Release", "zone":"manager", "blocked_by":[]}
+    }}).to_string()).unwrap();
+    fs::write(maps.join("release.json"), json!({"title":"Release", "description":"", "nodes":{
+        "handoff":{"title":"Review release", "bot_id":"worker", "input":"Review", "zone":"manager", "blocked_by":[], "end_node":true}
+    }}).to_string()).unwrap();
+
+    let root = s.start("naming-root").await;
+    assert_eq!(root["run"]["name"], "[M]Design");
+    edit_titles_and_rename_run(&s, "work.json", "inspect", root["id"].as_str().unwrap()).await;
+    dispatch_for_naming(&s, "naming-root", "inspect", "naming-inspect").await;
+    let child = dispatch_for_naming(&s, "naming-root", "call", "naming-child").await;
+    edit_titles_and_rename_run(&s, "build.json", "compile", child["childRunId"].as_str().unwrap()).await;
+    dispatch_for_naming(&s, "naming-child", "compile", "naming-compile").await;
+    let grand = dispatch_for_naming(&s, "naming-child", "call", "naming-grand").await;
+    edit_titles_and_rename_run(&s, "release.json", "handoff", grand["childRunId"].as_str().unwrap()).await;
+    dispatch_for_naming(&s, "naming-grand", "handoff", "naming-handoff").await;
+
+    let calls = s.herdr.calls();
+    let tab_names: Vec<_> = calls.iter().filter(|call| call["kind"] == "tab_create")
+        .map(|call| call["label"].as_str().unwrap()).collect();
+    let history = get_over_tcp(s.server.addr(), "/api/sessions/history").await;
+    assert_eq!(history.status, 200, "{}", history.body);
+    let history: Value = serde_json::from_str(&history.body).unwrap();
+    let sessions = history["sessions"].as_array().unwrap();
+    let expected = [
+        ("naming-root", "[M]Design"),
+        ("naming-inspect", "Inspect inputs-Design"),
+        ("naming-child", "[S]Build-Design"),
+        ("naming-compile", "Compile source-Design/Build"),
+        ("naming-grand", "[S]Release-Design/Build"),
+        ("naming-handoff", "Review release-Design/Build/Release"),
+    ];
+    assert_eq!(tab_names, expected.map(|(_, name)| name));
+    for (id, name) in expected {
+        let session = sessions.iter().find(|row| row["sessionId"] == id)
+            .unwrap_or_else(|| panic!("missing {id} from Chat history: {history}"));
+        assert_eq!(session["sessionName"], name, "Chat history for {id}");
+    }
+}
+
+#[tokio::test]
+async fn dynamic_zone_selects_only_nested_manager_and_preserves_internal_fixed_zones() {
+    let s = Scenario::new().await;
+    nested(&s, &s.manager_task, "DYNAMIC-CHILD");
+    let path = s.config.scheduler.map_directory.join("work.json");
+    let mut map: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    map["nodes"]["A"]["zone"] = json!({"type":"dynamic"});
+    fs::write(path, map.to_string()).unwrap();
+    let started = s.start("dynamic-parent").await;
+    let root = s.data.path().join("dynamic-child-root");
+    fs::create_dir(&root).unwrap();
+    let registered = post_json_over_tcp(s.server.addr(), "/api/zones", &json!({"id":"child-root","path":root}).to_string()).await;
+    assert_eq!(registered.status, 200, "{}", registered.body);
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"dynamic-child"},"native_cwd":root}));
+    let dispatched = role_request(&s, "/api/workflow/manager/dispatch", json!({"sessionId":"dynamic-parent","nodes":["A"],"zoneIds":{"A":"child-root"}}), 200).await;
+    assert_eq!(dispatched["results"][0]["status"], "running", "{dispatched}");
+    let execution = &dispatched["snapshot"]["nodes"]["A"]["execution"];
+    assert_eq!(execution["zoneId"], "child-root");
+    assert_eq!(execution["zone"], json!(root));
+    let child = detail(&s, execution["childRunId"].as_str().unwrap()).await;
+    assert_eq!(child["run"]["managerZoneId"], "child-root");
+    assert_eq!(child["run"]["zone"], json!(root));
+    assert_eq!(child["run"]["zoneBindings"]["manager"], json!(s.data.path()));
+    assert_eq!(child["run"]["parent"]["runId"], started["id"]);
+    assert!(dispatched["snapshot"]["zoneBindings"].get("child-root").is_none());
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"dynamic-internal-fixed"},"native_cwd":s.data.path()}));
+    let internal = s.dispatch("dynamic-child", &["A"]).await;
+    assert_eq!(internal["results"][0]["status"], "running", "{internal}");
+    assert_eq!(internal["snapshot"]["nodes"]["A"]["execution"]["zoneId"], "manager");
+    assert_eq!(internal["snapshot"]["nodes"]["A"]["execution"]["zone"], json!(s.data.path()));
+}
+
 // P21/P22: the same real Chat must address its child manager and exact parent
 // attempt without a caller-chosen Run. Rejecting every mixed role breaks report;
 // accepting all mixed roles would let a collision act on unrelated work.
@@ -45,7 +168,7 @@ async fn dual_role_routes_report_to_parent_and_management_to_child_without_selec
     }
     let calls = s.herdr.calls();
     let context = role_request(&s, "/api/workflow/node/context", json!({"sessionId":"dual-child"}), 200).await;
-    assert_eq!(context, json!({"runId":root["id"],"nodeId":"A","executionId":execution["id"],"reportPolicy":"auto"}));
+    assert_eq!(context, json!({"runId":root["id"],"nodeId":"A","executionId":execution["id"],"autoApproved":true,"approved":false,"approvalSource":null}));
     assert_eq!(s.herdr.calls(), calls);
     assert!(detail(&s, root["id"].as_str().unwrap()).await["reports"].as_array().unwrap().is_empty());
     let report = role_request(&s, "/api/workflow/node/report", json!({"sessionId":"dual-child","body":"Progress, not complete","canComplete":false}), 200).await;
@@ -86,6 +209,17 @@ async fn retired_child_session_cannot_select_the_replacement_execution() {
     let current = &retry["snapshot"]["nodes"]["A"]["execution"];
     assert_ne!(current["id"], old["id"]);
     assert_ne!(current["childRunId"], old["childRunId"]);
+    // P10: a retained child may report historical facts, but approval cannot
+    // retarget its replacement or mutate either the old child or execution.
+    let old_child = detail(&s, old["childRunId"].as_str().unwrap()).await;
+    let context = role_request(&s, "/api/workflow/node/context", json!({"sessionId":"attempt-old"}), 200).await;
+    assert_eq!(context["executionId"], old["id"]);
+    let stale = role_request(&s, "/api/workflow/node/approve", json!({"sessionId":"attempt-old","executionId":old["id"],"source":"auto"}), 400).await;
+    assert_eq!(stale["code"], "approval-execution-stale");
+    let forged = role_request(&s, "/api/workflow/node/approve", json!({"sessionId":"attempt-old","executionId":current["id"],"source":"auto"}), 400).await;
+    assert_eq!(forged["code"], "approval-execution-mismatch");
+    assert_eq!(detail(&s, old["childRunId"].as_str().unwrap()).await, old_child);
+    assert_eq!(detail(&s, root["id"].as_str().unwrap()).await["run"]["nodes"]["A"]["execution"], *current);
     let latest = role_request(&s, "/api/workflow/node/report", json!({"sessionId":"attempt-new","body":"NEW progress","canComplete":false}), 200).await;
     let late = role_request(&s, "/api/workflow/node/report", json!({"sessionId":"attempt-old","body":"OLD late progress","canComplete":false}), 200).await;
     assert_eq!(late["report"]["executionId"], old["id"]);
@@ -100,29 +234,30 @@ async fn retired_child_session_cannot_select_the_replacement_execution() {
     }
 }
 
-// P21: a different parent Run cannot reuse a child manager Chat. A same-Run
-// duplicate check alone misses this; observe the real external start, retained
-// child registration, identity-stage failure and no second initial prompt.
 #[tokio::test]
-async fn nested_dispatch_rejects_native_session_reuse_across_runs() {
+async fn startup_nested_dispatch_ignores_unreadable_history_and_binds_both_runs() {
     let s = Scenario::new().await;
-    nested(&s, &s.manager_task, "COLLISION");
-    s.start("collision-root-one").await;
-    native(&s, "omp", "unique-child", "node-zone");
-    let first = s.dispatch("collision-root-one", &["A"]).await;
-    let child = first["snapshot"]["nodes"]["A"]["execution"]["childRunId"].clone();
-    s.start("collision-root-two").await;
-    native(&s, "omp", "unique-child", "node-zone");
-    let offset = s.herdr.calls().len();
-    let rejected = s.dispatch("collision-root-two", &["A"]).await;
-    assert_eq!(rejected["results"][0]["status"], "failed");
-    assert_eq!(rejected["results"][0]["failure"]["stage"], "identity");
-    assert_eq!(rejected["results"][0]["effects"]["agentStarted"], true);
-    assert_eq!(rejected["results"][0]["effects"]["childRecordsInitialized"], true);
-    assert_eq!(rejected["results"][0]["effects"]["inputAttempted"], false);
-    assert!(rejected["snapshot"]["nodes"]["A"]["execution"]["chat"].is_null());
-    assert!(!s.herdr.calls()[offset..].iter().any(|call| call["kind"] == "agent_prompt"));
-    assert_eq!(role_request(&s, "/api/workflow/manager/status", json!({"sessionId":"unique-child"}), 200).await["snapshot"]["id"], child);
+    nested(&s, &s.manager_task, "NESTED-BUSINESS-INPUT");
+    s.start("history-independent-parent").await;
+    let historical = s.config.scheduler.run_directory.join("unreadable-history");
+    fs::create_dir(&historical).unwrap();
+    fs::write(historical.join("run.json"), b"{}").unwrap();
+    native(&s, "omp", "history-independent-child", "node-zone");
+    let result = s.dispatch("history-independent-parent", &["A"]).await;
+    assert_eq!(result["results"][0]["status"], "running", "{result}");
+    assert_eq!(result["results"][0]["effects"]["associationSaved"], true);
+    assert_eq!(result["results"][0]["effects"]["inputSubmitted"], true);
+    let execution = &result["snapshot"]["nodes"]["A"]["execution"];
+    assert_eq!(execution["chat"]["sessionId"], "history-independent-child");
+    let child = detail(&s, execution["childRunId"].as_str().unwrap()).await;
+    assert_eq!(child["run"]["manager"], execution["chat"]);
+    let calls = s.herdr.calls();
+    let prompts: Vec<_> = calls.iter().filter(|c| c["kind"] == "agent_prompt").collect();
+    assert_eq!(prompts.len(), 2);
+    let text = common::prompt_body(prompts[1]);
+    assert!(text.contains("NESTED-BUSINESS-INPUT"));
+    assert!(text.contains(execution["childRunId"].as_str().unwrap()));
+    assert_eq!(fs::read(historical.join("run.json")).unwrap(), b"{}");
 }
 
 // P21: only the reciprocal execution link authorizes dual roles. Each mutation
@@ -140,12 +275,15 @@ async fn invalid_nested_links_and_source_mismatches_are_rejected_without_effects
     let child_path = s.config.scheduler.run_directory.join(child_id).join("run.json");
     let parent: Value = serde_json::from_slice(&fs::read(&parent_path).unwrap()).unwrap();
     let child: Value = serde_json::from_slice(&fs::read(&child_path).unwrap()).unwrap();
-    for violation in ["missing-link","missing-manager","wrong-execution","same-run","duplicate-node","source-task","source-agent","duplicate-manager"] {
+    for violation in ["missing-link","missing-child","wrong-child","missing-manager","wrong-execution","cross-run","same-run","duplicate-node","source-task","source-agent","duplicate-manager"] {
         let mut p = parent.clone(); let mut c = child.clone();
         match violation {
             "missing-link" => { c.as_object_mut().unwrap().remove("parent"); },
+            "missing-child" => { p["nodes"]["A"]["execution"].as_object_mut().unwrap().remove("childRunId"); },
+            "wrong-child" => p["nodes"]["A"]["execution"]["childRunId"] = json!(root["id"]),
             "missing-manager" => c["manager"] = Value::Null,
             "wrong-execution" => c["parent"]["executionId"] = json!("foreign"),
+            "cross-run" => c["parent"]["runId"] = json!(child_id),
             "same-run" => { p["manager"] = p["nodes"]["A"]["execution"]["chat"].clone(); c["manager"] = Value::Null; },
             "duplicate-node" => p["nodes"]["B"] = p["nodes"]["A"].clone(),
             "source-task" => p["nodes"]["A"]["execution"]["taskId"] = json!("foreign-task"),
@@ -158,6 +296,8 @@ async fn invalid_nested_links_and_source_mismatches_are_rejected_without_effects
         for route in ["status", "collect"] {
             role_request(&s, &format!("/api/workflow/manager/{route}"), json!({"sessionId":"auth-child"}), 403).await;
         }
+        role_request(&s, "/api/workflow/node/context", json!({"sessionId":"auth-child"}), 403).await;
+        role_request(&s, "/api/workflow/node/approve", json!({"sessionId":"auth-child","executionId":parent["nodes"]["A"]["execution"]["id"],"source":"auto"}), 403).await;
         role_request(&s, "/api/workflow/node/report", json!({"sessionId":"auth-child","body":"not authorized","canComplete":false}), 403).await;
         assert_eq!(s.herdr.calls(), calls, "{violation}");
         assert_eq!(fs::read_to_string(&parent_path).unwrap(), p.to_string());
@@ -232,6 +372,7 @@ async fn upstream_output_uses_parent_local_id_for_the_child_interface() {
     let path = s.data.path().join("produced.txt");
     fs::write(&path, "UPSTREAM-REAL-729").unwrap();
     role_request(&s, "/api/workflow/node/report", json!({"sessionId":"mapping-source","body":"Produced","canComplete":true,"outputs":[{"id":"upstream-result","path":path}]}), 200).await;
+    approve_execution(&s, "mapping-source").await;
     role_request(&s, "/api/workflow/manager/complete", json!({"sessionId":"mapping-root","nodeId":"source","reason":"Accept actual file"}), 200).await;
     native(&s, "omp", "mapping-child", "node-zone");
     let dispatched = s.dispatch("mapping-root", &["A"]).await;

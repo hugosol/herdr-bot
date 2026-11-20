@@ -23,7 +23,7 @@ async function fixture(condition: 'missing' | 'invalid' | 'mismatch' = 'missing'
   }
   const manager = reference('manager-native'), current = reference('current-native'), old = reference('old-native')
   const run = { id: 'history-run', map: 'missing.json', createdAt: 1000, managerTaskId: 'manager-task', zone: server.cwd, workspaceName: 'saved-workspace', userInput: 'KEEP USER INPUT', status: 'running', manager, finished: null, nodes: {
-    A: { status: 'running', execution: { agent: 'omp', id: 'exec-new', taskId: 'task-new', zone: 'C:/new-zone', chat: current }, failure: null, completion: null, previousExecutions: [{ execution: { agent: 'omp', id: 'exec-old', taskId: 'task-old', zone: 'C:/old-zone', chat: old }, failure: { stage: 'execution', message: 'OLD FAILURE' } }] },
+    A: { status: 'running', execution: { autoApproved: true, approved: false, approvalSource: null, agent: 'omp', id: 'exec-new', taskId: 'task-new', zone: 'C:/new-zone', chat: current }, failure: null, completion: null, previousExecutions: [{ execution: { autoApproved: true, approved: false, approvalSource: null, agent: 'omp', id: 'exec-old', taskId: 'task-old', zone: 'C:/old-zone', chat: old }, failure: { stage: 'execution', message: 'OLD FAILURE' } }] },
     B: { status: 'pending', execution: null, failure: null, completion: null, previousExecutions: [] },
   } }
   const reports = [
@@ -174,7 +174,7 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   const restored = await resume(page, scope, 'real-dispatch-node')
   expect(restored.body.outcome).toBe('restored')
   await expect(scope.getByRole('status')).toContainText('已确认恢复同一 OMP 原生对话')
-  await expect(scope.getByRole('status')).toContainText('未提交输入或重新应用 Task 预设')
+  await expect(scope.getByRole('status')).toContainText('未重放发起配置或提交输入')
   const observationStart = Date.now()
   await page.waitForTimeout(350)
   const managedObservationMs = Date.now() - observationStart

@@ -4,24 +4,36 @@
 
 ## 无 Chat 的执行与报告表示契约
 
-本节细化 [ADR 0019](adr/0019-rust-script-bots.md)。`create_blank_bot` 已由后端直接实现：原 manager dispatch 接受并保存独立 execution 后返回，真实文件读取和业务写入在后台进行；完整读回及材料交付成功后自动保存报告并尝试一次原 manager 通知。它不创建节点 Chat／Tab、不等待 manual 报告、不调用关闭，也不 complete 或派发下游。`save_bot_guides` 同样编入后端并经原 dispatch 自动报告：只读冻结的 baseline 和三组显式 text/handoff，检查真实 revision、完整目标和全文 bytes 确认，汇总一次合法保存，再完整读回 Bot／新 revision／目标并交付 saved 与独立 handoff。发布创建图已切换这两个真实能力，原创建身份／材料接线保留，专用保存 Bot 不取代修订通用替换者；详见[迁移范围](create-bot-wrapper.md#创建分支表示的交付边界)。页面与真实 manager／编写者原生遵从证据仍独立验证；表示及受控材料闭环不证明这些已完成。[Schema](contracts/rust-script-bots.schema.json) 的 `$defs.script_execution`／`script_report`／`business_failure` 与 [JSONL 字面实例](contracts/rust-script-bots.examples.jsonl) 是后续实现、接入和验收的共同输入，不是第二份运行记录。Run 仍只有当前事实、追加历史、追加报告三份权威，manager 使用原 dispatch、collect、complete、fail、retry 工具；不新增执行工具。
+本节细化 [ADR 0019](adr/0019-rust-script-bots.md)。用户维护的 TypeScript 脚本由已有 Bun 执行；两个发布实现为 `create-blank-bot.ts`、`save-bot-guides.ts`，业务规则不再编入 Rust。manager dispatch 保存独立 execution 后返回，后台执行并自动保存报告、尝试一次通知。V1 创建消费 request／可选 materials；V1 保存仅消费 baseline 与 when_text／plan_guide_text／node_guide_text，不消费三份指南 handoff 或人类批准凭据；各自输出 baseline 或 saved 及事实 handoff。完整协议见[共同业务材料](business-materials.md#创建分支-v1可校验表示与空白创建)。通用脚本只需返回状态和可选 outputs。编写与宿主操作见[动态脚本使用说明](usage.md#动态-typescript-脚本)。不创建 Chat、自动 complete 或派发下游；Run 持久化和显式管理流程保持不变。
 
 ### execution 与节点交接分别表达
 
-- 脚本 execution 在原 `nodes[nodeId].execution` 位置使用 `kind: "rust_script"` 和 camelCase `rustScript` 固定能力值。`id` 仍是真实独立执行 ID，归属由所在 Run／node 确定；保留冻结的 `zone`（真实本机绝对目录）、`inputRule`、`outputRule`、`inputs: [{id,path}]`、`reportPolicy: "auto"`、`autoClose: false`。**不出现** `taskId`、`agent`、`chat`、`childRunId`，不填空白或假身份。没有 Session、Tab 或 Chat 可供恢复、定位或关闭。
-- `lifecycle` 只描述本次 Rust 工作：开始为 `{status:"running",startedAt:<Unix毫秒>}`；成功结束为 `{status:"succeeded",startedAt,endedAt}`；失败结束为 `{status:"failed",startedAt,endedAt,failure}`。时间为非负整数，结束时间不得早于开始。成功要求业务检查、合法真实写入、完整读回及必要输出材料生成／读回全部成功；正常函数返回不构成成功。报告存储／通知结果仍按原报告反馈单独表达，不能把通知失败当作业务未写入。
+- 脚本 execution 在原 `nodes[nodeId].execution` 位置使用 `kind: "typescript"` 和 `script` 相对路径。`id` 仍是真实独立执行 ID，归属由所在 Run／node 确定；保留冻结的 `zone`（真实本机绝对目录）、`inputRule`、`outputRule`、`inputs: [{id,path}]`、`autoApproved: true`、`approved`、`approvalSource`、`autoClose: false`。**不出现** `taskId`、`agent`、`chat`、`childRunId`，不填空白或假身份。没有 Session、Tab 或 Chat 可供恢复、定位或关闭。
+- `lifecycle` 只描述本次脚本工作：开始为 `{status:"running",startedAt:<Unix毫秒>}`；成功结束为 `{status:"succeeded",startedAt,endedAt}`；失败结束为 `{status:"failed",startedAt,endedAt,failure}`。时间为非负整数，结束时间不得早于开始。成功要求脚本明确返回 success、正常退出且全部声明输出真实可读；正常函数返回本身不构成成功。创建／三指南业务仍自行执行合法保存与完整读回检查。报告存储／通知结果仍按原报告反馈单独表达，不能把通知失败当作业务未写入。
 - 外层 `NodeState.status` 仍只有 pending／running／failed／completed，`failure`、`completion`、`previousExecutions` 保持原语义和归属。`lifecycle.status` 结束不会更改 node 状态。典型可观察组合：`node.status=running + lifecycle=succeeded + 当前canComplete=true` 表示等待 manager complete；`running + failed + 当前canComplete=false` 表示失败已报告、等待 manager 决定 fail；manager fail 后为 `failed`，显式 retry 才创建新 execution。不得把 succeeded 画成节点已交接，或从失败直接自动 retry。
 - 脚本结束后 recover 拒绝；没有 Chat 不制造恢复入口。retry 保留旧 execution 和报告，新 execution 不继承旧输出或完成资格。暂停不取消已开始工作，断连不撤销已接受工作；重启旧 Run 保持既有只读语义，不自动修复 `running`、补结束或重跑。
+
+### 脚本日志尾部读取
+
+`POST /api/workflow/manager/script-output` 接受且仅接受 `{"sessionId":"公共 Session 提供的当前管理者身份"}`，复用 manager → 当前 Run 的归属校验，不接受调用者指定 Run／node／execution。返回 `{runId,observedAt,nodes}`；时间为 Unix 毫秒，每项为 `{nodeId,nodeName,executionId,status,lines,lastOutputAt}`，status 为脚本的 running／succeeded／failed，尚无输出时 lastOutputAt 为 null。只列当前 Run 同层的当前 TypeScript execution，不递归子 Map，不包含旧 execution。
+
+后台持续读取普通 stdout 与 stderr，过滤 stdout 中的宿主协议，按接收顺序合并；独立管道不能保证原始跨管道写入顺序。尾部最多五个逻辑行，每行最多 512 字节，未换行片段也可见；处理跨块 UTF-8、CRLF 和终端控制序列。该预览不是完整日志、交付 outputs、报告或交接完成依据。静默不表示脚本停止，持续日志也不保证业务有进展。
+
+GitHub 克隆脚本即使在非交互管道中也启用 `git clone --progress`，执行时将 Git 的 stdout 和 stderr 都转发到 Bun 的 stderr，不占用 stdout 宿主协议。回车进度与 CRLF 均按换行显示，保留跨块 UTF-8；四个仓库核实命令不转发。失败详情仍使用两个管道各自原样捕获的 64 KiB 尾部，不受显示换行转换影响。
+
+读取不消费 collect 通知、不改变节点状态，也不持有执行所有权。断开 collect 或日志请求不取消脚本；retry 使用新的 execution 并移除旧尾部，Run finish／删除释放尾部。尾部仅在后端内存保留，不在重启后恢复；原有失败报告的日志诊断规则不变。原生 collect 的日志展示需要配套 toolkit 接入。manager 应直接调用 collect，不经 eval／codemode 包装；Pi 的 collect 使用 model-only 暴露，在 Suite only 模式下仍可直接调用。toolkit 在 collect 等待期间每次成功采样后间隔 500ms 再读取尾部，同一工具输出区按节点分区，显示执行状态、距最后输出时间及至多五行日志，过长行按可用宽度截断。OMP ANSI／TSP 与 Pi 使用各自原生结果渲染入口，不使用 widget。
+
+实时更新只含 UI details，最终结果保留最后快照及原有 collect 业务正文；新增日志预览不进入模型可见 content。取消等待或日志读取失败时冻结快照、标注停止观测、不自动重连，不将旧“运行中”状态冒充实时观察，也不取消后台脚本。再次 collect 重新读取当前 execution 的尾部；原有失败报告携带诊断的行为不因 UI 隔离而改变。
 
 ### 脚本在途工作、断连与暂停
 
 派发被后端接受并保存 execution 后，业务由后端持有，不依赖派发 HTTP 连接继续存活。调用方断连不能撤销它；不要为取得结果再次 dispatch。通过原 Run 详情独立读取原 execution 的 lifecycle、报告与真实材料。脚本的文件读写不长期占用 Run 操作资格：业务仍在途时，同 Run 的合法 status 与 pause 可以完成；这不改变完整派发批次本身的串行规则。
 
-pause 只拒绝新的 dispatch／retry，不取消已开始的 Rust 工作；原 execution 仍能真实写入、完整读回、登记输出并自动报告。resume 只恢复派发资格，不自动派发 pending node、不重跑已有 execution、不重新通知已报告结果。报告仍须由 manager 显式 complete，不能把暂停或恢复当作交接。
+pause 只拒绝新的 dispatch／retry，不取消已开始的脚本工作；原 execution 仍能真实写入、完整读回、登记输出并自动报告。resume 只恢复派发资格，不自动派发 pending node、不重跑已有 execution、不重新通知已报告结果。报告仍须由 manager 显式 complete，不能把暂停或恢复当作交接。
 
-实际终止后端进程会终止它持有的在途 Rust 工作，但不回滚已经发生的文件效果。重启后旧 Run 为 `managed=false`，保留已保存的 execution／lifecycle、报告与文件；在途时保存的 `running` 不补写成失败或成功。不自动恢复、补报告、重发通知或重跑业务。旧 manager 的运行管理动作仍按既有 `403 manager-unassociated` 拒绝，不能通过 Run resume 或普通 Chat Resume 取得写入资格；历史名称 PATCH 是原有独立例外，不是接管接口。需另起工作时先核实原文件效果，再显式发起独立新 Run。
+脚本独立进程不提供业务回滚或重启恢复；后端退出后须核实原执行和可能仍在运行的外部效果，不能假定所有派生进程均已结束。重启后旧 Run 为 `managed=false`，保留已保存的 execution／lifecycle、报告与文件；在途时保存的 `running` 不补写成失败或成功。不自动恢复、补报告、重发通知或重跑业务。旧 manager 的运行管理动作仍按既有 `403 manager-unassociated` 拒绝，不能通过 Run resume 或普通 Chat Resume 取得写入资格；历史名称 PATCH 是原有独立例外，不是接管接口。需另起工作时先核实原文件效果，再显式发起独立新 Run。
 
-专项入口（先构建本 worktree 静态页，使用独立绝对 `CARGO_TARGET_DIR`）：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_lifecycle:: -- --nocapture`。P4／P16／P17 使用实际独占后端进程、真实 Map 和编入后端的能力，在测试拥有的目标 Task 文件 Windows oplock 处保持业务在途；进入后实际断开派发 TCP，释放前分别观察同 Run 查询与 pause 完成，再核对原执行的报告、Bot、baseline／handoff 实际内容及恢复后的无自动行为。P18 在同一 Run 保留一份真实成功写入／报告，再将另一 execution 挂在业务文件边界，实际终止并 wait 后端、释放门闩、启动新 PID；核对旧 Run 未接管、所有旧 manager 运行操作拒绝、三份 Run 记录与已交付文件逐字不变，在途 lifecycle 不补写且无重跑。每例独占定义、Run、zone、HOME／APPDATA／XDG、记录型 Herdr 与动态数值回环服务，持续消费日志；失败路径也释放门闩，终止并确认所属进程退出后清理，原始错误与清理错误分别保留。门闩进入预算 5 秒、查询／暂停各 2 秒、报告观察 10 秒、启动预算 30 秒、无自动行为观察 500 毫秒；单调时序、HTTP 和实际文件内容由 stdout 保留。这些是测试观察预算，不是新增产品超时、取消协议或无限期无行为保证。
+专项入口（先构建本 worktree 静态页，使用独立绝对 `CARGO_TARGET_DIR`）：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_lifecycle:: -- --nocapture`。P4／P16／P17 使用实际独占后端进程、真实 Map 和发布的 TS 脚本，在测试拥有的目标 Task 文件 Windows oplock 处保持业务在途；进入后实际断开派发 TCP，释放前分别观察同 Run 查询与 pause 完成，再核对原执行的报告、Bot、baseline／handoff 实际内容及恢复后的无自动行为。P18 在同一 Run 保留一份真实成功写入／报告，再将另一 execution 挂在业务文件边界，实际终止并 wait 后端、释放门闩、启动新 PID；核对旧 Run 未接管、所有旧 manager 运行操作拒绝、三份 Run 记录与已交付文件逐字不变，在途 lifecycle 不补写且无重跑。每例独占定义、Run、zone、HOME／APPDATA／XDG、记录型 Herdr 与动态数值回环服务，持续消费日志；失败路径也释放门闩，终止并确认所属进程退出后清理，原始错误与清理错误分别保留。门闩进入预算 5 秒、查询／暂停各 2 秒、报告观察 10 秒、启动预算 30 秒、无自动行为观察 500 毫秒；单调时序、HTTP 和实际文件内容由 stdout 保留。这些是测试观察预算，不是新增产品超时、取消协议或无限期无行为保证。
 
 ### 失败、显式重跑与旧执行隔离
 
@@ -43,13 +55,13 @@ P11 机制回归复用 `workflow_dispatch/rust_create.rs` 与现有报告故障�
 
 ### 报告来源与兼容读取
 
-脚本报告仍使用 `type:"report"`、`id`、`at`、`runId`、`nodeId`、`executionId`、`body`、`canComplete`、`outputs` 及真实 manager `to`。`from` 为 **null**，同时必需 `source:{kind:"rust_script",rustScript:"create_blank_bot"|"save_bot_guides"}`；来源由后端凭真实 execution 生成，不能从 Session 查询、伪造或由外部调用者提交。`body` 为人类可读结果／错误／已发生效果说明，结构化失败保留在该 execution 的 `lifecycle.failure`。失败必须报告 false；成功 true 仍不自动 complete。输出只登记实际生成且完整读回成功的文件，ID 属于该 execution 冻结声明且单份唯一。
+脚本报告仍使用 `type:"report"`、`id`、`at`、`runId`、`nodeId`、`executionId`、`body`、`canComplete`、`outputs` 及真实 manager `to`。`from` 为 **null**，同时必需 `source:{kind:"typescript",script:"相对脚本路径.ts"}`；来源由后端凭真实 execution 生成，不能从 Session 查询、伪造或由外部调用者提交。`body` 为人类可读结果／错误／已发生效果说明，结构化失败保留在该 execution 的 `lifecycle.failure`。失败必须报告 false；成功 true 仍不自动 complete。输出只登记实际生成且完整读回成功的文件，ID 属于该 execution 冻结声明且单份唯一。
 
-原 Task／Map execution 的既有无 `kind`、必需 `taskId`／`agent`、可空真实 `chat` 与可选 `childRunId` 继续读取，**不要求迁移或反写判别字段**；其报告继续读取既有真实 Chat `from`、没有 `source` 的格式，历史缺 canComplete 不补 true。新增脚本分支不能将所有旧记录误判为脚本，不能通过把身份字段普遍变可选来接受残缺 Task／Map 历史。脚本报告来源与 execution 类型／能力／归属不一致须拒绝，不授予当前执行完成资格。旧 Chat 报告仍按已保存的 `from` 读取，不因历史 execution／Chat 关联缺失或 Tab 字段不完整而使整个 Run 不可读；报告适用性仍严格按 node／execution ID 判断，新提交继续验证真实发送者。不得增加历史清理或第二份运行权威；本阶段不需要改动现有内部身份边界。
+旧 Rust execution／报告按原 kind 与 rustScript 只读展示，不反写记录或保留执行分派。原 Task／Map execution 的既有无 `kind`、必需 `taskId`／`agent`、可空真实 `chat` 与可选 `childRunId` 继续读取，**不要求迁移或反写判别字段**；其报告继续读取既有真实 Chat `from`、没有 `source` 的格式，历史缺 canComplete 不补 true。新增脚本分支不能将所有旧记录误判为脚本，不能通过把身份字段普遍变可选来接受残缺 Task／Map 历史。脚本报告来源与 execution 类型／能力／归属不一致须拒绝，不授予当前执行完成资格。旧 Chat 报告仍按已保存的 `from` 读取，不因历史 execution／Chat 关联缺失或 Tab 字段不完整而使整个 Run 不可读；报告适用性仍严格按 node／execution ID 判断，新提交继续验证真实发送者。不得增加历史清理或第二份运行权威；本阶段不需要改动现有内部身份边界。
 
 ### 结构化失败与实际效果
 
-`failure` 为 `{stage,code,message,effects}`；精确字段类型与闭集见 Schema。`effects.write`／`readBack` 和各个 `effects.materials[]` 的 `status` 分别为 `not_attempted`、`succeeded`、`failed`、`unknown`。`materials` 项为 `{id,path,status}`，记录已分配实际绝对位置的材料尝试，不表示已登记 outputs；无尝试为 `[]`。unknown 必须如实保留，不能冒充未写入。已成功写入后读回失败，write 仍为 succeeded；材料失败不能撤销 write／readBack 的成功事实。
+通用脚本 failure 是可选诊断，不强制业务结构。以下 `{stage,code,message,effects}` 是两个发布业务脚本保留的具体诊断契约，精确字段见 Schema。`effects.write`／`readBack` 和各个 `effects.materials[]` 的 `status` 分别为 `not_attempted`、`succeeded`、`failed`、`unknown`。`materials` 项为 `{id,path,status}`，记录已分配实际绝对位置的材料尝试，不表示已登记 outputs；无尝试为 `[]`。unknown 必须如实保留，不能冒充未写入。已成功写入后读回失败，write 仍为 succeeded；材料失败不能撤销 write／readBack 的成功事实。
 
 | stage | code 与判定 |
 | --- | --- |
@@ -62,11 +74,17 @@ P11 机制回归复用 `workflow_dispatch/rust_create.rs` 与现有报告故障�
 
 意外执行异常用当前阶段的 `execution-failed`，保留可得效果；不新增重试／恢复机制。业务错误在已派发 execution 的不可完成报告和失败事实中表达，不能伪装派发未发生。派发前定义错误仍按既有 HTTP 拒绝面，不把本表错误码当新增路由。报告保存失败仍 `report-save-failed`／`saved:false`，保存后通知失败仍保留报告和 outputs，不自动重投业务。`execution-failure-effects` 字面例明确 Bot 已写入而 saved 文件失败；原 baseline 重跑须仍因 revision 冲突拒绝，禁止回滚、刷新基线或按正文相同认定成功。
 
+## 流程标题
+
+新 Run 在发起时冻结当前 Map 名称、从根到直接父级的名称路径和当前 Map 的 node 名称。根 Run 默认名称与管理者 Chat 名为 `[M]A`；嵌套为 `[S]B-A`、`[S]C-A/B`。普通及结束节点 Chat 使用 `节点名称-A/B/C`，脚本节点不创建 Chat。chief 委派的 Map 使用相同规则，独立 Chat 仍使用 Task 命名规则。
+
+每个 Chat 的 Herdr Tab 与历史会话列表保存相同完整名称，不按固定字数裁短；显示空间不足时由各界面处理截断。名称仅供展示，不通过 `-` 或 `/` 解析身份。Map/node 后续改名不追溯改变该 Run 的命名来源；手动 Run 重命名仍可用，但不联动已有或后续 Chat 名称。旧 Run 缺少命名快照时保持原命名行为，不批量改写历史记录。
+
 ## 公开接口与持久字段参考
 
 以下是公开 HTTP/文件 interface，不要求用户手填请求；日常操作从 scheduler 发起、workflow 查看，再在已关联管理者 Chat 表达意图。静态 Map/Bot 的 snake_case 格式见 [scheduler](scheduler.md#定义职责与唯一格式)；运行 HTTP 与记录使用 **camelCase**，不要混用。
 
-workflow 详情的字段标签直接使用对应 JSON key，不翻译或改写大小写：当前定义为 `bot_id`、Bot 绑定的 `task_id`、`zone`、`input`、`input_rule`、`output_rule`、`blocked_by`、`report_policy`、`auto_close`；当前及旧执行为 `id`、`taskId`、`zone`、`reportPolicy`、`autoClose`、`childRunId`（保存关联时可导航）；运行背景为 `managerTaskId`、`zone`、`workspaceName`、`userInput`、`fileInputs`、`manager`。执行存在时摘要的 `reportPolicy` 来自保存的执行；未派发时才以 `report_policy（当前配置）` 展示当前 Map 设置。报告的 `id`、`at`、`body`、`executionId` 与 Chat 的 `sessionId` 等也沿用原 key；`canComplete`、`outputs` 不改写。中文章节、操作和风险/缺失说明仍保留。实际 cwd 和派发时解析的文件输入没有独立持久字段，只用说明文字表示未记录，不为它们虚构 JSON key。
+workflow 详情的字段标签直接使用对应 JSON key，不翻译或改写大小写：当前定义为 `bot_id`、Bot 绑定的 `task_id`、`zone`、`input`、`input_rule`、`output_rule`、`blocked_by`、`auto_approved`、`auto_close`；当前及旧执行为 `id`、`taskId`、`zone`、`autoApproved`、`autoClose`、`childRunId`（保存关联时可导航）；运行背景为 `managerTaskId`、`zone`、`workspaceName`、`userInput`、`fileInputs`、`manager`。执行存在时摘要的 `autoApproved`、`approved`、`approvalSource` 来自保存的执行；未派发时才以 `report_policy（当前配置）` 展示当前 Map 设置。报告的 `id`、`at`、`body`、`executionId` 与 Chat 的 `sessionId` 等也沿用原 key；`canComplete`、`outputs` 不改写。中文章节、操作和风险/缺失说明仍保留。实际 cwd 和派发时解析的文件输入没有独立持久字段，只用说明文字表示未记录，不为它们虚构 JSON key。
 
 | 方法及路径 | 请求与结果 |
 | --- | --- |
@@ -76,10 +94,15 @@ workflow 详情的字段标签直接使用对应 JSON key，不翻译或改写�
 | `GET /api/workflow/runs/{id}` | 详情包 `id`、可空 `run`、`managed`、`startupError`、`readError`；可读 Run 另含完整 `reports` 与 `pendingReports`。必要记录不可读明确失败；仅有启动错误但当前记录不可读时仍可返回错误现场。 |
 | `PATCH /api/workflow/runs/{id}` | 严格 JSON 正文 `{"name":"显示名称"}`；去除首尾空白后必须非空，允许重名。HTTP 200 返回与 GET 相同的更新后详情包。当前管理与历史未接管的可读 Run 都可重命名；不改变运行状态、执行身份或管理归属。非法正文/空名返回 HTTP 400（空名 `run-name-required`），读取/保存失败返回 HTTP 500、`run-read-failed` / `run-save-failed`。 |
 | `POST /api/workflow/manager/{action}` | action 为 status、prepare_inputs、dispatch、complete、fail、reconcile_dispatch、recover、retry、pause、resume、finish、collect；各自的严格业务参数及返回字段见下文，不是任意动作/状态修改入口。 |
-| `POST /api/workflow/node/context` | 严格 JSON 对象只含 `sessionId`；同机来源及真实执行归属与 report 使用同一解析器，返回 `{runId,nodeId,executionId,reportPolicy}`。按匹配 executionId 读取冻结策略，包括 retry 前旧执行及合法子管理者／父节点双角色；不读当前 Map、不保存报告或触发通知。无关联／歧义／非法角色拒绝，不可读返回错误，调用方不得默认 auto。 |
-| `POST /api/workflow/node/report` | 传输身份加 `body`，分开返回保存、通知与诊断结果，详见报告章节。 |
+| `POST /api/workflow/node/context` | 严格 JSON 对象只含 `sessionId`；同机来源及真实执行归属与 report 使用同一解析器，返回 `{runId,nodeId,executionId,autoApproved,approved,approvalSource}`。按匹配 executionId 读取冻结策略，包括 retry 前旧执行及合法子管理者／父节点双角色；不读当前 Map、不保存报告或触发通知。无关联／歧义／非法角色拒绝，不可读返回错误，调用方不得默认 auto。 |
+| `POST /api/workflow/node/approve` | 严格 JSON 对象 `{sessionId,executionId,source}`；source 为 `auto` 或 `manual`。sessionId 来自公共 Session，executionId 由工具先调用 context 后捕获，source 由冻结 autoApproved 与原生确认结果选择，三者均不是模型可选目标。返回 `{runId,nodeId,executionId,autoApproved,approved:true,approvalSource,changed}`。不需要说明、报告 ID、成果版本、输出或文件；不产生报告、主动通知、complete、dispatch、finish 或重投。人工 HTTP 场景仅证明后端提交，不证明原生 Yes。 |
+| `POST /api/workflow/node/report` | 传输身份加 `body`，分开返回保存、通知与诊断结果，详见报告章节。报告随时可发，无发送确认，不改变批准事实。 |
 
-管理者角色公开 `run`（按 action 选择下文状态动作）与 `collect`，节点角色公开 `report`；HTTP 将 run 的各 action 分成上表路由，不表示另建一组可绕过角色约束的工具。运行角色传输请求中的 `sessionId` 由公共 Session 自动取得，模型仅给动作矩阵列出的业务参数。后端检查同机来源和已保存真实关联；不接受额外 Run/角色/执行/接收者归属。页面创建 Run 的配置请求与角色请求不是同一种身份协议。Map filename 和 Run ID 沿各自路径校验，不接受任意文件路径。
+仅 `github-repository-exploration.json` 的直接启动表单使用可选的 `githubExploration: {githubUrl, parentDirectory, explorationDirection}`。链接和克隆父目录须成对填写或成对留空；探索方向独立可空，可直接填一段文字。预检不写文件。启动时由服务端在选定的管理者 zone 下分配 `.manager-zone/.workflow/<run_id>/`，按需生成 UTF-8 `clone_request.json` 和 `exploration_brief.txt`，将实际绝对路径加入既有 `fileInputs`；不修改 `userInput`，不允许同一个 ID 同时绑定已有文件和生成材料。材料写入失败返回 `run-material-write-failed`，不启动管理者 Chat；可能留下已写入的部分材料。本 Map 的执行授权由其 `input_requirements` 约定：用户发起 Run 即授权本次已声明的工作，管理者核实材料后沿用授权，无需再次询问是否执行。缺项、用户明确限制、与既有要求冲突或范围外操作仍须澄清。此为提示词约定，不新增授权参数、持久化字段或后端门禁；`inputsReady` 仍由管理者完成输入审阅后通过 `prepare_inputs` 声明，不自动派发。Run 状态和历史仍保存在 `scheduler.run_directory`。
+
+approve 与 context 均只接受同机来源及真实执行关联；结束节点无节点权限。无关联、歧义、非法管理者角色沿用 `node-unassociated`／`node-ambiguous`／`node-role-invalid`／`end-node-no-authority`（403）。非法正文、未知字段、数组、重复 key、查询参数为 400。批准 executionId 不匹配为 `approval-execution-mismatch`（400），已被 retry 替代为 `approval-execution-stale`（400）；终态为 `run-terminal`，不可批准阶段为 `node-not-approvable`，来源不符为 `approval-source-mismatch`（均 400）。持久化失败 `approval-save-failed`（500）保留原错误，不发布成功事实；读取失败为 `run-read-failed`（500）。同次重复批准返回 changed=false，不重复业务效果。manager complete 的未批准拒绝为 `node-not-approved`（409），约定交付未登记为 `output-missing`（409）；仍检查当前最新报告，先前 true 不覆盖最新 false。
+
+管理者角色公开 `run`（按 action 选择下文状态动作）与 `collect`，节点角色公开 `approve` 与 `report`；HTTP 将 run 的各 action 分成上表路由，不表示另建一组可绕过角色约束的工具。运行角色传输请求中的 `sessionId` 由公共 Session 自动取得，模型仅给动作矩阵列出的业务参数。后端检查同机来源和已保存真实关联；不接受额外 Run/角色/node/接收者归属；仅 approve 的 executionId 是 context 捕获的执行绑定，不是模型选择。页面创建 Run 的配置请求与角色请求不是同一种身份协议。Map filename 和 Run ID 沿各自路径校验，不接受任意文件路径。
 
 ### 三份记录的字段
 
@@ -87,14 +110,14 @@ workflow 详情的字段标签直接使用对应 JSON key，不翻译或改写�
 
 | 对象 | 序列化字段及意义 |
 | --- | --- |
-| Run | `id`；可选 `name`（仅供人辨识的名称，未命名时省略，旧记录缺少此字段仍可读取）；`map`（Map 文件引用）；`createdAt`；`managerTaskId`；管理者实际目录 `zone`、`workspaceName`；新 Run 的 `managerZoneId` 与 `zoneBindings`（ID → 本次本机路径）；原文 `userInput`；`inputsReady` 表示管理者是否已确认输入就绪（新 Run 为 false；历史记录缺字段也按 false 读取，不视为已验证）；独立 `fileInputs: [{id,path}]` 保存本次调用方或管理者准备的文件地址（省略可选项不生成条目，无输入为 `[]`，旧记录缺字段按空数组读取而不重写文件）；可空 `manager` Chat 引用；`status`；可空 `finished`；`nodes`（node ID → 节点事实）。不是整张 Map 定义快照；旧记录可以没有 managerZoneId 和 zoneBindings，保留本机历史，不从当前登记补造。 |
+| Run | `id`；可选 `name`（仅供人辨识的名称，未命名时省略，旧记录缺少此字段仍可读取）；可选 `naming`（新 Run 的展示名称快照：`mapPath` 为根到当前 Map 的名称数组，`nodeTitles` 为 node ID → 发起时名称；旧记录缺席不补造）；`map`（Map 文件引用）；`createdAt`；`managerTaskId`；管理者实际目录 `zone`、`workspaceName`；新 Run 的 `managerZoneId` 与 `zoneBindings`（ID → 本次本机路径）；原文 `userInput`；`inputsReady` 表示管理者是否已确认输入就绪（新 Run 为 false；历史记录缺字段也按 false 读取，不视为已验证）；独立 `fileInputs: [{id,path}]` 保存本次调用方或管理者准备的文件地址（省略可选项不生成条目，无输入为 `[]`，旧记录缺字段按空数组读取而不重写文件）；可空 `manager` Chat 引用；`status`；可空 `finished`；`nodes`（node ID → 节点事实）。不是整张 Map 定义快照；旧记录可以没有 managerZoneId 和 zoneBindings，保留本机历史，不从当前登记补造。 |
 | Chat 引用 | `sessionId`、`workspaceId`、`tabId`、`paneId`、`agentName`；原生身份与实际宿主关联，不是新 Tab 即独立身份的证明。 |
 | 节点事实 | `status`；可空 `execution`、`failure`、`completion`；`previousExecutions` 数组，各项保留被替代的可空 `execution` 与 `failure`。 |
-| execution | `id`、来源 `taskId`、实际宿主 `agent`、实际执行目录 `zone`、`reportPolicy`（`auto` 或 `manual`）、`autoClose`（布尔）、可空 `chat` 引用；可空 `inputRule`、`outputRule` 为派发时冻结的规则数组，`inputs` 为解析后的 `{id,path}` 数组。新执行保存数组（包括已知的空数组），未知历史值为 null，不从当前定义补造。两项选择在 dispatch/retry 解析当前 Map 时固定；旧记录缺少 `reportPolicy` 时按 `auto`、缺少 `autoClose` 时按 `false` 读取，无迁移、不因查询改写文件。新尝试拥有新执行 ID；没有 Chat 关联不代表外部没有发生效果。 |
+| execution | `id`、来源 `taskId`、实际宿主 `agent`、实际执行目录 `zone`、可选 `zoneId`（新执行冻结的 zone 身份，历史缺席不补造）、`autoApproved`（冻结布尔模式）、`approved`（批准事实）、`approvalSource`（null、`auto` 或 `manual`）、`autoClose`（布尔）、`endNode`（布尔，旧记录省略为 false）、可空 `chat` 引用；可空 `inputRule`、`outputRule` 为派发时冻结的规则数组，`inputs` 为解析后的 `{id,path}` 数组。新执行保存数组（包括已知的空数组），未知历史值为 null，不从当前定义补造。报告、关闭与结束节点选择在 dispatch/retry 解析当前 Map 时固定；批准字段不对旧 Run 补默认值，不升级或批量改写历史；旧 Run 不保证可继续或呈现。新尝试拥有新执行 ID；没有 Chat 关联不代表外部没有发生效果。 |
 | failure | `stage`、`message`；启动失败可含 `effects`，执行阶段失败不制造启动效果。详细阶段以实际响应为准，不能只看 failed。 |
 | effects | `recordsInitialized`、可选 `childRunId`、`childRecordsInitialized`、可空 `workspaceId/tabId/paneId/agentName/sessionId`、`agentStarted`、`associationSaved`、`inputAttempted`、`inputSubmitted`；尝试提交时另有 `inputOutcome`：`submitted` 为收到成功确认，`rejected` 为宿主明确拒绝，`unknown` 为超时、通信或响应不可理解，不能断言未发送。未尝试或旧记录缺此字段，不补造结果。只表示已观察阶段，不证明未确认阶段绝无效果。 |
 | completion | `id`、`at`、真实管理者 `actor` Chat 引用、原文 `reason`；保留首次交接事实。 |
-| finished | `id`、`at`、真实管理者 `actor` Chat 引用；重复 finish 不覆盖。 |
+| finished | `id`、`at`、真实管理者 `actor` Chat 引用；结束节点交接时另有 `reason: "handed-to-user"`，普通完成省略；重复 finish 不覆盖。 |
 | report | `id`、`type=report`、`at`、`runId`、`nodeId`、`executionId`、真实 `from`/`to` Chat 引用、`body`、`canComplete` boolean 及可选 `outputs: [{id,path}]` 实际地址数组；历史缺新增字段可读但不补 true。只在 messages.jsonl 追加，不包含已读或投递成功事实。 |
 
 管理者、node 与 retry 的共同启动阶段统一为 `workspace`、`tab`、`start`、`identity`、`association`、`history`、`submit`；管理者另有记录初始化阶段 `initialize`，node 另有定义解析阶段 `resolve` 与提交运行状态阶段 `state`。其中 `history` 指提交首次指示前写入 **Chat 历史会话列表**，不是追加 Run 的 `history.jsonl`。管理者在此失败也返回 `stage=history`（不再归入 `association`）；已保存的真实关联和 `associationSaved=true` 保留，`inputAttempted/inputSubmitted=false`，不会提交首次指示。node 与 retry 同样保留关联和失败事实；retry 不覆盖旧执行。Run 执行历史追加失败仍使用既有 `historyError`／部分生效反馈，不等同于这个启动阶段。
@@ -103,11 +126,21 @@ workflow 详情的字段标签直接使用对应 JSON key，不翻译或改写�
 
 当前事实读取以 `run.json` 为准，`reports` 为全部追加报告，`pendingReports` 为 node ID → 当前适用报告 ID。status/动作使用 `snapshot` 而非详情的 `run` 字段；collect 不带报告正文。HTTP 成功码不能掩盖 `historyError` 或逐项失败，错误码、已生效字段和已发生效果必须一起解释，见[部分提交](#独立读取与部分提交)。
 
+## 动态 node zone 派发
+
+Map node 的 `zone: {"type":"dynamic"}` 声明每次执行由 manager 选址，不包含预设 ID。固定 `zone` 字符串维持 Run 启动时的绑定快照；动态位置不要求在启动 Run 时已存在。
+
+`dispatch` 保留 `nodes` 数组，并可携带 `zoneIds: {"nodeId":"已登记 zone ID"}`。每个选中的动态节点必须有明确值；固定节点或未选节点不得提供覆盖。`retry` 对动态节点必须另传 `zoneId`，不能继承前次值。manager 从上游 report 等工作信息作出选择；系统不提取报告文本、不自动创建或登记 zone，也不自动派发。
+
+公共派发入口按当前 zone 登记校验 ID 和目录，冻结到本次 execution 的 `zoneId` 与 `zone`，再进入 Task、脚本或子 Map 分支。缺值、未登记或目录无效时拒绝，不启动对应业务执行；既有执行不跟随改绑，重试可以显式选择另一个位置。动态选择不写回 Map 或 Run 的固定 `zoneBindings`。历史 execution 缺少 `zoneId` 时保持未知，不从现有定义猜测。
+
+`recover` 仍只恢复原执行跟踪；Run `pause`／`resume` 仍只控制新派发资格，不重选已有执行位置。子 Map 的选址只决定子 manager zone，内部 node 独立遵循自身定义。`input_rule` 文件来源保持原语义，`type:file` 不引用动态 node zone，上游输出依然按报告登记的实际绝对文件地址交接。
+
 ## Map 型节点与子 Run
 
 Map 型 Bot 只保存 `map_file`，不固化管理者。具体 node 的 `manager_task_id` 必须引用 manager Task；派发使用该 node 的 `zone` 和原始 `input` 创建独立子 Run。内部节点仍使用子 Map 各自的 zone，不展开或复制进父图。同一 Map 的每次调用、每次明确 retry 都有独立 Run 和 execution，不能按 Map 名或 node 名猜测归属。
 
-父 execution 的可选 `childRunId` 与子 Run 的可选 `parent: {runId,nodeId,executionId}` 保存双向执行关联；普通执行／根 Run 省略它们，旧非嵌套记录仍可读取。两侧真实 Chat 引用相同、来源 Task／agent 一致且关联唯一时，该子 manager 才同时拥有子 Run 的管理者与父 execution 的节点角色。OMP／Pi 启动装配各自的 manager-chat 和 node-chat；没有新增 Task 类型或普遍放宽身份唯一性。`run`／`collect` 只定位子 Run，`report` 只定位关联的父 execution，包括保留的旧 execution。请求不能指定其他 Run／execution／接收者来选择身份；同 Run 混用、缺少／错误／多重关联和复用原生 Session 仍拒绝。
+父 execution 的可选 `childRunId` 与子 Run 的可选 `parent: {runId,nodeId,executionId}` 保存双向执行关联；普通执行／根 Run 省略它们，旧非嵌套记录仍可读取。两侧真实 Chat 引用相同、来源 Task／agent 一致且关联唯一时，该子 manager 才同时拥有子 Run 的管理者与父 execution 的节点角色。OMP／Pi 启动装配各自的 manager-chat 和 node-chat；没有新增 Task 类型或普遍放宽身份唯一性。`run`／`collect` 只定位子 Run，`context`／`report` 只定位关联的父 execution，包括保留的旧 execution；`approve` 也只批准真实父 execution，但旧子 manager 不能批准 retry 后的新 execution，旧执行的批准请求按陈旧执行拒绝。批准请求的 executionId 只校验已取得上下文，不能选择其他归属。请求不能指定其他 Run／execution／接收者来选择身份；同 Run 混用、缺少／错误／多重关联和复用原生 Session 仍拒绝。
 
 父节点本次已经解析的 `inputs: [{id,path}]` 按**本地 id 同名**作为子 Run 的 `fileInputs`。例如上游输出 `upstream-result` 被父 node 规则绑定为 `child-material` 时，子接口必须声明 `child-material`，而不是上游输出名。每层只解析所属 Run 的输入；同名跨 Map／Run 不串材料。空接口和可选缺席合法，不生成占位路径；即使子接口必需项暂缺，也可启动子管理者；子 Run 同样从 `inputsReady=false` 开始，须由子管理者澄清、补齐并确认后，才能派发任何内部业务节点。父 execution 已冻结的 inputs 不因子 Run 后续绑定而改变。
 
@@ -144,7 +177,9 @@ node scripts/test-backend.mjs
 
 子 manager 的 `report` 登记的是**父 execution 冻结的 `outputRule`** 中的输出 ID 与实际绝对文件地址，不从内部 node 的同名输出自动取值，也不新增 Map 输出声明。未知／同次重复 ID 拒绝整次报告；增量报告按同 execution 的追加顺序合并，同名更新，省略保留既有登记，未登记不补造路径。普通及 Map 型下游都通过父 node 的 `type=node` 输入规则解析这些地址；只用当前 execution，旧尝试即使曾交付也不能补齐新尝试的缺项。上游 completed 只满足依赖，所需输出未登记或文件不可读时派发仍在 `resolve` 阶段失败，不创建下游 Chat 或子 Run。
 
-内部 node 未全部 completed，或虽全部 completed 但子 manager 尚未显式 `finish`，均不能外报 `canComplete=true`（HTTP 400，`child-run-not-finished`）；`false` 进展报告仍可保存。读取关联子 Run 失败不当作已结束。`finish` 只要求内部节点交接完成，不要求父输出全部登记。完成资格、已登记材料及父层业务验收是三件不同的事：子 `finish` 和任何报告都不完成父节点，也不自动放行或派发下游；父 manager 须按当前 execution **最新有效报告严格 true** 显式 `complete`，后来的 false 不能回退较早 true。
+子 manager 尚未显式 `finish` 时不能外报 `canComplete=true`（HTTP 400，`child-run-not-finished`）；`false` 进展报告仍可保存。读取关联子 Run 失败不当作已结束。`finish` 要求内部普通工作节点交接完成；指定结束节点只需成功派发，不等待其业务完成。它不要求父输出全部登记。子 manager 也必须等到子 Run 显式 `finish` 后，才可通过 `node/approve` 独立批准父节点整体成果；提前批准返回 HTTP 400 `child-run-not-finished`。父 execution 的 `autoApproved` 在本次派发时冻结，不随当前 Map 改动：自动模式由子 manager 主动提交 `source=auto`，人工模式须经原生 Yes 后提交 `source=manual`（HTTP 本身不证明原生确认）。内部节点的批准、交接与子 Run 完成都不会批准父 execution。
+
+成果批准、报告、已登记材料及父层业务验收相互独立：子 `finish`、批准和任何报告都不完成父节点，也不自动放行或派发下游；父 manager 须核对当前 execution 已批准、**最新有效报告严格 true** 及全部冻结输出 ID 已登记后显式 `complete`，后来的 false 不能回退较早 true。报告发送不再要求独立发送审批，也不产生批准事实。
 
 报告保存与宿主通知分阶段反馈。即使真实通知失败，`saved=true` 的报告、完成的子 Run 与已有文件仍可由公开详情读回；不要为通知失败重报、重派、回滚或重新 finish。父节点首次合法 complete 后，才按该 execution 冻结的 `autoClose` 尝试一次精确关闭其关联子 manager Tab。子 finish 不关闭父执行的 Tab；重复 complete 不重复关闭，也不扫描或级联关闭内部 Tab。关闭失败不撤销已保存的父交接。
 
@@ -220,6 +255,8 @@ python scripts/test-workflow-partial-startup.py `
 
 当前交付目录也将 auto `connect-bot` 作为无角色限定的固定扩展，manager 与 node 会一并加载并尝试面板登记；它不替代角色扩展的 Run 关联和协议，角色通信仍不依赖 connect-bot 是否连接。固定入口与适用角色统一在 Suite 页面只读查看，未选择 Suite 也加载。下文关闭 connect-bot 的专项验收用于证明角色通信的独立性，不代表当前默认禁止加载它。
 
+新启动的原生会话身份及其独立性由宿主保证。首次节点派发、合法 retry 和嵌套 Map 节点启动均不扫描历史 Run 排重；保留官方身份来源、类型、路径／文件头及 cwd 校验，保存当前执行关联后才提交 Task.prompt 与 node.input。无关历史 Run 不可解析不阻断该启动路径；不因此迁移旧记录、补批准字段或自动恢复失败执行。已有 Chat 恢复、派发核实及报告／批准等操作的身份归属校验保持不变。
+
 Herdr 确认 `agent start` 不代表已经发布原生身份。对刚启动的管理者或 node，后端在同一次 `identity` 阶段的 **30 秒总期限**内，仅当 `agent_session` 缺失或为 null 时，每隔 100 毫秒只读查询同一个 agent；身份出现后才校验并保存关联、提交初始化输入。命令失败、响应结构错误、身份不匹配或原生文件错误不会被当成“尚未就绪”反复查询。期限耗尽则报告 identity 失败并保留已发生的外部效果，不再次启动、不补发输入，也不自动接管旧失败 Run。
 
 新启动的 omp 可能已分配原生身份、但尚未创建会话文件。herdr-bot 仅在官方 `herdr:omp` 上报绝对原生路径、实际文件打开为 NotFound、文件名符合 omp 的时间戳与 UUID 约定且有实际进程 cwd 时，接受路径中的身份；文件存在时仍读取文件头，权限、损坏及非标准路径错误不降级。管理者、节点和节点 retry 均先保存身份关联与历史，再提交初始指示；不会为取得身份提前发送任务或创建原生文件。身份及历史中的预期文件路径不代表已经落盘或当前可恢复，信任边界见 [ADR 0014](adr/0014-unpersisted-omp-startup-identity.md)。没有后台落盘轮询、自动修复或对旧失败 Run 的补关联。
@@ -238,7 +275,7 @@ workflow 使用独立样式作用域，按已确认原型的字号、行高、�
 
 图中同时使用状态文字、独立符号与对应文字颜色，不依赖卡片整块填充表示状态；运行节点的独立箭头只在 Run 由当前后端管理且处于 running 时播放纯 CSS 动画，未接管或暂停时静止，减少动态效果设置下停用动画。选中态另用静态外框，不按 Chat 在线或工作状态推断完成。pending 节点仅按当前 Run 状态与当前定义的依赖显示 ready/blocked；这只是读取时的说明，不自动派发。节点详情继续区分「当前定义」的 Bot/Task、zone/input、前置依赖与阻塞原因，以及「已保存执行」的 Task/zone/真实 Chat 标识、失败阶段及效果、交接完成说明/时间和当前执行适用报告正文/时间。没有执行或 Chat 关联时明确提示，不隐式补建。
 
-节点详情的交接字段均只读：当前/旧 execution 显示保存的 `reportPolicy`、`autoClose`（旧记录缺失时分别按后端默认 `auto`、`false` 解释），不取当前 Map 覆盖执行设置。保存的执行 `zone` 单独显示；实际 cwd 未单独持久化，页面仅显示「未单独记录」，不把当前 Map zone 当成执行事实。新执行保存派发时的 `inputRule`／`outputRule` 和解析后的 `inputs: [{id,path}]`，页面分别展示冻结规则与实际输入，不从当前 Map 或后续报告重建。历史迁移不能恢复的规则或实际输入明确标为未记录；当前 Map 的 `input_rule`／`output_rule` 仍属于「当前定义」，不是历史事实。
+节点详情的交接字段均只读：当前/旧 execution 显示保存的 `autoApproved`、`autoClose`，并分别读取 `approved` 和 `approvalSource`，不取当前 Map 覆盖执行设置。保存的执行 `zone` 单独显示；实际 cwd 未单独持久化，页面仅显示「未单独记录」，不把当前 Map zone 当成执行事实。新执行保存派发时的 `inputRule`／`outputRule` 和解析后的 `inputs: [{id,path}]`，页面分别展示冻结规则与实际输入，不从当前 Map 或后续报告重建。历史迁移不能恢复的规则或实际输入明确标为未记录；当前 Map 的 `input_rule`／`output_rule` 仍属于「当前定义」，不是历史事实。
 
 当前执行累计 `outputs` 仅合并同 node、同当前 execution 的报告，遵循 `messages.jsonl` 追加顺序（不是 `at` 时间排序）：同名后报覆盖，省略名字或整个 outputs 保留已有登记，不继承旧 execution 或其他 node 的地址。最新 `canComplete` 只读最后一条适用报告，区分 `true`、`false`、字段缺失及无报告，不回退到较早的 true。每份当前/旧报告单独显示其 `canComplete` 和本次提交的 outputs，不把累计值冒充该报告的提交值。这里只展示登记地址，不读取或验证业务文件；可交接声明不等于管理者 complete。
 
@@ -333,7 +370,7 @@ child 的父关联发布／初始化与删除扫描在同一进程内协调；�
 
 跨仓原生验收入口为 `python scripts/accept-workflow-nesting-recovery.py --backend <当前 worktree 后端绝对路径> --toolkit <toolkit worktree> --hosts omp,pi --paths-file <独占依赖声明> --model-config <专用授权模型声明> --evidence-dir <尚不存在的独占目录>`。实际安装版两宿主在明确失败／retry 后分别恢复旧与当前子 manager Chat，原生新 PID／相同 Session、来源 Task、parent execution／child、原始输入、实际文件及真实 run／collect／report 的后端结果共同证明身份与无重放；随后真正更换后端进程，恢复同两条 Chat 并观察原生角色拒绝。`--hosts declared` 保持业务声明的 OMP 父层／Pi 子层，不为 runner 改宿主。独立后端矩阵、配置或受控宿主成功都不能替代该专项；命令与证据目录存在不表示已通过。依赖、授权、隔离、清理和复跑边界见[测试指引](agents/testing.md#嵌套原生新进程恢复验收)。
 
-嵌套管理者 Chat 的普通恢复依据持久唯一关联：子 Run 的 manager 与父 node 的同一次 execution 必须相互对应；它同时加载 manager-chat 与 node-chat，而非根据 Chat 名称、cwd 或当前选择推测角色。retry 后的旧 Chat 仍对应保留的旧 execution 与旧 child，不改绑到新执行。恢复使用明确来源 Task 的当前会话环境，不重新应用 trigger config，不新建 Run、execution 或提交业务输入；非法／不唯一的关联明确拒绝，不能以普通 manager 角色替代双角色校验。旧非嵌套记录缺少 parent／childRunId 字段仍按非嵌套历史读取，不要求迁移或增加旧业务别名。
+嵌套管理者 Chat 的普通恢复依据持久唯一关联：子 Run 的 manager 与父 node 的同一次 execution 必须相互对应；它同时加载 manager-chat 与 node-chat，而非根据 Chat 名称、cwd 或当前选择推测角色。retry 后的旧 Chat 仍对应保留的旧 execution 与旧 child，不改绑到新执行。恢复使用明确来源 Task 的当前会话环境，不重新应用 trigger config，不新建 Run、execution 或提交业务输入；非法／不唯一的关联明确拒绝，不能以普通 manager 角色替代双角色校验。旧非嵌套记录缺少 parent／childRunId 字段仍按非嵌套历史读取，不要求迁移或增加旧业务别名。角色查找扫描 Run 记录，但只反序列化身份与角色关联字段；旧记录缺少成果批准字段不阻断任何 Chat 的恢复。JSON 无法解析或关联本身不可判定时仍拒绝恢复，不跳过记录、不推测角色。此读取方式仅用于 Chat 恢复，不迁移 Run，也不改变 workflow 操作的完整记录校验。
 
 后端专项入口（当前 worktree 的静态页面、独立 `CARGO_TARGET_DIR`；仅受控 Herdr，不连接用户会话）：
 
@@ -387,7 +424,7 @@ Map 的 `input_requirements` 只承载非文件的总体要求，非空时才在
 
 每个合法目标沿 node → Bot → 普通（normal）Task（omp/pi） 解析完整 trigger config 和 env config，在本次 Run 启动时已确定且当前仍安全有效的 zone 路径创建独立原生 Chat，后续登记改绑或取消不改变本次路径。目标 Workspace 只取已保存的管理者实际 Workspace ID；目标不存在或查询失败即报错，不按目录名重选，不退回当前/默认 Workspace。原生身份必须不同于本 Run 的管理者及已有 node Chat，宿主返回的 cwd 必须与本次保存的 zone 实际路径一致。真实关联保存前不提交初始指示；运行文件锁不跨宿主调用。
 
-节点初始输入按原有 Skill → Task 固定 prompt → 本次 input 组合规则提交。本次 input 包含自身 node 标识/名称、运行说明及三份记录的绝对路径，并在业务原文外提供独立策略控制段，明确本次 `report_policy: auto|manual` 及行为定义，另以独立背景段给出本次 `userInput`，命名文件输入段只给地址，最后提供经本机词典单次替换的 node.input；Task 固定 prompt 同样独立替换，不解释 userInput、规则 JSON、文件地址或报告；不附 Bot 文档、完整 Map、上游完整聊天或文件正文。管理者与节点均获知管理者 zone 下 `.manager-zone/.workflow/<Run ID>` 的中间资料位置；该位置按 Run 区分、与 node 执行 zone 解耦，不建立背景副本、每 node 子目录或输出预分配协议，不限制业务产物的地址，也不是输出登记白名单。框架不替节点创建业务文件或读取其正文。node 应主动按需读取说明与记录，在自身 zone 工作；记录路径可以位于 zone 外，不按 cwd 推导替代路径，也不增加可读性门禁。node 不得通过自行退出、停轮或报告假定完成交接，流程推进由管理者显式决定。
+节点初始输入按原有 Skill → Task 固定 prompt → 本次 input 组合规则提交。本次 input 包含自身 node 标识/名称、运行说明及三份记录的绝对路径，并在业务原文外提供独立策略控制段，明确本次 `auto_approved: true|false` 及行为定义，另以独立背景段给出本次 `userInput`，命名文件输入段只给地址，最后提供经本机词典单次替换的 node.input；Task 固定 prompt 同样独立替换，不解释 userInput、规则 JSON、文件地址或报告；不附 Bot 文档、完整 Map、上游完整聊天或文件正文。管理者与节点均获知管理者 zone 下 `.manager-zone/.workflow/<Run ID>` 的中间资料位置；该位置按 Run 区分、与 node 执行 zone 解耦，不建立背景副本、每 node 子目录或输出预分配协议，不限制业务产物的地址，也不是输出登记白名单。框架不替节点创建业务文件或读取其正文。node 应主动按需读取说明与记录，在自身 zone 工作；记录路径可以位于 zone 外，不按 cwd 推导替代路径，也不增加可读性门禁。node 不得通过自行退出、停轮或报告假定完成交接，流程推进由管理者显式决定。
 
 派发读取 Map 的 `input_rule`／`output_rule` 数组，并固定为本次执行的 `inputRule`／`outputRule`；`type: file` 使用本次 Run 已确定的 zone 绑定解析相对 `path`，可选 `zone_id` 缺省时使用 manager zone，并检查文件存在、可读及 zone 安全边界；`type: run` 只按本 Run 的 `fileInputs` 解析本 Map 已声明的 `input_id`，用本地 `id` 重命名，未提供可选项明确缺席，不接受其他 Run 选择；`type: node` 按同 Run 的 `node_id` 当前 execution 查找 `output_id`。输出 ID 是逻辑交接标识，不是文件名。解析只取 `messages.jsonl` 中适用执行的报告 `outputs: [{id,path}]`，按追加顺序累积覆盖；省略保留，新 execution 不继承，旧执行迟到报告不污染当前执行。不解析报告正文、扫描目录或聊天，也不另存输出 registry。保存报告成功即可解析，不等待通知，通知失败不使地址失效；所有解析出的实际地址在本次派发前仍须存在且可打开，失败不启动对应消费者。
 
@@ -412,7 +449,7 @@ manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `fi
 以下区分后端在启动／派发前的文件检查与节点持续承担的业务职责。业务 input 的编写边界见 [node.input 的业务职责](scheduler.md#nodeinput-的业务职责)。
 
 - 消费者以派发时保存并注入的实际文件输入为准，直接读取命名地址；不读取运行记录筛选材料，不持续追踪上游是否产生新 execution，不因上游重试或更新输出登记自行切换地址。文件缺失、不可读或业务内容冲突时报告具体阻塞，不猜路径、不回退其他版本。
-- 登记固定的是地址，不是内容。生产者可以在业务授权内原地修改自己负责的文件；安全写入、避免覆盖其他节点／执行的产物及完整读回职责不变。需要保留不同版本时可写新文件并更新同一输出 ID 的地址；后续派发按届时适用登记解析，更新不重定向已有消费者。报告发送确认不等同于业务内容确认或保存授权。
+- 登记固定的是地址，不是内容。生产者可以在业务授权内原地修改自己负责的文件；安全写入、避免覆盖其他节点／执行的产物及完整读回职责不变。需要保留不同版本时可写新文件并更新同一输出 ID 的地址；后续派发按届时适用登记解析，更新不重定向已有消费者。成果批准不等同于业务内容保存授权，也不冻结材料或正文。
 - 交接说明与可直接使用的纯正文是独立文件时，分别声明输出 ID 并登记地址；消费者逐项声明输入，不从同目录文件名或交接说明中推导未声明材料。输出规则不代替交付内容、格式、确认范围和验收要求。
 - 内部交接材料使用初始化提供的中间资料位置；生产者负责选择不与其他节点或执行冲突的新文件地址，不覆盖其他执行产物。安全保存、隔离与防覆盖作为统一约定维护，不在每个业务 input 复制运行身份解析和目录算法。业务明确要求的正式交付位置仍有效，规则本身不预分配路径。
 - 已提供的根输入在预检、启动与输入准备入口，普通节点的直接文件／报告输出／Run 输入在本次派发前检查实际文件存在且可打开。检查只证明当时可读，固定输入地址不等于文件正文快照；框架不读取业务正文，不复制、锁定、校验或阻止后续改写。中间资料位置仅按 Run 区分，不提供自动的每 execution 隔离，上述不覆盖约定依赖生产者遵守。派发后删改不会触发系统重试、修复、补文件或搬运，不承诺持续可用性、不可变存储或服务端强制隔离保证。
@@ -428,7 +465,7 @@ manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `fi
 
 创建案例支持既有 normal Task 或 Map 作为目标：公开的 `create-bot-wrapper` Bot 绑定 `create-bot-wrapper.json`，输入与父层交付、独立使用方法及检查边界见[既有目标 Bot 包装能力](create-bot-wrapper.md)。选定外层 `create-bot-task-workflow--bc-61ce48b80a4c.json` 保留创建 Task 与交互优化 Task.prompt 两步，再以真实目标、显式 request／materials 调用该包装能力；子管理者及 zone 在本次调用节点明确指定，真实 saved／handoff report 交付后仍需父管理者显式 complete，再交由外层 `optimize_bot` 联合优化新 Task.prompt 与 Bot 三指南。该节点确认、保存、读回并经父管理者验收完成后才能 finish 外层；最终配置以该节点交付为准，文本／定义优化不代表行为已验证。其他 Map 和旧独立 create-bot／create-bot-task 不自动切换；两项外层 Task 的稳定 ID 与 24 的配对归属见上述长期说明。包装内部核实并创建空白 Bot 后交付共同基线，三份指南独立确认，各自独立优化表达，最终原样汇总一次合法保存。修订案例直接核实既有 Task 型／Map 型 Bot 并形成共同基线，三个分支各自在同一 Chat 整理表达和确认，无需先修改目标，也不额外强制独立优化阶段。两者都保持执行目标完整配置不变。
 
-共享 Task 的固定业务核实、授权、配置冲突、真实 revision、运行禁写、非目标保持、文件安全、完整读回和部分生效核实职责在独立 Chat 同样成立；node 角色仅承接实际输入、材料位置与报告协议。三份 Bot 指南供规划者选择、安排和填写本次业务输入，不自动注入执行 Chat。业务确认、保存授权、报告发送确认与管理者完成分别成立。
+共享 Task 的固定业务核实、授权、配置冲突、真实 revision、运行禁写、非目标保持、文件安全、完整读回和部分生效核实职责在独立 Chat 同样成立；node 角色仅承接实际输入、材料位置与报告协议。三份 Bot 指南供规划者选择、安排和填写本次业务输入，不自动注入执行 Chat。业务确认、保存授权、成果批准与管理者完成分别成立。
 
 共同基线不是系统内容快照或交付后锁定。配置交付不等于工具／Skill／扩展加载、模型质量或业务能力验证；不为核实定义而启动用户业务。共享 Task 的稳定 ID、唯一配对测试归属和公开隔离检查入口见共同材料契约。案例 Map 的接线与真实模型验收由各自交付项负责，不能将共享协议文档或公开接线通过当作完整案例证据。旧独立 create-bot／create-bot-task 入口不改变职责，不自动迁移用户部署。
 
@@ -438,12 +475,12 @@ manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `fi
 
 - 两个绑定 Task.prompt 承担稳定能力流程，按分支引导读取本文件的[统一文件交接约定](#统一文件交接约定)和[规划交付契约](planning-deliverables.md)。两份交付文档的章节与可翻译条件只在交付契约维护，不在 node.input 或 Bot 指南重复。
 - 概要规划和转换 Task 均通过真实服务发现 Task 型／Map 型 Bot、读取三份指南并核实实际目标。两个 Bot 的 plan_guide 指导能力安排，node_guide 指导填写本次委托差异和结构化材料规则，不再要求复制稳定流程、方案正文或推导路径。Map 型能力保持一个调用节点，本次 manager、业务 input、zone 与材料映射遵循[两类 Bot 的能力选用与调用](planning-deliverables.md#两类-bot-的能力选用与调用)，不展开子图或固化 manager 到 Bot；指南仍不自动注入执行 Chat。
-- outline 的 input 指定使用本次 userInput、以文件交付概要方案，以及无阻止翻译缺口的最终交付门槛；允许讨论中的中间状态不等于允许向下游交接。report_policy 保持 manual，报告发送确认与方案业务确认独立。
+- outline 的 input 指定使用本次 userInput、以文件交付概要方案，以及无阻止翻译缺口的最终交付门槛；允许讨论中的中间状态不等于允许向下游交接。成果批准模式及方案业务确认职责由当前定义明确；报告发送不再要求确认。
 - outline 声明输出 outline，generate_map 通过同名输入引用它并保留前置依赖。概要方案本身是完整业务文档，无需另造没有独立用途的交接文件；其他业务图中的交接说明与纯正文有独立用途时分别声明。
 - generate_map 的 input 指定方案用途、map JSON 交付和本次只新增、不覆盖、保护当前 plan_workflow 的限制。稳定保存与验收步骤由 Task 承担，启动配置仅取自方案明确提供的值，缺失时不借用自举 Run 配置。
 
 规划入口仅更新两个共享 Task、两个 Bot 指南与本 Map 的交付门槛；其他 Map、旧独立能力入口、已有执行及运行实现不因此改造。根业务启动配置可待用户提供，但方案内 Map 调用节点的 manager、zone、业务输入和材料映射缺失仍阻止翻译。定义和文档检查不证明真实 agent 已遵从新指示，文件不覆盖仍是工作约定而非服务端不可变存储保证。
-定义级检查：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch plan_workflow:: -- --nocapture`。测试通过隔离服务公开读取交付的规划 Task／Bot，保存、读回原规划 Map 和混合 Task 型＋Map 型节点，保护命名来源、两节点业务绑定、依赖、报告策略与完整定义，并预检真实目标移除前后的接受／拒绝，查询无 Run、无宿主调用。这只是定义可读／可保存／服务可见的启用证据；指引内容审阅、字段存在或文本长度都不是 nesting P03 或原 P27/P28 的真实模型验收。完整实际宿主 outline → generate_map、真实文件翻译质量、用户确认及 manual 发送确认由独立真实业务入口验证：
+定义级检查：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch plan_workflow:: -- --nocapture`。测试通过隔离服务公开读取交付的规划 Task／Bot，保存、读回原规划 Map 和混合 Task 型＋Map 型节点，保护命名来源、两节点业务绑定、依赖、报告策略与完整定义，并预检真实目标移除前后的接受／拒绝，查询无 Run、无宿主调用。这只是定义可读／可保存／服务可见的启用证据；指引内容审阅、字段存在或文本长度都不是 nesting P03 或原 P27/P28 的真实模型验收。完整实际宿主 outline → generate_map、真实文件翻译质量、用户业务确认及人工成果批准由独立真实业务入口验证：
 
 ```powershell
 python scripts/test-workflow-file-handoff.py `
@@ -507,13 +544,13 @@ Run running 或 paused 时，running node 可以完成；人工已处理并确�
 
 Map node 的 `auto_close` 缺省为 `false`；dispatch/retry 读取派发时的当前 Map，并固定为本次 `execution.autoClose`。Run 创建时不冻结此选择，之后修改 Map 不改变已有执行；recover、核实或恢复原 Chat 沿用原执行设置。旧执行缺字段按 `false` 使用，不改写历史或补偿关闭。
 
-只有 manager 合法 complete 使节点首次进入 completed，且当前完成事实保存成功、本次执行启用自动关闭时，才异步尽力调用一次 `herdr tab close <tab_id>`。目标仅取当前执行保存的 `chat.tabId`，没有可靠关联则跳过，不扫描、按名称猜测或使用 manager／其他节点／旧执行的目标。当前事实保存失败不关闭；事实已提交但历史追加失败仍可关闭，保留原有部分生效反馈。重复 complete 不产生新资格。
+只有 manager 合法 complete 使节点首次进入 completed，且当前完成事实保存成功、本次执行启用自动关闭时，才异步尝试关闭一次。TUI 先读取当前执行保存的 Workspace 范围，若已知关闭最后一个 Tab 会连带关闭 worktree group，则不发送关闭命令；其余情形使用保存的 `chat.tabId` 执行 `herdr tab close <tab_id>`。保留 TUI 默认 `ui.confirm_close = true`，让原生拒绝也能保护查询到关闭之间新出现的 worktree group；App 核对该执行保存的 Space／Tab／Pane 与当前 App/core 原生会话关联，再执行带 `confirmed: true` 的 `tab.close`。这只授权目标 Tab 和由此变空的容器；不发单独的容器关闭命令，TUI 要求关闭额外 worktree group 时直接报告失败。没有保存的 Tab 不猜测，App 关联无法核实也不会改用其他目标。当前事实保存失败不关闭；事实已提交但历史追加失败仍可关闭，保留原有部分生效反馈。重复 complete 不产生新资格。
 
-关闭不会等待 agent 停轮、空闲、退出或收尾文字，也不先发送 stop。complete 的响应与同 Run 后续合法操作均不等待关闭命令返回；外部等待不持有 Run 操作锁或文件协调范围。关闭会终止该 Tab 内终端及相关进程，不删除 Chat 历史。命令失败、不可用、超时或要求额外确认不撤销完成、不重试、不绕过确认；尝试与结果只记带 Run/node/执行/Tab 上下文的后端日志，不新增业务状态、关闭结果记录或 workflow 通知。report、停轮、等待输入、退出登记、fail、pause/resume、整体 finish 和读取均不独立触发关闭；当前 workflow 没有节点取消或停轮命令入口，不为此新增入口。
+关闭不会等待 agent 停轮、空闲、退出或收尾文字，也不先发送 stop。complete 的响应与同 Run 后续合法操作均不等待关闭命令返回；外部等待不持有 Run 操作锁或文件协调范围。关闭用于终止该 Tab 内终端及相关进程，不删除 Chat 历史；宿主关闭回执不证明布局实际移除或进程实际退出，也不用 park／settle 代替关闭。受控拒绝、命令不可用或不能确认命令结果时，不撤销完成、不重试。Run 的节点明细可独立读回 `autoCloseFailure`，界面在已完成事实旁显示原因；不把关闭反馈写成节点工作失败或新的完成事件。report、停轮、等待输入、退出登记、fail、pause/resume、整体 finish 和读取均不独立触发关闭。
 
-`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch auto_close:: -- --nocapture` 通过真实 HTTP 和隔离 Herdr 命令副本核对 Map 双向修改、旧记录、权限及完成资格、当前执行精确目标、重复调用、工作中完成及非阻塞顺序。关闭 gate 在释放前保持命令未返回，测试先观察 complete 响应与同 Run 依赖节点真实派发，再释放并确认返回；10 秒有界等待仅防挂死，不是业务速度承诺。负向检查窗口为 150 ms；受控命令记录不证明真实 Herdr 的 Tab 移除或进程终止，真实外部效果需另行专属资源验收。
+S1 定向检查：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch auto_close:: -- --nocapture` 核对 TUI 目标与最后一个 Tab、Map 双向修改、旧记录、权限、重复调用和非阻塞顺序；`cargo test --manifest-path backend/Cargo.toml --test workflow_start precise_auto_close_app -- --nocapture` 核对 App 显式确认及目标归属，分别观察受控回执、布局和终端状态；`npm --prefix frontend run test:browser:build -- autoCloseIsolation.spec.ts --workers=1` 核对公开完成读回、持久关闭失败、页面原因和无重放。控制记录不证明真实安装宿主的布局或进程效果，实际效果由配对验收单独观察。
 
-P14/P17/P20/P21 的浏览器与诊断覆盖位于 `frontend/browser-tests/workflow/autoCloseIsolation.spec.ts`，通过 npm 浏览器入口运行。场景分别提供成功、命令拒绝、结构化 `confirmation_required`、派发后移走测试专属执行文件，以及缺少 Chat/空白 Tab 的有效历史执行。生产输出保留 Herdr 的机器错误码与说明，日志区分尝试、成功、失败和缺少目标跳过；不可用时有一次后端执行尝试，但没有外部 CLI 进程启动。测试读取外部 `invocations.jsonl`（含不支持命令），不只数 adapter 的已知关闭记录，以检查无强制确认或其他绕过。所有场景经合法 complete、同 Run 下游真实派发及重复 complete，比较公开结果、三份持久事实与真实 workflow DOM；750 ms 有界窗口只用于观察未重试/未显示关闭结果，不承诺无限未来。该替身覆盖不证明真实 Tab 已移除或终端已结束（P22）。
+P14/P17/P20/P21 的浏览器与诊断覆盖位于 `frontend/browser-tests/workflow/autoCloseIsolation.spec.ts`，通过 npm 浏览器入口运行。场景分别提供成功、命令拒绝、结构化 `confirmation_required`、派发后移走测试专属执行文件，以及缺少 Chat/空白 Tab 的有效历史执行。生产输出保留 Herdr 的机器错误码与说明，日志区分尝试、成功、失败和缺少目标跳过；不可用时有一次后端执行尝试，但没有外部 CLI 进程启动。测试读取外部 `invocations.jsonl`（含不支持命令），不只数 adapter 的已知关闭记录，以检查无强制确认或其他绕过。所有场景经合法 complete、同 Run 下游真实派发及重复 complete，比较公开结果、三份持久事实与真实 workflow DOM；750 ms 有界窗口用于观察未重试或重放，不承诺无限未来。失败显示独立反馈，成功回执不显示为进程已退出。该替身覆盖不证明真实 Tab 已移除或终端已结束（P22）。
 
 P11/P12 的保存边界与去重检查位于 `auto_close::completion_commit`：使用独占临时数据和真实 Windows 文件访问限制，分别阻止当前事实替换与历史追加；从 complete 响应、独立详情读取、原始文件及实际 `tab close` 命令记录联合核对未提交不关闭、历史失败仍关闭并保留部分生效反馈。顺序重复应保留首次完成 ID、说明和历史；并发场景先用同 Run 真实派发的外部 gate 占住业务操作边界，再同时提交两个 complete 并确认两者均未返回，释放派发后核对只提交一份完成事实、只尝试一次关闭。关闭自身也可被 gate 挂起，不能阻止重复请求返回。负向命令观察窗口为 200 ms，不代表跨崩溃 exactly-once、持久投递或真实 Herdr 效果保证。
 
@@ -523,7 +560,9 @@ P11/P12 的保存边界与去重检查位于 `auto_close::completion_commit`：�
 
 ### 结束 Run
 
-全部节点 completed 后，管理者显式结束本次 Run：
+全部普通工作节点 completed 后，管理者显式结束本次 Run。Map 若标记 `end_node: true`，该唯一无后继的普通 Task 节点只需成功派发，不需 report／complete；它必须在其余节点全部 completed 后才能派发。脚本型或 Map 型节点不能作为结束节点。结束节点执行保存 `endNode: true`，保留真实 Chat 与材料关联，启动和恢复均不加载 node-chat，也不自动关闭。其节点状态保留 running，不伪造业务完成；Run 的 `finished.reason: "handed-to-user"` 表示已交给用户。包含结束节点的 Map 仍可嵌套，显式 finish 后沿用原有向父层报告及验收逻辑。
+
+管理者调用：
 
 ```http
 POST /api/workflow/manager/finish
@@ -532,11 +571,11 @@ Content-Type: application/json
 {"sessionId":"<当前管理者真实身份>"}
 ```
 
-finish 没有模型业务参数。running 或 paused 的 Run 全部节点 completed 才能成功；仍有未完成节点返回 HTTP 409、`code=nodes-incomplete`，不自动完成它们。成功返回 `changed=true` 及同样的查询字段，Run 变为 completed，`snapshot.finished` 保留首次操作 ID、时间与真实管理者，history 追加 `action=finish`。`canFinish` 表示**当前仍可执行 finish**，所以终态为 false；重复 finish 仍返回已有成功事实、`changed=false`，不追加历史。终态可查询、可接收当前 node 的补充报告，但拒绝 complete 和新 dispatch；dispatch 拒绝项不会调用宿主。活动中的 Chat 不阻止完成或 finish；finish 不关闭 Chat，complete 仅按本次执行的自动关闭选择尝试关闭关联 Tab。
+finish 没有模型业务参数。running 或 paused 的 Run 须全部普通工作节点 completed，且指定结束节点（如有）成功派发，才能成功；条件未满足返回 HTTP 409、`code=nodes-incomplete`，不自动完成节点。成功返回 `changed=true` 及同样的查询字段，Run 变为 completed，`snapshot.finished` 保留首次操作 ID、时间与真实管理者，history 追加 `action=finish`。`canFinish` 表示**当前仍可执行 finish**，所以终态为 false；重复 finish 仍返回已有成功事实、`changed=false`，不追加历史。终态可查询、可接收普通工作节点的补充报告（结束节点 Chat 无节点报告资格），但拒绝 complete 和新 dispatch；dispatch 拒绝项不会调用宿主。活动中的 Chat 不阻止完成或 finish；finish 不关闭 Chat，complete 仅按本次执行的自动关闭选择尝试关闭关联 Tab。
 
 当前事实保存失败返回 HTTP 500、`complete-failed` 或 `finish-failed`，不采用候选状态或追加成功历史。当前事实已保存但历史追加失败时，仍返回已生效快照与非空 `historyError`，不要当作全部未生效或盲目重试。三份记录不承诺跨文件事务；重复调用也不会修复或重复追加首次缺失的历史。
 
-manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 应将 status → 读取输入要求与材料、澄清并 prepare_inputs 确认 → 读取报告/核实交接 → complete → 显式 dispatch 下游 → 全部完成后 finish 的职责与上述拒绝/部分生效语义注入真实管理者 Chat。node-chat 指引应明确 report、停轮、退出都不替代管理者交接。本仓库没有外部 toolkit 的角色工具实现；HTTP 路由与此说明不是工具已装配或 Prompt 已注入的证明，不通过手填 HTTP 身份冒充真实角色工具验收。
+manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 应将 status → 读取输入要求与材料、澄清并 prepare_inputs 确认 → 读取报告/核实交接 → complete → 显式 dispatch 下游 → 全部普通工作节点完成且结束节点（如有）成功派发后 finish 的职责与上述拒绝/部分生效语义注入真实管理者 Chat。node-chat 指引应明确 report、停轮、退出都不替代管理者交接。本仓库没有外部 toolkit 的角色工具实现；HTTP 路由与此说明不是工具已装配或 Prompt 已注入的证明，不通过手填 HTTP 身份冒充真实角色工具验收。
 
 ## 故障处理速查：先看现场，再向管理者表达意图
 
@@ -556,7 +595,7 @@ manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 应将 status �
 | --- | --- | --- |
 | **原执行可继续**：执行阶段 failed，已在原 node Chat 核实并修复。「A 缺少的源文件已补齐，原 Chat 可以继续；请恢复原执行的跟踪，不要另开执行。」 | 记录人工确认与修复依据，使用 recover。Run paused 也允许；必要的原 Chat 进程恢复另用普通 Resume。 | A 回 running，原执行 ID/Chat 不变，失败历史保留；没有新 Chat、输入重放或自动修复。paused 仍为 paused。需要继续对话时向原 Chat 明确补充指示，recover 不代发。 |
 | **确需另起执行**：执行阶段 failed，已检查旧 Chat、部分产物和重复副作用。「A 原执行不能继续，旧结果只作参考；我已核实副作用，同意另起独立执行，保留旧现场。」 | 人工确认后 retry；paused 时先取得恢复派发资格的明确意图并 resume，再 retry。不确定的派发失败必须先核实，不能直接 retry。 | 新执行 ID 与新原生 Chat，旧执行/失败/产物仍保留；新执行可能再次失败，应读其实际效果。旧 Chat 不被终止，副作用不被撤销，旧报告不成为新执行交接依据。 |
-| **人工结果已可交接**：执行阶段 failed，人工已实际完成并核对结果。「A 的结果已人工补齐在绝对地址……，限制是……，已确认可交接；请记录人工完成，不再执行。」 | 确认当前 execution 最新报告严格声明 can_complete=true 后，用 complete 的说明记录人工依据；尚无可用声明时由已有关联 node Chat 如实 report，不伪造报告，也不能由管理者单方面或 force 绕过。 | A completed、完成说明可读、依赖满足才出现下游资格；不产生假 report，不自动传材料或派发下游；仅按本次执行的自动关闭选择尝试关闭关联 Tab。pending/派发阶段 failed 不可这样跳过工作。 |
+| **人工结果已可交接**：执行阶段 failed，人工已实际完成并核对结果。「A 的结果已人工补齐在绝对地址……，限制是……，已确认可交接；请记录人工完成，不再执行。」 | 确认当前 execution 已批准、约定交付已登记且最新报告严格声明 canComplete=true 后，用 complete 的说明记录人工依据；尚无可用声明时由已有关联 node Chat 如实 report，不伪造报告，也不能由管理者单方面或 force 绕过。 | A completed、完成说明可读、依赖满足才出现下游资格；不产生假 report，不自动传材料或派发下游；仅按本次执行的自动关闭选择尝试关闭关联 Tab。pending/派发阶段 failed 不可这样跳过工作。 |
 | **仅通知失败**：node report 返回保存成功而通知失败。「报告已保存，报告标识是……；请读取该报告并核对交接，不要因为通知失败重报、重派或回滚。」 | 先 status/collect，再按报告标识读取正文与实际材料；确认后才 complete。node 保留原报告标识与投递错误，不仅因通知/诊断失败重发 report。 | 已保存报告与待办仍在，node 状态不被通知错误改变。collect 只给标识与快照，不含正文；读取/通知/collect 不清除未完成待办。输入已提交也不保证管理者已读或被打断。 |
 
 **派发阶段 failed 先核实，不套用上表的执行恢复。** 有 Tab 不等于已有正确原生 Chat。向管理者分别说明「已确认原 Chat 存在且可跟踪」「已确认没有创建原生 Chat」或「目前无法确认」，并给出证据，由其 reconcile_dispatch：已创建只读核实原目标身份与已有 child；仅 Chat 已知但输入未确认仍保持 failed，不能靠核实放行 retry；未创建且没有已登记 child 才恢复 pending，之后仍需显式 dispatch；不确定保持 failed。不要为取得 pending 而谎报未创建，不把确认参数当成回滚授权。核实不会重发可能遗漏的初始指示或补发材料。
@@ -569,15 +608,15 @@ manager-chat 的公共 `PromptDeclaration` / `first-enabled-run` 应将 status �
 | --- | --- | --- |
 | status；无 | 唯一可信管理者；终态仍可查当前快照、ready、blocked、canFinish。 | 读取不是派发授权，后续动作重新检查现场；不修改状态。 |
 | prepare_inputs；fileInputs、confirmed、reason | 真实管理者全量替换本 Run 文件绑定；确认时必需项齐全。 | 先读要求与材料、澄清并语义核实；confirmed=true 才表示输入就绪，不自动派发。 |
-| dispatch；nodes | Run running 且 inputsReady=true，逐项 pending 且全部前置 completed；整批返回逐项结果。 | 创建独立原生 Chat，单项失败不取消其他项，不回滚已有效果。 |
-| complete；nodeId、reason | Run 未结束，running node 或人工已确认可交接的执行阶段 failed；说明非空，当前 execution 最新报告必须严格声明 can_complete=true。 | completed 是交接完成并满足依赖，不要求 Chat 退出；不制造报告、传材料或自动派发。 |
+| dispatch；nodes、可选 zoneIds（所选动态节点必填） | Run running 且 inputsReady=true，逐项 pending 且全部前置 completed；整批返回逐项结果。 | 创建独立原生 Chat，单项失败不取消其他项，不回滚已有效果。 |
+| complete；nodeId、reason | Run 未结束，running node 或人工已确认可交接的执行阶段 failed；说明非空，当前 execution 必须 approved=true，最新报告严格 canComplete=true，且约定交付已登记。 | completed 是交接完成并满足依赖，不要求 Chat 退出；不制造报告、传材料或自动派发。 |
 | fail；nodeId、reason | Run 未结束、node running；保存执行失败与首次原因。 | 保留原 Chat；不暂停、重试或终止实际执行。 |
 | reconcile_dispatch；nodeId、finding、reason | 仅派发阶段 failed；已创建／未创建／不确定按核实事实处理，不接受任意目标状态。 | 原派发目标与身份由系统核实，不由模型自报替换；不创建 Chat 或重放输入。 |
 | recover；nodeId、confirmed、reason | 执行阶段 failed、有关联原 Chat、人工确认可继续；paused 也可用。 | 只恢复原执行跟踪，不修复现场、恢复进程、补发指示或撤销失败历史。 |
-| retry；nodeId、confirmed、reason | running Run 且 inputsReady=true 的执行阶段 failed；人工核实同意，派发不确定先核实。 | 独立新执行、新 Chat，完整 trigger config 生效；保留旧事实与副作用，不转用旧报告。 |
+| retry；nodeId、confirmed、reason、可选 zoneId（动态节点必填） | running Run 且 inputsReady=true 的执行阶段 failed；人工核实同意，派发不确定先核实。 | 独立新执行、新 Chat，完整 trigger config 生效；保留旧事实与副作用，不转用旧报告。 |
 | pause；无 | running → paused；等待同 Run 在途完整批次结束后生效。 | 只阻止新执行，已有 node 继续工作/report，管理者仍可核实、recover、complete。 |
 | resume；无 | paused → running，只恢复派发资格。 | 不自动 dispatch/retry，也不是普通 Chat Resume。 |
-| finish；无 | running/paused 且全部 node completed，显式结束；重复返回首次事实。 | 不等待或终止 Chat。终态拒绝后续状态变更，不重开 Run。 |
+| finish；无 | running/paused 且全部普通工作节点 completed，结束节点（如有）成功派发，显式结束；重复返回首次事实。 | 不等待或终止 Chat。终态拒绝后续状态变更，不重开 Run。 |
 | collect；无 | 当前管理者收取通知，返回 reason、快照与报告标识；不修改 node 状态。 | 按标识读取正文，核实交接后才 complete；不把收取当成已读/完成。 |
 
 管理者须逐项读批次结果、已发生效果及部分生效错误；保留原执行、材料地址与限制，显式选择后续动作。**后端**落实真实角色、当前执行、依赖、状态与持久化约束，不能以模型表现替代这些约束。node 的职责只有实际工作和 report（业务参数为 body、必填 boolean can_complete 及可选 outputs）：交接可用时写清地址/用法/限制，可以随后继续不影响结果的收尾；report、停轮、退出均不等于 completed。旧执行补充报告必须归原执行，不代表当前新执行完成。pause 不撤回 node 的已有工作。
@@ -645,11 +684,11 @@ Content-Type: application/json
 {"sessionId":"<公共 Session 能力取得的当前管理者身份>","nodeId":"A","confirmed":true,"reason":"用户已检查原 Chat 与部分产物；保留现场，另起独立执行"}
 ```
 
-模型业务参数只有 `nodeId`、`confirmed` 和非空 `reason`；身份仍由 Session 自动取得。仅 **running Run 中的执行阶段 failed** 可以 retry。`confirmed=true` 是人工核实/同意的记录，不是自动安全判断或回滚授权。缺确认或空依据返回 HTTP 409、`retry-confirmation-required`；pending/running/completed node 返回 `node-not-retryable`。paused 明确返回 `run-paused`，必须先显式 resume；resume 本身不创建 Chat。终态优先返回 `run-terminal`。旧 node Chat、无关联身份和额外 Run/执行/角色字段不能调用管理者动作。
+模型业务参数为 `nodeId`、`confirmed` 和非空 `reason`；动态 zone 节点另须显式提供 `zoneId`，固定节点不得提供覆盖。身份仍由 Session 自动取得。仅 **running Run 中的执行阶段 failed** 可以 retry。`confirmed=true` 是人工核实/同意的记录，不是自动安全判断或回滚授权。缺确认或空依据返回 HTTP 409、`retry-confirmation-required`；pending/running/completed node 返回 `node-not-retryable`。paused 明确返回 `run-paused`，必须先显式 resume；resume 本身不创建 Chat。终态优先返回 `run-terminal`。旧 node Chat、无关联身份和额外 Run/执行/角色字段不能调用管理者动作。
 
 派发阶段 failed 返回 `dispatch-reconciliation-required`，包括未知原生身份的异常窗口：先 reconcile_dispatch，不以 retry 的 confirmed 代替核实。确认未创建且无已登记 child 才恢复 pending，之后另行 dispatch；确认原 Chat 已创建并满足提交效果条件才恢复原执行 running，若核实该执行无法继续，再 fail 记录执行失败后选择 retry。只有 Chat 已知但输入结果未确认时仍保持派发 failed，不获得 blind retry 资格。不确定保持 failed，不盲目启动另一 Chat。若原执行可继续，使用 recover，不是 retry。
 
-retry 复用首次 dispatch 的完整启动路径：当前 node → Bot → 普通 Task 的 trigger config/env config，并按节点执行上下文固定加载对应宿主的 node-chat、定义 zone、已保存管理者的实际 Workspace ID，创建独立新原生 Chat。model/thinking、初始 Skill、Task 固定 prompt 与 node.input 按原有组合规则全部生效，不只重放 node.input。实际目标不可用就失败，不回退目录或 Workspace。新身份不得复用管理者、当前执行或任何保留旧执行的身份；真实新关联保存成功前绝不提交初始指示。不会结束旧 Chat、撤销产物、清理现场、转发旧报告或自动派发下游。
+retry 复用首次 dispatch 的完整启动路径：当前 node → Bot → 普通 Task 的 trigger config/env config，并按执行上下文选择角色（普通工作节点加载对应宿主的 node-chat，结束节点不加载）、定义 zone、已保存管理者的实际 Workspace ID，创建独立新原生 Chat。model/thinking、初始 Skill、Task 固定 prompt 与 node.input 按原有组合规则全部生效，不只重放 node.input。实际目标不可用就失败，不回退目录或 Workspace。新身份不得复用管理者、当前执行或任何保留旧执行的身份；真实新关联保存成功前绝不提交初始指示。不会结束旧 Chat、撤销产物、清理现场、转发旧报告或自动派发下游。
 
 当前 `snapshot.nodes.<nodeId>.execution/failure` 只属于新尝试；`previousExecutions` 依次保留每次被替代执行及当时的 failure，当前事实读取不依赖 history 重放。首次节点的该数组为空。解析目标失败的新尝试仍有独立执行 ID，并保留原来源 Task/zone 引用用于解释失败；它不是可用目标或自动回退。`history.jsonl` 追加 `action=retry`、管理者 actor、依据、`previousExecution/previousFailure` 和新 `execution/failure`，不覆盖既有 dispatch/fail/报告历史。
 
@@ -669,7 +708,7 @@ cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch retry:: -
 
 - `retry_saves_new_identity_before_full_trigger_and_retains_original_facts`：P13.03/P14.02/P15.03/P41.01/P68.07，初始指示门前的新身份落盘、独立字面完整触发配置、实际夹具 cwd/Workspace 和预留产物保留。
 - `late_old_reports_remain_history_without_controlling_new_execution`：P27.02/P41.01/P68.07，旧新报告交错、collect 仅当前适用 ID、旧身份不能变更当前执行、显式交接。
-- `retry_rejects_reuse_of_any_retained_native_identity`：P14.02/P41.01，多轮 retry 拒绝复用最早身份，原报告归属仍唯一。
+- `startup_dispatch_ignores_unreadable_history_and_submits_full_input`、`startup_retry_ignores_unreadable_history_and_preserves_old_execution`、`startup_nested_dispatch_ignores_unreadable_history_and_binds_both_runs`：无关历史 Run 不可解析时，首次派发、合法 retry 与嵌套节点仍绑定宿主身份并提交输入；旧记录原样保留，retry 保留旧执行，嵌套父子关联一致。
 - `retry_startup_failures_keep_both_attempts_and_do_not_rollback`、`retry_association_failure_exposes_new_attempt_without_overwriting_old_snapshot`：P13.03/P45.03/P41.01，身份/指示/关联失败的实际启动效果及旧失败保留。
 - `paused_retry_requires_explicit_resume_and_human_confirmation`、`terminal_run_rejects_retry_without_new_chat_or_record_changes`、`uncertain_dispatch_cannot_retry_until_original_chat_is_reconciled`、`unavailable_retry_targets_fail_without_fallback_or_reusing_old_execution`：P35.04/P36.03/P41.01/P14.02，拒绝路径与后续合法显式启动。
 
@@ -677,7 +716,7 @@ cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch retry:: -
 
 ### 人工已处理且确实可交接
 
-用户已人工补齐结果且确认可交接，且当前 execution 最新报告严格声明 `canComplete=true` 时，管理者可对执行阶段 failed 显式调用上文 `complete`，用非空 reason 写清结果地址、限制与人工处理依据。pending/派发 failed 不能这样跳过核实。该动作只完成状态交接、解除依赖，不产生 report、不补发材料、不启动下游；仅按本次执行的自动关闭选择尝试关闭关联 Tab；失败和原执行历史仍可读。缺少当前 true 声明时必须先在**已有关联的 node Chat** 使用现有 report 如实声明完成情况、地址与限制，管理者单方面判断不能绕过门禁；completed 后补充报告不重新打开待办。管理者须在后续显式 dispatch 下游时自行提供所需材料，不依赖新增消息工具或自动传播。
+用户已人工补齐结果且确认可交接、当前 execution 已批准且约定交付已登记，并且最新报告严格声明 `canComplete=true` 时，管理者可对执行阶段 failed 显式调用上文 `complete`，用非空 reason 写清结果地址、限制与人工处理依据。pending/派发 failed 不能这样跳过核实。该动作只完成状态交接、解除依赖，不产生 report、不补发材料、不启动下游；仅按本次执行的自动关闭选择尝试关闭关联 Tab；失败和原执行历史仍可读。缺少当前 true 声明时必须先在**已有关联的 node Chat** 使用现有 report 如实声明完成情况、地址与限制，管理者单方面判断不能绕过门禁；completed 后补充报告不重新打开待办。管理者须在后续显式 dispatch 下游时自行提供所需材料，不依赖新增消息工具或自动传播。
 
 ### 错误、调用者与用户处理路径
 
@@ -725,7 +764,7 @@ Content-Type: application/json
 `resume` 使用相同正文，路径为 `POST /api/workflow/manager/resume`。不要把普通 Chat 的 **Resume**（定位或恢复原生对话）当作此状态动作；普通 Resume 不接管 Run，也不恢复派发资格。
 
 - `pause` 将 running Run 转为 paused，排在同 Run 已接受的完整派发批次之后生效。它不关闭或终止任何 Chat、不等待它们停轮或退出。生效后 `ready=[]`，新 dispatch 的逐项结果为 `rejected`，原因含 `Run 状态为 paused`，不产生宿主启动调用。
-- 已有执行仍可 report，管理者仍可在确认可交接后 complete。报告仍只通知管理者，不自动完成。paused Run 全部节点 completed 后可以直接 finish，无需先 resume，活动 Chat 不阻止成功。
+- 已有执行仍可 report，管理者仍可在确认可交接后 complete。报告仍只通知管理者，不自动完成。paused Run 满足完成条件（普通工作节点全部 completed，结束节点如有则已成功派发）后可以直接 finish，无需先 resume，活动 Chat 不阻止成功。
 - `resume` 只将 paused Run 转回 running，重新给出由当前事实与依赖派生的 `ready` / `blocked`。它不自动 dispatch、retry、补发输入或终止已有 Chat；管理者必须另外显式选择目标并 dispatch。
 - 已在目标状态时重复 pause/resume 返回 `changed=false` 与当前查询字段，不重写当前记录、不覆盖首次操作 ID/时间/actor、不重复追加成功历史，也不产生外部调用。一次真正的反向转换后再次调用是新的显式状态动作，不是重复请求。
 - completed 终态的 pause/resume 返回 HTTP 409、`code=run-terminal`、`changed=false` 和当前查询字段，不改变首次 finish 事实。重复 finish 仍返回首次结果。
@@ -850,9 +889,15 @@ if (@($checks | Where-Object { -not $_.isFile }).Count -gt 0) { exit 2 }
 
 ## 节点报告与独立通知
 
-Map node 的可选 `report_policy` 只接受 `auto`／`manual`，省略默认 `auto`；派发时保存为本次 `execution.reportPolicy`，不是 Run 创建时的整图快照。auto 在可交接时直接报告；manual 调用 report，由 toolkit 在宿主原生确认界面展示完整待发送 payload，用户明确批准该次 payload 后才发送，自然语言同意不授权发送。修改、补充和更正必须重新确认；拒绝、确认超时（toolkit 的 reportConfirmationTimeoutMs 统一配置，默认 20000 毫秒）或无可用 UI 均不发送，停止并等待用户重新请求，不自动重试。业务 input 不是策略的唯一来源，业务批准要求独立保留；不新增后端审批门禁、授权令牌、确认字段或状态，不改变 manager complete 的判断职责。
+Map node 的可选 `auto_approved` 只接受布尔，省略默认 true；派发时冻结为 `execution.autoApproved`，初始 `approved=false`、`approvalSource=null`。自动模式仍须执行者主动 approve，不能派发即批准；人工模式只有官方宿主原生确认中的显式 Yes 才提交 manual 来源。原生确认只询问“当前会话的成果是否已达到预期，可以交接并推进后续流程？”，不要求成果说明、报告或文件；普通聊天同意与报告声称批准均不能替代。拒绝、取消、超时或无 UI 不提交批准、不变 failed，也不自动重试。HTTP 的同机调用只能验证后端事实，不证明原生 Yes。
 
-恢复原 Chat、recover 和派发核实沿用已保存执行的策略，不从当前 Map 改写，也不重放策略控制段；retry 是新执行，重新读取当前 Map，旧执行仍保留原值。已有 Chat 不热更新；旧执行缺字段按 auto 解释，无需迁移。若 retry 连当前 Map/node 都无法解析，失败来源记录没有可执行策略，默认 auto 不代表启动或允许回退；修正后再次 retry 才重新选择有效目标与策略。
+恢复原 Chat、recover 和派发核实沿用已保存执行模式与批准事实，不从当前 Map 改写；retry 是新执行，读取当前定义并重新从未批准开始，不继承旧批准或旧报告的完成资格。旧 execution 的模式、批准及报告仍保留；在途旧提交即使 retry 后才结束，也不能批准新 execution。正文与材料不冻结，批准后修改或报告不自动撤销批准；最新报告为 false 时仍拒绝 complete。
+
+批准只在持久写入成功后返回成功。真实存储失败返回 `approval-save-failed` 并保留底层错误，公开读取仍未批准，不能以失败响应、日志或尚未保存的内存对象绕过 complete 门禁。同次重复／并发批准只有一次 `changed:true`，不产生额外报告、通知、完成或派发。确认发生在宿主，不占用后端 Run 操作资格；同 Run 查询、报告及无依赖分支不必等用户确认。
+
+后端进程退出后，公开 Run 详情仍可读取同次 execution 的冻结模式、批准及来源；重启不重放业务输入、不接管旧 Run，也不为旧 Chat 新增批准或管理权限。原 Chat 的合法恢复与后端重启后的只读历史是不同边界。无旧 Run 字段适配、静默补批准或历史改写；不承诺继续或呈现旧版本 Run。
+
+报告发送完全独立：批准前后都可 report，不需要原生发送确认，不改变批准；approve 不制造报告或通知 manager。正常成果交接由 node-chat 先 approve、后 report，后端不强制排序。manager complete 另行要求批准、当前最新 canComplete=true 和全部约定交付登记；批准本身不会 complete、dispatch 或 finish。结束节点无批准职责，不伪造 approved=true，成功派发后仍按原规则显式 finish；chief 的委派与报告确认不变。
 
 已关联的 node Chat 用一次 `report` 提交简短 `body`、必填 boolean `can_complete` 和可选 `outputs` 数组（每项 `id` 与本机绝对文件地址 `path`）；toolkit 应映射为 HTTP 的 camelCase `canComplete`。正文说明完成情况、阻塞、限制、部分效果及需要的干预，不重复完整成果。业务文件由 node 或外部程序生成；无需输出文件的工作也可声明 true。不要求 node 自报 Run、node、执行 ID 或接收者。角色扩展须从 toolkit 公共 Session 能力取得当前原生身份，并调用：
 

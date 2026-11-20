@@ -377,7 +377,7 @@ test.describe('移动尺寸失败结果', () => {
 
   test('提交被拒绝时移动弹窗保留可读的现场说明并可自行关闭', { tag: '@time-contract' }, async ({ page }) => {
     server = await startServer({
-      herdr: { behavior: { agent_start_delay_ms: 500, prompt_delay_ms: 1_200, fail_prompt: true } },
+      herdr: { behavior: { agent_start_delay_ms: 500, prompt_delay_ms: 1_200, block_prompt: true } },
     })
     const { zone, cwd } = await prepareZone(server.baseURL)
     await jsonPost(server.baseURL, '/api/tasks', CREATION_TASK)
@@ -394,18 +394,18 @@ test.describe('移动尺寸失败结果', () => {
     await dialog.getByTestId('chat-input').fill('会被拒绝的指示')
     await dialog.getByTestId('chat-create-submit').tap()
 
-    // 两个阶段在失败前都能稳定观察，而不是碰巧截到瞬态。
-    await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在启动')
-    await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在提交初始指示', {
-      timeout: 10_000,
-    })
-    await expect(dialog.getByTestId('chat-create-failure')).toBeVisible({ timeout: 10_000 })
-    await expect(dialog.getByTestId('chat-create-success')).toHaveCount(0)
-
+    // 在最终失败前能看到启动、首次提交和重试等待。
+    const stage = dialog.getByTestId('chat-create-stage')
+    await expect(stage).toHaveText('正在启动')
+    await expect(stage).toHaveText('正在提交初始指示', { timeout: 10_000 })
+    await expect(stage).toContainText('初始指示未提交，1 秒后重试（最多重试 5 次）')
     const failure = dialog.getByTestId('chat-create-failure')
+    await expect(failure).toBeVisible({ timeout: 20_000 })
+    await expect(dialog.getByTestId('chat-create-success')).toHaveCount(0)
     await failure.scrollIntoViewIfNeeded()
     await expect(failure).toContainText('提交初始指示')
-    await expect(failure).toContainText('现场已存在：agent 已就绪，但初始指示的提交被明确拒绝')
+    await expect(failure).toContainText('初始指示未提交，不会自动重发')
+    await expect(failure).toContainText('controlled modal')
     await expect(dialog.getByTestId('chat-result-name')).toBeVisible()
     await expect(dialog.getByTestId('chat-result-zone')).toHaveText(cwd)
 
@@ -418,10 +418,20 @@ test.describe('移动尺寸失败结果', () => {
     await expect(page.getByTestId('chat-creation-dialog')).toHaveCount(0)
     await expect(page.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
 
-    // 失败不触发自动重建或重发，已创建的现场保留。
+    // 六次明确阻塞均未写入原终端，也没有重建或向其他目标发送。
     await page.waitForTimeout(300)
     expect(server.herdrTabs()).toHaveLength(1)
     expect(server.herdrTabs()[0].cwd).toBe(cwd)
-    expect(server.herdrCalls().filter((call) => call.kind === 'agent_prompt')).toHaveLength(1)
+    const calls = server.herdrCalls()
+    expect(calls.filter((call) => call.kind === 'agent_start')).toHaveLength(1)
+    const prompts = calls.filter((call) => call.kind === 'agent_prompt')
+    expect(prompts).toHaveLength(6)
+    for (const [index, prompt] of prompts.slice(1).entries()) {
+      expect(prompt.target).toBe(prompts[0].target)
+      expect(prompt.text).toBe(prompts[0].text)
+      // 夹具在记录尝试 1.2 秒后才拒绝；重试至少再等 1 秒。
+      expect(Number(prompt.at) - Number(prompts[index].at)).toBeGreaterThanOrEqual(2_200)
+    }
+    expect(fs.existsSync(path.join(path.dirname(server.configPath), 'herdr', 'submitted.jsonl'))).toBe(false)
   })
 })

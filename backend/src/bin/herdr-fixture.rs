@@ -46,7 +46,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[path = "herdr-fixture/app_transport.rs"]
+mod app_transport;
+
 use serde_json::{Value, json};
+
+#[path = "herdr-fixture/chat_app.rs"]
+mod chat_app;
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -55,10 +61,15 @@ fn main() {
     // Include unsupported commands: a test must see attempted confirmation or
     // other bypasses even when this controlled host does not implement them.
     record("invocations.jsonl", json!({"argv":args}));
+    if chat_app::selected() {
+        chat_app::dispatch(&args);
+        return;
+    }
     match args.first().map(String::as_str) {
         Some("workspace") if args.get(1).map(String::as_str) == Some("list") => {
             workspace_list(&args)
         }
+        Some("ls" | "status" | "do" | "get" | "server") if app_transport::intercept(&args) => {}
         Some("tab") if args.get(1).map(String::as_str) == Some("create") => tab_create(&args),
         Some("tab") if args.get(1).map(String::as_str) == Some("close") => tab_close(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("start") => agent_start(&args),
@@ -66,6 +77,7 @@ fn main() {
         Some("agent") if args.get(1).map(String::as_str) == Some("get") => agent_get(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("list") => agent_list(&args),
         Some("agent") if args.get(1).map(String::as_str) == Some("focus") => agent_focus(&args),
+        Some("pane") if args.get(1).map(String::as_str) == Some("process-info") => pane_process_info(&args),
         _ => usage(&args),
     }
 }
@@ -203,7 +215,27 @@ fn tab_close(args: &[String]) {
         output(json!({"error":{"code":"confirmation_required","message":"closing this tab would close a worktree group"}}));
         return;
     }
-    record("closed.jsonl", json!({"target":target}));
+    let mut receipt = json!({"target":target});
+    let layout_path = data_dir().join("workspaces.json");
+    if let Ok(raw) = fs::read_to_string(&layout_path) {
+        let mut layout: Vec<Value> = serde_json::from_str(&raw).unwrap();
+        for (index, workspace) in layout.iter_mut().enumerate() {
+            let Some(tabs) = workspace.get_mut("tabs").and_then(Value::as_array_mut) else { continue; };
+            let Some(tab) = tabs.iter().position(|tab| tab["tab_id"] == target.as_str()) else { continue; };
+            receipt["terminal"] = tabs.remove(tab)["terminal"].take();
+            if tabs.is_empty() {
+                let removed = layout.remove(index);
+                if removed.pointer("/worktree/is_linked_worktree").and_then(Value::as_bool) == Some(false)
+                    && let Some(group) = removed.pointer("/worktree/repo_key").and_then(Value::as_str)
+                {
+                    layout.retain(|row| row.pointer("/worktree/repo_key").and_then(Value::as_str) != Some(group));
+                }
+            }
+            fs::write(&layout_path, json!(layout).to_string()).unwrap();
+            break;
+        }
+    }
+    record("closed.jsonl", receipt);
     output(json!({"result":{"type":"ok"}}));
 }
 
@@ -233,6 +265,12 @@ fn tab_create(args: &[String]) {
     let suffix = unique_suffix();
     let tab_id = format!("{workspace}:t{suffix}");
     let pane_id = format!("{workspace}:p{suffix}");
+    if let (Some(launch), Some(target)) = (
+        args.iter().find_map(|arg| arg.strip_prefix("HERDR_BOT_LAUNCH_ID=")),
+        args.iter().find_map(|arg| arg.strip_prefix("HERDR_BOT_LAUNCH_TARGET_ID=")),
+    ) {
+        record("tab-launches.jsonl", json!({"pane":pane_id,"launch":launch,"target":target}));
+    }
     record(
         "tabs.jsonl",
         json!({
@@ -309,12 +347,13 @@ fn agent_start(args: &[String]) {
         env::set_current_dir(cwd).unwrap();
         started["actual_cwd"] = json!(env::current_dir().unwrap());
     }
-    record("started.jsonl", started);
+    record("started.jsonl", started.clone());
     // Herdr 0.9.5 returns this structured stderr envelope when its own
     // readiness deadline expires, even though the CLI process itself exited.
     if flag(&behavior, "timeout_agent_start") {
         fail("timeout", "timed out waiting for agent startup");
     }
+    report_launch(&behavior, &started);
     output(json!({
         "id": "cli:agent:start",
         "result": {
@@ -381,12 +420,61 @@ fn agent_get(args: &[String]) {
     let pending = behavior.get("native_session_pending_reads").and_then(Value::as_u64)
         .is_some_and(|limit| read_records("calls.jsonl").iter()
             .filter(|call| call["kind"] == "agent_get" && call["target"] == target).count() as u64 <= limit);
-    output(json!({"result":{"agent":{
-        "name":target,
-        "agent_session":if pending { Value::Null } else { behavior.get("native_session").cloned().unwrap_or(Value::Null) },
-        "cwd":behavior.get("native_cwd").cloned().or_else(|| started.as_ref().map(|agent| agent["actual_cwd"].clone())).unwrap_or(Value::Null),
-        "foreground_cwd":behavior.get("foreground_cwd").cloned().unwrap_or(Value::Null)
-    }}}));
+    let mut agent = started.unwrap_or_else(|| json!({"name": target}));
+    agent["agent_session"] = if pending { Value::Null } else { behavior["native_session"].clone() };
+    if let Some(cwd) = behavior.get("native_cwd") { agent["cwd"] = cwd.clone(); }
+    agent["foreground_cwd"] = behavior.get("foreground_cwd").cloned().unwrap_or_else(|| agent["cwd"].clone());
+    output(json!({"result":{"agent":agent}}));
+}
+
+fn report_launch(settings: &Value, agent: &Value) {
+    if flag(settings, "manual_launch_events") { return; }
+    let Ok(endpoint) = fs::read_to_string(data_dir().join("launch_endpoint.txt")) else { return; };
+    let Ok(peer) = endpoint.trim().parse::<std::net::SocketAddr>() else { return; };
+    if !peer.ip().is_loopback() { return; }
+    let pane = agent["pane_id"].as_str().unwrap();
+    let Some(matched) = read_records("tab-launches.jsonl").into_iter().find(|row| row["pane"] == pane) else { return; };
+    let launch = &matched["launch"];
+    let target = &matched["target"];
+    let reference = &settings["native_session"];
+    let configured = reference["value"].as_str();
+    // An invalid official reference must be rejected by the host observation,
+    // not prevented from reaching it by a malformed synthetic event envelope.
+    let file = configured.filter(|path| reference["kind"] == "path" && std::path::Path::new(path).is_absolute());
+    let id = file.and_then(|file| fs::read_to_string(file).ok())
+        .and_then(|text| text.lines().take(2).find_map(|line| {
+            let row: Value = serde_json::from_str(line).ok()?;
+            (row["type"] == "session").then(|| row["id"].as_str().map(str::to_owned)).flatten()
+        }))
+        .or_else(|| file.and_then(|file| std::path::Path::new(file).file_stem()?.to_str()?.rsplit_once('_').map(|(_, id)| id.to_owned())))
+        .or_else(|| configured.filter(|_| file.is_none()).map(str::to_owned))
+        .unwrap_or_else(|| format!("fixture-session-{pane}"));
+    let data = json!({"launchId":launch,"targetId":target,"agentType":agent["agent"],"cwd":agent["cwd"],
+        "pid":settings["launch_pid"].as_u64().unwrap_or(43127),"sessionFile":file});
+    for kind in ["launch_identity", "launch_ready"] {
+        let body = json!({"kind":kind,"sessionId":id,"data":data}).to_string();
+        if let Ok(mut stream) = std::net::TcpStream::connect_timeout(&peer, Duration::from_secs(2)) {
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(4)));
+            let _ = write!(stream,"POST /api/sessions/events HTTP/1.1\r\nHost: {peer}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",body.len());
+            let mut result = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut stream, &mut result);
+        }
+    }
+}
+
+fn pane_process_info(args: &[String]) {
+    // The installed CLI accepts an explicit --pane selector, not a positional ID.
+    // Rejecting unsupported syntax keeps public launch claims from passing only in tests.
+    let [_, _, flag, pane] = args else { usage(args) };
+    if flag != "--pane" || pane.is_empty() { usage(args); }
+    let pane = pane.as_str();
+    let started = read_records("started.jsonl").into_iter().find(|agent| agent["pane_id"] == pane);
+    let processes = started.map_or_else(Vec::new, |agent| {
+        let behavior = behavior();
+        let pid = behavior["launch_pid"].as_u64().unwrap_or(43127);
+        vec![json!({"pid":pid,"name":agent["agent"],"cwd":agent["cwd"]})]
+    });
+    output(json!({"result":{"process_info":{"pane_id":pane,"foreground_processes":processes}}}));
 }
 
 fn agent_prompt(args: &[String]) {
@@ -412,8 +500,16 @@ fn agent_prompt(args: &[String]) {
         // 调用记录已经写下，因此测试能够证明 herdr-bot 确实尝试过这次提交，而不是跳过它。
         fail("empty_agent_prompt", "agent prompt must not be empty");
     }
+    if flag(&behavior, "block_prompt") {
+        fail("agent_blocked", behavior["block_reason"].as_str().unwrap_or("controlled modal"));
+    }
     if flag(&behavior, "fail_prompt") {
         fail("agent_prompt_failed", "受控夹具拒绝提交初始指示");
+    }
+
+    if behavior["prompt_fault"] == "partial-write" {
+        record("submitted.jsonl", json!({"target":target,"text":text.split_whitespace().next().unwrap_or_default()}));
+        fail("agent_prompt_failed", "terminal disconnected after writing a prefix");
     }
 
     if flag(&behavior, "consume_named_json") || flag(&behavior, "consume_named_files") {
@@ -434,6 +530,18 @@ fn agent_prompt(args: &[String]) {
         }
     }
     record("submitted.jsonl", json!({"target":target,"text":text}));
+    delay(&behavior, "prompt_response_delay_ms");
+    match behavior["prompt_fault"].as_str() {
+        Some("disconnect") => {
+            eprintln!("connection closed after writing input; no agent_blocked acknowledgement");
+            process::exit(1);
+        }
+        Some("ambiguous-ack") => {
+            output(json!({"result":{"type":"agent_prompted","agent":null}}));
+            return;
+        }
+        _ => {}
+    }
     // The host consumed the input, but its acknowledgement is unusable. This
     // exercises the real adapter's unknown-result path, not a mocked error.
     if flag(&behavior, "invalid_prompt_response") {

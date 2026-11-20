@@ -139,9 +139,26 @@ impl Default for SchedulerConfig {
 pub struct HerdrConfig {
     /// 目标 Herdr Workspace 的显示名，必须显式配置且非空白。
     pub workspace_name: String,
-    /// Herdr CLI 可执行文件；缺省 `herdr`（按 PATH 查找）。
+    /// 省略时使用 TUI；未知值由 TOML 解析拒绝。
+    #[serde(default)]
+    pub backend: HerdrBackend,
+    /// TUI CLI 可执行文件；缺省按 PATH 查找 `herdr`。
     #[serde(default = "herdr_executable_by_default")]
     pub executable: PathBuf,
+    /// App 控制 CLI；缺省按 PATH 查找 `herdr-app`。
+    #[serde(default = "app_executable_by_default")]
+    pub app_executable: PathBuf,
+    /// App 配套的 core CLI；缺省按 PATH 查找 `hc`。
+    #[serde(default = "core_executable_by_default")]
+    pub core_executable: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HerdrBackend {
+    #[default]
+    Tui,
+    App,
 }
 
 impl HerdrConfig {
@@ -149,14 +166,24 @@ impl HerdrConfig {
     pub fn new(workspace_name: impl Into<String>) -> Self {
         Self {
             workspace_name: workspace_name.into(),
+            backend: HerdrBackend::Tui,
             executable: herdr_executable_by_default(),
+            app_executable: app_executable_by_default(),
+            core_executable: core_executable_by_default(),
         }
     }
 }
 
-/// `[herdr] executable` 的缺省值：按 PATH 查找的 `herdr`。
 fn herdr_executable_by_default() -> PathBuf {
     PathBuf::from("herdr")
+}
+
+fn app_executable_by_default() -> PathBuf {
+    PathBuf::from("herdr-app")
+}
+
+fn core_executable_by_default() -> PathBuf {
+    PathBuf::from("hc")
 }
 
 /// Git 命令执行设置（`[git]` 段）。
@@ -626,6 +653,25 @@ pub struct Operations {
     pub start: OperationBinding,
     /// “停止”操作。
     pub stop: OperationBinding,
+    /// App 专用绑定。省略表示两个宿主共用顶层绑定。
+    #[serde(default)]
+    pub app: Option<AppOperationBindings>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AppOperationBindings {
+    pub start: OperationBinding,
+    pub stop: OperationBinding,
+}
+
+impl Operations {
+    pub fn selected(&self, backend: HerdrBackend) -> (&OperationBinding, &OperationBinding) {
+        match (backend, &self.app) {
+            (HerdrBackend::App, Some(app)) => (&app.start, &app.stop),
+            _ => (&self.start, &self.stop),
+        }
+    }
 }
 
 /// 一个固定操作的服务端绑定：批处理文件与其执行工作目录。
@@ -681,11 +727,26 @@ impl Config {
         ] {
             *path = roots.resolve(path, base).with_context(|| format!("解析配置路径 {name} 失败"))?;
         }
+        if let Some(app) = &mut config.operations.app {
+            for (name, path) in [
+                ("operations.app.start.script", &mut app.start.script),
+                ("operations.app.start.working_directory", &mut app.start.working_directory),
+                ("operations.app.stop.script", &mut app.stop.script),
+                ("operations.app.stop.working_directory", &mut app.stop.working_directory),
+            ] {
+                *path = roots.resolve(path, base).with_context(|| format!("解析配置路径 {name} 失败"))?;
+            }
+        }
         if let Some(path) = &mut config.zones.create_parent_directory {
             *path = roots.resolve(path, base).context("解析配置路径 zones.create_parent_directory 失败")?;
         }
-        config.herdr.executable = roots.command(&config.herdr.executable, base)
-            .context("解析配置路径 herdr.executable 失败")?;
+        for (name, path) in [
+            ("herdr.executable", &mut config.herdr.executable),
+            ("herdr.app_executable", &mut config.herdr.app_executable),
+            ("herdr.core_executable", &mut config.herdr.core_executable),
+        ] {
+            *path = roots.command(path, base).with_context(|| format!("解析配置路径 {name} 失败"))?;
+        }
         Ok(config)
     }
 

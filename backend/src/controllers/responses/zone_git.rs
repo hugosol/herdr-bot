@@ -12,7 +12,7 @@ impl IntoResponse for HttpError<git::GitError> {
     let status = match &error {
         git::GitError::ZoneUnavailable(_) => StatusCode::NOT_FOUND,
         git::GitError::TimedOut { .. } => StatusCode::GATEWAY_TIMEOUT,
-        git::GitError::GitUnavailable(_) | git::GitError::Failed(_) => {
+        git::GitError::GitUnavailable(_) | git::GitError::Failed(_) | git::GitError::TerminationUnconfirmed(_) => {
             StatusCode::INTERNAL_SERVER_ERROR
         }
     };
@@ -125,7 +125,7 @@ impl IntoResponse for CommitResponse {
             let status = match &error {
                 git::GitError::ZoneUnavailable(_) => StatusCode::NOT_FOUND,
                 git::GitError::TimedOut { .. } => StatusCode::GATEWAY_TIMEOUT,
-                git::GitError::GitUnavailable(_) | git::GitError::Failed(_) => {
+                git::GitError::GitUnavailable(_) | git::GitError::Failed(_) | git::GitError::TerminationUnconfirmed(_) => {
                     StatusCode::INTERNAL_SERVER_ERROR
                 }
             };
@@ -185,7 +185,7 @@ impl IntoResponse for SyncResponse {
             let status = match &error {
                 git::GitError::ZoneUnavailable(_) => StatusCode::NOT_FOUND,
                 git::GitError::TimedOut { .. } => StatusCode::GATEWAY_TIMEOUT,
-                git::GitError::GitUnavailable(_) | git::GitError::Failed(_) => {
+                git::GitError::GitUnavailable(_) | git::GitError::Failed(_) | git::GitError::TerminationUnconfirmed(_) => {
                     StatusCode::INTERNAL_SERVER_ERROR
                 }
             };

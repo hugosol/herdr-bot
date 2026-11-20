@@ -12,7 +12,7 @@ pub struct NodeIdentity { id: String }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WorkflowMap {
-    pub(super) title: String,
+    pub(crate) title: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) group: Option<String>,
     pub(super) description: String,
@@ -21,43 +21,6 @@ pub(crate) struct WorkflowMap {
     #[serde(default, deserialize_with = "object_array", skip_serializing_if = "Vec::is_empty")]
     pub(crate) input_files: Vec<MapFileInput>,
     pub(crate) nodes: BTreeMap<String, JsonObject<MapNode>>,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ReportPolicy {
-    #[default]
-    Auto,
-    Manual,
-}
-
-impl<'de> Deserialize<'de> for ReportPolicy {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct PolicyVisitor;
-        impl serde::de::Visitor<'_> for PolicyVisitor {
-            type Value = ReportPolicy;
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("the string auto or manual")
-            }
-            fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
-                match value {
-                    "auto" => Ok(ReportPolicy::Auto),
-                    "manual" => Ok(ReportPolicy::Manual),
-                    _ => Err(E::unknown_variant(value, &["auto", "manual"])),
-                }
-            }
-        }
-        deserializer.deserialize_str(PolicyVisitor)
-    }
-}
-
-impl ReportPolicy {
-    pub(crate) fn control_section(self) -> &'static str {
-        match self {
-            Self::Auto => "report_policy: auto\nReport handoff-ready results without waiting for user confirmation. Reporting does not complete the node; the manager still decides complete.",
-            Self::Manual => "report_policy: manual\nInvoke report with the full intended payload to display it for explicit native user confirmation before sending. Natural-language agreement is not report authorization. Every report, including supplements, corrections and changed payloads, requires its own native confirmation. If confirmation is refused, times out or no confirmation UI is available, do not send and stop; wait for a renewed user request before invoking report again. Reporting does not complete the node; the manager still decides complete. Separate business approval requirements still apply.",
-        }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -86,9 +49,32 @@ pub struct MapFileInput {
 pub struct ResolvedFile { pub id: String, pub path: String }
 
 #[derive(Deserialize, Serialize)]
+#[serde(untagged)]
+pub(crate) enum NodeZone {
+    Fixed(String),
+    Dynamic(DynamicZone),
+}
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DynamicZone {
+    #[serde(rename = "type")]
+    kind: DynamicZoneType,
+}
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum DynamicZoneType { Dynamic }
+impl NodeZone {
+    pub(crate) fn fixed(&self) -> Option<&str> {
+        match self { Self::Fixed(id) => Some(id), Self::Dynamic(_) => None }
+    }
+}
+
+pub(crate) fn default_auto_approved() -> bool { true }
+
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MapNode {
-    pub(super) title: String,
+    pub(crate) title: String,
     pub(crate) bot_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) manager_task_id: Option<String>,
@@ -97,11 +83,13 @@ pub(crate) struct MapNode {
     pub(crate) input_rule: Vec<InputRule>,
     #[serde(default, deserialize_with = "object_array")]
     pub(super) output_rule: Vec<OutputRule>,
-    #[serde(default)]
-    pub(crate) report_policy: ReportPolicy,
+    #[serde(default = "default_auto_approved")]
+    pub(crate) auto_approved: bool,
     #[serde(default)]
     pub(crate) auto_close: bool,
-    pub(crate) zone: String,
+    #[serde(default)]
+    pub(crate) end_node: bool,
+    pub(crate) zone: NodeZone,
     pub(super) blocked_by: Vec<String>,
 }
 
@@ -134,13 +122,12 @@ pub(crate) fn read_map(access: &FileAccess, directory: &Path, name: &str) -> Res
 }
 
 pub(crate) fn node_dependencies(directory: &Path, name: &str) -> Result<BTreeMap<String, Vec<String>>, String> {
-    let map = with_definitions(&[directory.to_owned()], "map-read-failed", |access| read_map(access, directory, name)).map_err(|e| e.message)?;
+    let mut map = with_definitions(&[directory.to_owned()], "map-read-failed", |access| read_map(access, directory, name)).map_err(|e| e.message)?;
+    if let Some(id) = map.nodes.iter().find_map(|(id, node)| node.0.end_node.then(|| id.clone())) {
+        let dependencies = map.nodes.keys().filter(|other| **other != id).cloned().collect();
+        map.nodes.get_mut(&id).expect("end node belongs to Map").0.blocked_by = dependencies;
+    }
     Ok(map.nodes.into_iter().map(|(id, node)| (id, node.0.blocked_by)).collect())
-}
-
-pub(crate) fn node_report_policy(directory: &Path, name: &str, id: &str) -> Result<ReportPolicy, String> {
-    let map = with_definitions(&[directory.to_owned()], "map-read-failed", |access| read_map(access, directory, name)).map_err(|e| e.message)?;
-    map.nodes.get(id).map(|node| node.0.report_policy).ok_or_else(|| "node 不在当前 Map 中".into())
 }
 
 fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
@@ -161,6 +148,14 @@ pub(crate) fn valid_relative_file(path: &str) -> bool {
 fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
     if !crate::tasks::valid_group(map.group.as_deref()) {
         return Err(map_error("分组名称不能为空或包含首尾空白。"));
+    }
+    let mut ends = map.nodes.iter().filter(|(_, node)| node.0.end_node);
+    let end = ends.next();
+    if ends.next().is_some() { return Err(map_error("Map 最多允许一个 end_node。")); }
+    if let Some((id, _)) = end {
+        if map.nodes.values().any(|node| node.0.blocked_by.contains(id) || node.0.input_rule.iter().any(|rule| matches!(rule, InputRule::Node { node_id, .. } if node_id == id))) {
+            return Err(map_error("end_node 不允许下游节点或输出引用。"));
+        }
     }
     let mut input_ids = std::collections::BTreeSet::new();
     for input in &map.input_files {
@@ -415,8 +410,9 @@ pub(crate) async fn new_node(state: crate::AppState, name: String) -> Result<ser
         parse_map(&original)?;
         let mut example: serde_json::Value = serde_json::from_str(include_str!("../../../../docs/example/maps/trip-readiness.json")).expect("bundled Map example");
         let mut content = example["nodes"]["A"].take();
-        content["report_policy"] = serde_json::json!(ReportPolicy::default());
+        content["auto_approved"] = serde_json::json!(true);
         content["auto_close"] = serde_json::json!(false);
+        content["end_node"] = serde_json::json!(false);
         Ok::<_, DirectoryError>(serde_json::json!({ "id": "", "content": content, "revision": { "file": name, "original": original }, "create": true }))
     })).await {
         Ok(Ok(value)) => Ok(value),
@@ -439,18 +435,29 @@ pub(crate) async fn edit_node(state: crate::AppState, name: String, identity: No
 }
 
 pub(crate) async fn save_node(state: crate::AppState, name: String, draft: NodeSave) -> Result<WorkflowMap, DirectoryError> {
+    if draft.id.is_empty() { return Err(edit_error("node-invalid", "node ID 不能为空。")); }
+    let content: serde_json::Value = serde_json::from_str(&draft.content)
+        .map_err(|e| edit_error("node-invalid", format!("node JSON 无效：{e}")))?;
+    let object = content.as_object().ok_or_else(|| edit_error("node-invalid", "node 内容必须为 JSON 对象。"))?;
+    if object.contains_key("id") { return Err(edit_error("node-invalid", "请移除 node 内容中的顶层 id；使用独立 node ID。")); }
+    let node: JsonObject<MapNode> = serde_path_to_error::deserialize(content)
+        .map_err(|e| edit_error("node-invalid", format!("node 结构无效：{e}")))?;
+    let tasks = if node.0.end_node {
+        state.tasks.list().await.map_err(|e| edit_error("end-node-target-invalid", e.message()))?
+    } else { Vec::new() };
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "node-write-failed", |access| {
-        if draft.id.is_empty() { return Err(edit_error("node-invalid", "node ID 不能为空。")); }
-        let content: serde_json::Value = serde_json::from_str(&draft.content)
-            .map_err(|e| edit_error("node-invalid", format!("node JSON 无效：{e}")))?;
-        let object = content.as_object().ok_or_else(|| edit_error("node-invalid", "node 内容必须为 JSON 对象。"))?;
-        if object.contains_key("id") { return Err(edit_error("node-invalid", "请移除 node 内容中的顶层 id；使用独立 node ID。")); }
-        let node: JsonObject<MapNode> = serde_path_to_error::deserialize(content)
-            .map_err(|e| edit_error("node-invalid", format!("node 结构无效：{e}")))?;
-        if node.0.manager_task_id.is_some() || node.0.report_policy != ReportPolicy::Auto || node.0.auto_close {
+        if node.0.end_node {
             let bots = read_bots(access, &state.bot_directory)?;
-            if bots.bots.iter().any(|bot| bot.id == node.0.bot_id && bot.rust_script.is_some()) {
-                return Err(edit_error("script-policy-invalid", "脚本节点仅允许 report_policy:auto、auto_close:false，且无 manager_task_id。"));
+            let bot = bots.bots.iter().find(|bot| bot.id == node.0.bot_id).ok_or_else(|| edit_error("end-node-target-invalid", "end_node 的 Bot 缺失。"))?;
+            if bot.script.is_some() || bot.map_file.is_some() || node.0.manager_task_id.is_some()
+                || !tasks.iter().any(|task| bot.task_id.as_deref() == Some(task.id.as_str()) && task.task_type == crate::tasks::TaskType::Normal) {
+                return Err(edit_error("end-node-target-invalid", "end_node 仅允许普通 Task Bot。"));
+            }
+        }
+        if node.0.manager_task_id.is_some() || !node.0.auto_approved || node.0.auto_close {
+            let bots = read_bots(access, &state.bot_directory)?;
+            if bots.bots.iter().any(|bot| bot.id == node.0.bot_id && bot.script.is_some()) {
+                return Err(edit_error("script-policy-invalid", "脚本节点仅允许 auto_approved:true、auto_close:false，且无 manager_task_id。"));
             }
         }
         let check = || -> Result<(), DirectoryError> {

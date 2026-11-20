@@ -10,6 +10,15 @@ async fn submit_report(s: &Scenario, identity: &str, body: &str, can_complete: b
     serde_json::from_str::<Value>(&response.body).unwrap()["report"].clone()
 }
 
+// Explicit fixture action: never called by report/dispatch on a node's behalf.
+async fn approve_execution(s: &Scenario, identity: &str) {
+    let context = post_json_over_tcp(s.server.addr(), "/api/workflow/node/context", &json!({"sessionId":identity}).to_string()).await;
+    assert_eq!(context.status, 200, "{}", context.body);
+    let context: Value = serde_json::from_str(&context.body).unwrap();
+    let response = post_json_over_tcp(s.server.addr(), "/api/workflow/node/approve", &json!({"sessionId":identity,"executionId":context["executionId"],"source":if context["autoApproved"] == true {"auto"} else {"manual"}}).to_string()).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+}
+
 struct Scenario {
     data: TempDir,
     herdr: HerdrFixture,
@@ -24,11 +33,23 @@ impl Scenario {
     async fn new() -> Self {
         Self::with_collect_wait(5400).await
     }
+    async fn without_output_contract() -> Self {
+        let scenario = Self::new().await;
+        let path = scenario.config.scheduler.map_directory.join("work.json");
+        let mut map: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        for node in map["nodes"].as_object_mut().unwrap().values_mut() {
+            node["output_rule"] = json!([]);
+        }
+        fs::write(path, map.to_string()).unwrap();
+        scenario
+    }
     async fn with_collect_wait(seconds: u64) -> Self {
         let data = TempDir::new("dispatch records");
         let herdr = HerdrFixture::new("dispatch external");
         let fixtures = common::repo_fixtures_dir();
         let mut config = common::config(&fixtures.join("operations/success.bat"), &fixtures.join("operations"));
+        config.data_directory = data.path().join("data");
+        config.sessions.history_file = data.path().join("session-history.json");
         config.tasks.storage_file = data.path().join("tasks.json");
         config.prompts_file = data.path().join("prompts.local.toml");
         let mut catalog: toml::Value = toml::from_str(&fs::read_to_string(&config.tasks.metadata_file).unwrap()).unwrap();
@@ -50,8 +71,10 @@ impl Scenario {
         herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"manager-05"},"native_cwd":data.path()}));
         fs::create_dir_all(&config.scheduler.map_directory).unwrap();
         fs::create_dir_all(&config.scheduler.bot_directory).unwrap();
+        common::install_bot_scripts(&config.scheduler.bot_directory);
         let app = herdr_bot::app(&config);
         let server = TestServer::start_app(app.clone()).await;
+        fs::write(herdr.path().join("launch_endpoint.txt"), server.addr().to_string()).unwrap();
         let node_zone = data.path().join("node-zone");
         fs::create_dir(&node_zone).unwrap();
         for (id, path) in [("manager", data.path()), ("node", node_zone.as_path())] {

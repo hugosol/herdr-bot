@@ -39,6 +39,22 @@ describe('Map input preparation contract', () => {
   })
 })
 
+describe('node zone schema boundary', () => {
+  it.each(['team/work', { type: 'dynamic' }])('loads and confirms the exact zone representation: %j', async zone => {
+    responseWith({ zone, auto_approved: false, auto_close: true })
+    expect((await loadMap('map.json')).nodes.B).toEqual({ ...node, zone, auto_approved: false, auto_close: true })
+    expect((await saveNode('map.json', { ...draft, content: JSON.stringify({ ...node, zone }) })).nodes.B.zone).toEqual(zone)
+    const request = vi.mocked(fetch).mock.calls[1][1]!
+    expect(JSON.parse(JSON.parse(request.body as string).content).zone).toEqual(zone)
+  })
+
+  it.each([null, [], {}, { type: 'fixed' }, { type: 'dynamic', default: 'team/work' }, { type: 'dynamic', value: 'team/work' }])('rejects invalid or preset-bearing zone objects: %j', async zone => {
+    responseWith({ zone })
+    await expect(loadMap('map.json')).rejects.toThrow('响应无效')
+    await expect(saveNode('map.json', draft)).rejects.toThrow('响应无效')
+  })
+})
+
 describe('node save response handoff schema boundary', () => {
   it('accepts array rules without changing opaque input text or adding dependencies', async () => {
     const input_rule = [{ id: 'source', type: 'node', node_id: 'A', output_id: 'material' }]

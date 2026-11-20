@@ -55,6 +55,7 @@ async fn outer_create_publishes_task_then_wrapper_without_changing_legacy_entrie
         let saved = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/nodes/save"), &json!({"id":id,"content":node.to_string(),"revision":draft["revision"],"create":true}).to_string()).await;
         assert_eq!(saved.status,200,"{}",saved.body);
         let read = get_over_tcp(s.server.addr(), &endpoint).await;
+        node["end_node"] = json!(false);
         assert_eq!(serde_json::from_str::<Value>(&read.body).unwrap()["nodes"][id],node);
     }
     let material = s.data.path().join("reference.txt");

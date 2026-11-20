@@ -68,9 +68,12 @@ test('P22 Map and node required fields, types, unknown keys and versions are str
     ['title', [], 'string'], ['description', false, 'string'], ['nodes', [], 'map'],
   ] as const) cases.push({ name: `type-map-${field}`, value: { ...valid, [field]: wrong }, expected: [field, diagnostic] })
   for (const [field, wrong, diagnostic] of [
-    ['title', 7, 'string'], ['bot_id', {}, 'string'], ['input', [], 'string'], ['zone', {}, 'string'], ['blocked_by', 'work', 'sequence'],
+    ['title', 7, 'string'], ['bot_id', {}, 'string'], ['input', [], 'string'], ['blocked_by', 'work', 'sequence'],
   ] as const) cases.push({ name: `type-node-${field}`, value: { ...valid, nodes: { work: { ...valid.nodes.work, [field]: wrong } } }, expected: [`nodes.work.${field}`, diagnostic] })
   cases.push(
+    // zone accepts a string or a dynamic declaration; {} is neither. Keep the
+    // public field diagnostic without asserting an obsolete string-only type.
+    { name: 'type-node-zone', value: { ...valid, nodes: { work: { ...valid.nodes.work, zone: {} } } }, expected: ['nodes.work.zone'] },
     { name: 'misspelled-blockedBy', value: { ...valid, nodes: { work: { title: '', bot_id: '', input: '', zone: '', blockedBy: [] } } }, expected: ['nodes.work', 'unknown field `blockedBy`'] },
     { name: 'unknown-map-field', value: { ...valid, node_bots: {} }, expected: ['unknown field `node_bots`'] },
     { name: 'unknown-node-field', value: { ...valid, nodes: { work: { ...valid.nodes.work, typo: true } } }, expected: ['nodes.work', 'unknown field `typo`'] },

@@ -24,10 +24,12 @@ pub struct Report {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ScriptSource {
-    kind: ScriptKind,
-    rust_script: String,
+#[serde(tag = "kind", deny_unknown_fields)]
+pub enum ScriptSource {
+    #[serde(rename = "typescript")]
+    Typescript { script: String },
+    #[serde(rename = "rust_script")]
+    RustScript { #[serde(rename = "rustScript")] rust_script: String },
 }
 
 pub(super) async fn read(state: &AppState, run: &Run) -> Result<Vec<Report>, String> {
@@ -39,7 +41,8 @@ pub(super) async fn read(state: &AppState, run: &Run) -> Result<Vec<Report>, Str
         if report.run_id != run.id { return Err("报告 Run 归属不一致。".into()); }
         let execution = run.nodes.get(&report.node_id).and_then(|node| node.executions().find(|execution| execution.id == report.execution_id));
         match execution.map(|execution| &execution.target) {
-            Some(ExecutionTarget::Script(script)) if report.from.is_none() && report.source.as_ref().is_some_and(|source| source.rust_script == script.rust_script) => {},
+            Some(ExecutionTarget::Script(script)) if report.from.is_none() && report.source.as_ref().is_some_and(|source| matches!(source, ScriptSource::Typescript { script: path } if path == &script.script)) => {},
+            Some(ExecutionTarget::LegacyScript(script)) if report.from.is_none() && report.source.as_ref().is_some_and(|source| matches!(source, ScriptSource::RustScript { rust_script } if rust_script == &script.rust_script)) => {},
             // Legacy Chat reports remain readable even when retained execution or
             // Chat associations are incomplete. New submissions authenticate the
             // actual sender before saving; script provenance is never inferred.
@@ -96,6 +99,9 @@ async fn node_run(state: &AppState, session_id: &str) -> Result<(Run, String, St
         for (node_id, node) in &run.nodes {
             for execution in node.executions() {
                 if execution.chat().is_some_and(|chat| chat.session_id == session_id) {
+                    if execution.end_node {
+                        return Err(error(FailureKind::Forbidden, "end-node-no-authority", "end Chat 不具有节点报告权限。"));
+                    }
                     if matched.is_some() {
                         return Err(error(FailureKind::Forbidden, "node-ambiguous", "原生身份关联不唯一。"));
                     }
@@ -141,7 +147,58 @@ pub(crate) async fn node_context(state: AppState, input: ContextRequest) -> RunR
     let Some(execution) = run.nodes[&node_id].executions().find(|execution| execution.id == execution_id) else {
         return Err(error(FailureKind::Forbidden, "node-unassociated", "当前原生身份没有唯一的节点执行归属。"));
     };
-    Ok(RunOutcome::Value(serde_json::json!({"runId":run.id,"nodeId":node_id,"executionId":execution_id,"reportPolicy":execution.report_policy})))
+    Ok(RunOutcome::Value(serde_json::json!({"runId":run.id,"nodeId":node_id,"executionId":execution_id,"autoApproved":execution.auto_approved,"approved":execution.approved,"approvalSource":execution.approval_source})))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ApproveRequest {
+    pub(crate) session_id: String,
+    pub(crate) execution_id: String,
+    pub(crate) source: ApprovalSource,
+}
+
+// Native confirmation happens in the official host, never while holding a Run
+// permit. The execution ID comes from context, not a model-selected target.
+pub(crate) async fn node_approve(state: AppState, input: ApproveRequest) -> RunResult {
+    let (binding, node_id, execution_id) = node_run(&state, &input.session_id).await?;
+    if input.execution_id != execution_id {
+        return Err(error(FailureKind::Invalid, "approval-execution-mismatch", "确认所针对的执行与会话归属不一致。"));
+    }
+    let work = tokio::spawn(async move {
+        let lock = state.runs.operations.lock().await.entry(binding.id.clone()).or_default().clone();
+        let _operation = lock.lock().await;
+        let mut run = state.runs.read(&state, &binding.id).await
+            .map_err(|message| error(FailureKind::Failed, "run-read-failed", &message))?;
+        if !matches!(run.status.as_str(), "running" | "paused") {
+            return Err(error(FailureKind::Invalid, "run-terminal", "Run 已结束，不接受批准。"));
+        }
+        let node = run.nodes.get_mut(&node_id).ok_or_else(|| error(FailureKind::Forbidden, "node-unassociated", "节点关联已改变。"))?;
+        let execution = node.execution.as_mut().filter(|execution| execution.id == execution_id && execution.chat().is_some_and(|chat| chat.session_id == input.session_id))
+            .ok_or_else(|| error(FailureKind::Invalid, "approval-execution-stale", "该确认不属于当前执行；请重新取得上下文。"))?;
+        if execution.end_node || !matches!(node.status.as_str(), "running" | "failed") || node.failure.as_ref().is_some_and(|failure| failure.stage != "execution") {
+            return Err(error(FailureKind::Invalid, "node-not-approvable", "当前节点不能批准。"));
+        }
+        if let Some(child_id) = execution.child_run_id() {
+            let child = state.runs.read(&state, child_id).await
+                .map_err(|message| error(FailureKind::Failed, "child-run-read-failed", &message))?;
+            if child.status != "completed" || child.finished.is_none() {
+                return Err(error(FailureKind::Invalid, "child-run-not-finished", "子 Run 必须显式 finish 后才能批准父节点整体成果。"));
+            }
+        }
+        let expected = if execution.auto_approved { ApprovalSource::Auto } else { ApprovalSource::Manual };
+        if input.source != expected {
+            return Err(error(FailureKind::Invalid, "approval-source-mismatch", "批准来源必须与本次执行冻结的模式一致。"));
+        }
+        let changed = !execution.approved;
+        if changed {
+            execution.approved = true;
+            execution.approval_source = Some(input.source);
+            save_run(&state, &run).await.map_err(|message| error(FailureKind::Failed, "approval-save-failed", &message))?;
+        }
+        Ok(RunOutcome::Value(serde_json::json!({"runId":run.id,"nodeId":node_id,"executionId":execution_id,"autoApproved":expected == ApprovalSource::Auto,"approved":true,"approvalSource":input.source,"changed":changed})))
+    }).await;
+    work.map_err(|join| error(FailureKind::Failed, "approval-internal", &join.to_string()))?
 }
 
 pub(crate) async fn node_report(state: AppState, input: ReportRequest) -> RunResult {
@@ -216,8 +273,14 @@ pub(super) async fn submit(state: AppState, run_id: String, node_id: String, exe
                 ReportOrigin::Chat(session) => (Some(execution.chat().filter(|chat| chat.session_id == session).ok_or("当前执行关联已改变。")?.clone()), None, false),
                 ReportOrigin::Script(lifecycle) => {
                     let ExecutionTarget::Script(script) = &mut execution.target else { return Err("脚本报告不能归属 Chat 执行。".into()); };
+                    let succeeded = matches!(lifecycle, Lifecycle::Succeeded { .. });
                     script.lifecycle = lifecycle;
-                    (None, Some(ScriptSource { kind: ScriptKind::RustScript, rust_script: script.rust_script.clone() }), true)
+                    let source = ScriptSource::Typescript { script: script.script.clone() };
+                    if succeeded && input.can_complete {
+                        execution.approved = true;
+                        execution.approval_source = Some(ApprovalSource::Auto);
+                    }
+                    (None, Some(source), true)
                 }
             };
             if lifecycle_changed { save_run(&state, &run).await?; }
@@ -240,6 +303,15 @@ pub(super) async fn submit(state: AppState, run_id: String, node_id: String, exe
         };
         let text = format!("Workflow report\nRun: {}\nnode: {}\nReport: {}\n\n{}", report.run_id, report.node_id, report.id, report.body);
         let diagnostic = serde_json::json!({"event":"workflow-report-delivery","runId":report.run_id,"reportId":report.id,"targetChat":report.to});
-        Ok(SavedReport { target: Ok(report.to.agent_name.clone()), report, text, diagnostic })
+        // Resolve the exact manager only after committing the report. A failed
+        // lookup or failed send never changes or schedules the saved report.
+        use crate::report_delivery::{Notification, NotificationTarget};
+        let target = if state.herdr.is_app() {
+            report.to.app_target(&state, &report.to.location()).await.map(NotificationTarget::App)
+                .map_err(|error| Notification::not_attempted(format!("未确认已保存报告的 App 管理者目标：{error:?}")))
+        } else {
+            Ok(NotificationTarget::Tui(report.to.agent_name.clone()))
+        };
+        Ok(SavedReport { report, target, text, diagnostic })
     }).await
 }

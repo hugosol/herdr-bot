@@ -77,7 +77,7 @@ class ChiefRecoveryAcceptance(Base):
         self.backend_wire.close()
         self.backend_wire = RecoveryFaultProxy(self.base, self.root / 'recovery-http')
         self.role_config = self.root / 'toolkit/extensions/workflow-chat/config.yaml'
-        self.role_config.write_text(f'endpoint: {self.backend_wire.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
+        self.role_config.write_text(f'endpoint: {self.backend_wire.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\napproveConfirmationTimeoutMs: 60000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
 
         self.phase('prepare', 'completed')
 

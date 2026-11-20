@@ -21,10 +21,95 @@ let finished = false;
 const diagnostics = {};
 function finish(value, status) {
   if (finished) return;
+  // A rejected serialization must still be able to emit its bounded error.
+  const encoded = JSON.stringify(value);
   finished = true;
-  process.stdout.write(`${JSON.stringify(value)}\n`, () => process.exit(status));
+  process.stdout.write(`${encoded}\n`, () => process.exit(status));
 }
-function reject(code) { finish({ error: code, ...diagnostics }, 1); }
+const terminalFrames = new Set(['response.completed', 'response.done', 'response.incomplete', 'response.failed', 'error']);
+const deltaCounts = new Map([
+  ['response.output_text.delta', 'textDeltas'], ['response.refusal.delta', 'textDeltas'],
+  ['response.reasoning_text.delta', 'reasoningDeltas'], ['response.reasoning_summary_text.delta', 'reasoningDeltas'],
+  ['response.function_call_arguments.delta', 'toolArgumentDeltas'], ['response.custom_tool_call_input.delta', 'toolArgumentDeltas'],
+]);
+const knownFrames = new Set([...terminalFrames, ...deltaCounts.keys(),
+  'response.created', 'response.queued', 'response.in_progress', 'response.output_item.added',
+  'response.output_item.done', 'response.content_part.added', 'response.content_part.done',
+  'response.output_text.done', 'response.refusal.done', 'response.reasoning_summary_part.added',
+  'response.reasoning_summary_part.done', 'response.reasoning_summary_text.done', 'response.reasoning_text.done',
+  'response.function_call_arguments.done', 'response.custom_tool_call_input.done']);
+const streamSignals = { frameCount: 0, textDeltas: 0, reasoningDeltas: 0, toolArgumentDeltas: 0,
+  firstFrame: null, terminalFrame: null, sdkOutcome: 'pending' };
+function reject(code) {
+  if (diagnostics.httpStatus === 200) diagnostics.streamSignals = streamSignals;
+  finish({ error: code, ...diagnostics }, 1);
+}
+
+const ERROR_BODY_LIMIT = 65536;
+async function readProviderError(body) {
+  if (!body) return;
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0, raw = '', drained = false;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) {
+        drained = true;
+        return JSON.parse(raw + decoder.decode())?.error;
+      }
+      bytes += value.byteLength;
+      if (bytes > ERROR_BODY_LIMIT) return;
+      raw += decoder.decode(value, { stream: true });
+    }
+  } catch {
+    // An unreadable or unparseable response remains a provider error.
+  } finally {
+    if (!drained) void reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
+function safeProviderError(error) {
+  const allow = (value, values) => values.includes(value) ? value : 'other';
+  const message = typeof error?.message === 'string' ? error.message : '';
+  const reason = /No tool output found for function call/i.test(message) ? 'missing-tool-output'
+    : /No tool call found for function call output/i.test(message) ? 'orphan-tool-output'
+    : /Duplicate (?:item|.*id)/i.test(message) ? 'duplicate-item'
+    : /context (?:length|window)|maximum context/i.test(message) ? 'context-limit'
+    : /Invalid schema|function parameters/i.test(message) ? 'tool-schema'
+    : /encrypted content|encrypted_content/i.test(message) ? 'encrypted-content'
+    : 'other';
+  return {
+    type: allow(error?.type, ['invalid_request_error', 'server_error', 'rate_limit_error']),
+    code: allow(error?.code, ['invalid_value', 'invalid_json', 'invalid_function_parameters', 'context_length_exceeded']),
+    parameter: allow(error?.param, ['input', 'tools', 'instructions', 'model', 'previous_response_id']), reason,
+  };
+}
+function safeRequestShape(body) {
+  const items = body?.input ?? [];
+  let messageItems = 0, toolDeclarations = body?.tools?.length ?? 0, toolCalls = 0, toolResults = 0;
+  const calls = new Set(), results = new Set();
+  for (const item of items) {
+    if (item.type === 'message' || (item.type === undefined &&
+        ['user', 'assistant', 'system', 'developer'].includes(item.role))) ++messageItems;
+    else if (item.type === 'additional_tools') toolDeclarations += item.tools?.length ?? 0;
+    else if (item.type === 'function_call') {
+      ++toolCalls;
+      if (typeof item.call_id === 'string') calls.add(item.call_id);
+    } else if (item.type === 'function_call_output') {
+      ++toolResults;
+      if (typeof item.call_id === 'string') results.add(item.call_id);
+    }
+  }
+  let toolBindingsMatch = toolCalls === toolResults && calls.size === toolCalls && results.size === toolResults;
+  if (toolBindingsMatch) {
+    for (const id of results) {
+      if (!calls.has(id)) { toolBindingsMatch = false; break; }
+    }
+  }
+  return { inputItems: items.length, messageItems, toolDeclarations, instructionLength: body?.instructions?.length ?? 0,
+    toolCalls, toolResults, toolBindingsMatch };
+}
 // Dependency diagnostics are not part of the protocol and may contain secrets.
 for (const key of ['log', 'info', 'warn', 'error', 'debug', 'trace', 'dir']) console[key] = () => {};
 process.on('uncaughtException', () => reject(failure));
@@ -246,10 +331,9 @@ try {
     fetch: async (url, options) => {
       diagnostics.requests = ++requests;
       if (requests !== 1) throw new Error();
+      let response;
       try {
-        const response = await globalThis.fetch(url, { ...options, redirect: 'error' });
-        diagnostics.httpStatus = response.status;
-        return response;
+        response = await globalThis.fetch(url, { ...options, redirect: 'error' });
       } catch (error) {
         const code = error?.cause?.code;
         diagnostics.network = ['ENOTFOUND', 'EAI_AGAIN'].includes(code) ? 'dns'
@@ -259,9 +343,30 @@ try {
           : 'other';
         throw error;
       }
+      diagnostics.httpStatus = response.status;
+      if (!response.ok) {
+        diagnostics.requestShape = safeRequestShape(upstreamRequest);
+        diagnostics.providerError = safeProviderError(await readProviderError(response.body));
+        // The SDK would otherwise read the rejection body with unbounded .text().
+        // Keep its failed result path, without delivering raw provider text.
+        throw new Error();
+      }
+      return response;
     },
     onProviderStreamEvent(event) {
       if (!event || typeof event !== 'object') return;
+      if (diagnostics.httpStatus === 200) {
+        const type = event.type;
+        if (streamSignals.frameCount === 0) streamSignals.firstFrame = knownFrames.has(type) ? type : 'other';
+        ++streamSignals.frameCount;
+        const delta = deltaCounts.get(type);
+        if (delta) ++streamSignals[delta];
+        if (terminalFrames.has(type)) streamSignals.terminalFrame = type;
+        if (type === 'error' || type === 'response.failed') {
+          diagnostics.providerError = safeProviderError(event.response?.error ?? event.error ?? event);
+          diagnostics.requestShape = safeRequestShape(upstreamRequest);
+        }
+      }
       const identity = event.response?.model;
       if (identity !== undefined) {
         if (identity !== requestedModel) { failure = 'model-identity'; throw new Error(); }
@@ -269,33 +374,68 @@ try {
       }
       if (event.type === 'response.completed' || event.type === 'response.done') completed = true;
     },
+  }).catch(error => {
+    streamSignals.sdkOutcome = 'threw';
+    throw error;
   });
-  if (result.stopReason === 'error' || result.stopReason === 'aborted') throw new Error();
+  const sdkFailed = result.stopReason === 'error' || result.stopReason === 'aborted';
+  streamSignals.sdkOutcome = sdkFailed ? result.stopReason : 'returned';
+  if (sdkFailed) throw new Error();
   failure = 'model-identity';
   // AssistantMessage.model is locally initialized by pi-ai, not server evidence.
   if (observedModel !== requestedModel || result.model !== requestedModel ||
       result.provider !== 'openai-codex' || result.api !== 'openai-codex-responses') throw new Error();
   failure = 'content-invalid';
+  const rejectContent = constraint => {
+    // Failure-only structural facts: never expose text, IDs, arguments or errors.
+    const parts = Array.isArray(result.content) ? result.content : [];
+    const calls = parts.filter(part => part?.type === 'toolCall');
+    Object.assign(diagnostics, {
+      constraint, completed, contentArray: Array.isArray(result.content),
+      stopReason: ['stop', 'toolUse', 'length', 'error', 'aborted'].includes(result.stopReason)
+        ? result.stopReason : 'other',
+      contentBlocks: parts.length,
+      invalidBlockCount: parts.filter(part => !part || !['text', 'thinking', 'toolCall'].includes(part.type)).length,
+      invalidTextCount: parts.filter(part => part?.type === 'text' && typeof part.text !== 'string').length,
+      toolCalls: calls.length,
+      invalidToolIds: calls.filter(part => !callId(part.id)).length,
+      invalidToolNames: calls.filter(part => !nonempty(part.name)).length,
+      invalidArguments: calls.filter(part => !object(part.arguments)).length,
+      argumentsErrorCount: calls.filter(part => part.argumentsError !== undefined).length,
+      partialJsonCount: calls.filter(part => part.partialJson !== undefined).length,
+      namespaceCount: calls.filter(part => part.namespace !== undefined).length,
+      duplicateToolIds: calls.length - new Set(calls.map(part => part.id)).size,
+      hasText: parts.some(part => part?.type === 'text' && typeof part.text === 'string' && !!part.text.trim()),
+      toolUseMatches: (result.stopReason === 'toolUse') === (calls.length > 0),
+      usageInvalidMask: ['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens'].reduce((mask, key, index) =>
+        mask | ((!Number.isFinite(result.usage?.[key]) || result.usage[key] < 0) ? 1 << index : 0), 0),
+    });
+    for (const [key, value] of [['outputTokens', result.usage?.output], ['deliveryCap', request.max_completion_tokens]]) {
+      if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER) diagnostics[key] = value;
+    }
+    throw new Error();
+  };
   if (!completed || !['stop', 'toolUse'].includes(result.stopReason) || !Array.isArray(result.content) ||
       result.content.some(part => !part || !['text', 'thinking', 'toolCall'].includes(part.type) ||
         (part.type === 'text' && typeof part.text !== 'string') ||
         (part.type === 'toolCall' && (!callId(part.id) || !nonempty(part.name) ||
           !object(part.arguments) || part.argumentsError !== undefined || part.partialJson !== undefined ||
-          part.namespace !== undefined)))) throw new Error();
+          part.namespace !== undefined)))) rejectContent('sdk-content');
   const content = result.content.filter(part => part.type === 'text').map(part => part.text).join('');
   // These are SDK-native toolCall blocks, never JSON extracted from model text.
   const tool_calls = result.content.filter(part => part.type === 'toolCall')
     .map(part => ({ id: part.id, name: part.name, arguments: part.arguments }));
   if ((result.stopReason === 'toolUse') !== (tool_calls.length > 0) ||
       new Set(tool_calls.map(call => call.id)).size !== tool_calls.length ||
-      (!content.trim() && tool_calls.length === 0)) throw new Error();
+      (!content.trim() && tool_calls.length === 0)) rejectContent('decision-consistency');
   const usage = {};
   for (const key of ['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens']) {
     const value = result.usage?.[key];
-    if (!Number.isFinite(value) || value < 0) throw new Error();
+    if (!Number.isFinite(value) || value < 0) rejectContent('usage');
     usage[key] = value;
   }
-  if (request.max_completion_tokens !== undefined && usage.output > request.max_completion_tokens) throw new Error();
+  if (request.max_completion_tokens !== undefined && usage.output > request.max_completion_tokens) rejectContent('delivery-cap');
+  diagnostics.constraint = 'serialization';
   finish({ provider: result.provider, model: result.model, serverModel: observedModel, api: result.api,
     content, tool_calls, usage, stopReason: result.stopReason,
     upstreamRequest, upstreamResponse: result,

@@ -5,10 +5,13 @@
 //! creating or navigating them. Business authority and persistence stay with
 //! the calling modules.
 
+mod app;
 mod client;
 mod identity;
+pub(crate) mod launch;
 pub(crate) mod placement;
 
 pub use client::{CreatedTab, HerdrClient, HerdrError, NavigationTarget, Workspace};
+pub(crate) use client::LaunchTarget;
 pub use identity::NativeSession;
-pub(crate) use identity::read_native_id;
+pub(crate) use identity::{RestoreEvidence, read_existing_native_id, read_native_id};

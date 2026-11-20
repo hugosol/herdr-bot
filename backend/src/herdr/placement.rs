@@ -184,10 +184,12 @@ async fn recovery_directory<'a>(
             return Ok((ExecutionDirectory::Explicit(Cow::Owned(root)), Some(degradation)));
         }
     }
+    let kind = herdr.workspace_kind();
+    let app_limit = if herdr.is_app() { "App 不提供可核对历史 checkout 的准确工作树归属元数据。" } else { "" };
     Ok((ExecutionDirectory::HerdrSelected, Some(Degradation {
         element: "cwd",
-        reason: format!("历史工作目录 {} 缺失或不可用，无法确认可用的主工作树。", historical.unwrap_or("（未记录）")),
-        strategy: "在默认 Workspace 恢复，不指定 --cwd，由 Herdr 选择实际目录；不修改历史会话元数据。".into(),
+        reason: format!("历史工作目录 {} 缺失或不可用，无法确认可用的主工作树。{app_limit}", historical.unwrap_or("（未记录）")),
+        strategy: format!("在默认 {kind} 恢复，不指定工作目录，由当前 Herdr 宿主选择实际目录；不修改历史会话元数据。"),
     })))
 }
 
@@ -196,23 +198,24 @@ async fn recovery_workspace(
     original_id: Option<&str>,
     directory: &ExecutionDirectory<'_>,
 ) -> Result<WorkspaceMapping, HerdrError> {
+    let kind = herdr.workspace_kind();
     let reason = match directory {
-        ExecutionDirectory::HerdrSelected => "历史目录不可用且无可靠主工作树，本次使用默认 Workspace。".into(),
+        ExecutionDirectory::HerdrSelected => format!("历史目录不可用且无可靠主工作树，本次使用默认 {kind}。"),
         ExecutionDirectory::Explicit(_) => match original_id {
             Some(id) => {
                 if let Some(workspace) = herdr.workspace_by_id(id).await? {
                     return Ok(WorkspaceMapping { workspace, degradation: None });
                 }
-                format!("原 Workspace 已删除（ID {id}，成功查询确认）。")
+                format!("当前宿主未找到原 {kind}（ID {id}，成功查询确认）。")
             }
-            None => "缺少原 Workspace 信息。".into(),
+            None => format!("缺少原 {kind} ID。"),
         },
     };
     let workspace = herdr.workspace(herdr.workspace_name()).await?;
     let degradation = Degradation {
         element: "workspace",
         reason,
-        strategy: format!("已回退到配置的唯一默认 Workspace {}（{}）；保留历史原位置。", workspace.label, workspace.id),
+        strategy: format!("已回退到配置的唯一默认 {kind} {}（{}）；保留历史原位置。", workspace.label, workspace.id),
     };
     Ok(WorkspaceMapping { workspace, degradation: Some(degradation) })
 }

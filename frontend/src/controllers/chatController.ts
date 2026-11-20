@@ -8,7 +8,7 @@
 
 import type { TaskModel, TaskThinking } from './taskController'
 
-export type ChatCreationStage = 'starting' | 'submitting' | 'succeeded' | 'failed'
+export type ChatCreationStage = 'starting' | 'initializing' | 'submitting' | 'retrying' | 'succeeded' | 'failed'
 export type ChatFailureStage = 'workspace' | 'tab' | 'start' | 'submit'
 
 export type ChatPreview = {
@@ -38,6 +38,8 @@ export type ChatCreation = {
   paneId?: string
   agentName?: string
   inputSubmitted: boolean
+  inputOutcome?: 'not-submitted' | 'unknown'
+  retryReason?: string
   failure?: ChatCreationFailure
 }
 
@@ -76,7 +78,7 @@ function isPreview(value: unknown): value is ChatPreview {
   )
 }
 
-const STAGES: ChatCreationStage[] = ['starting', 'submitting', 'succeeded', 'failed']
+const STAGES: ChatCreationStage[] = ['starting', 'initializing', 'submitting', 'retrying', 'succeeded', 'failed']
 const FAILURE_STAGES: ChatFailureStage[] = ['workspace', 'tab', 'start', 'submit']
 
 function isCreation(value: unknown): value is ChatCreation {
@@ -102,6 +104,8 @@ function isCreation(value: unknown): value is ChatCreation {
     isNullableString(creation.paneId) &&
     isNullableString(creation.agentName) &&
     typeof creation.inputSubmitted === 'boolean' &&
+    (creation.inputOutcome === undefined || creation.inputOutcome === 'not-submitted' || creation.inputOutcome === 'unknown') &&
+    (creation.stage !== 'retrying' || (creation.inputOutcome === 'not-submitted' && isString(creation.retryReason))) &&
     failureShape
   )
 }
@@ -206,13 +210,22 @@ export async function saveChatMemo(sessionId: string, memo: string): Promise<str
   return body.memo
 }
 
-// Both callers share transport, but retain their existing response acceptance rules.
 async function requestChatResume(sessionId: string): Promise<{ ok: boolean; body: unknown }> {
   const response = await fetch('/api/chats/resume', {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ sessionId }),
   })
   return { ok: response.ok, body: await response.json() }
+}
+
+function isCompletedResume(body: object): boolean {
+  if (!('outcome' in body)) return false
+  if (body.outcome === 'located' || body.outcome === 'restored') return true
+  if (body.outcome !== 'unconfirmed' || !('stage' in body) || body.stage !== 'focused' || !('progress' in body)) return false
+  const progress = body.progress
+  return typeof progress === 'object' && progress !== null
+    && 'focused' in progress && progress.focused === true
+    && 'conversationConfirmed' in progress && progress.conversationConfirmed === false
 }
 
 export type ChatResumeResult = {
@@ -228,7 +241,7 @@ export async function resumeChat(sessionId: string): Promise<ChatResumeResult> {
   if (typeof body !== 'object' || body === null || !('message' in body) || typeof body.message !== 'string') {
     throw new Error('unconfirmed response')
   }
-  if (ok && (!('outcome' in body) || !['located', 'restored'].includes(String(body.outcome)))) {
+  if (ok && !isCompletedResume(body)) {
     throw new Error('unconfirmed outcome')
   }
   const located = ok && 'outcome' in body && body.outcome === 'located'
@@ -260,7 +273,7 @@ export async function openChiefChat(): Promise<ChiefOpenResult> {
   if (body.current === null) return { kind: 'absent' }
   if (typeof body.current.sessionId === 'string') {
     const { ok, body: result } = await requestChatResume(body.current.sessionId)
-    if (typeof result !== 'object' || result === null || !('message' in result) || typeof result.message !== 'string' || (ok && (!('outcome' in result) || !['located', 'restored'].includes(result.outcome as string)))) {
+    if (typeof result !== 'object' || result === null || !('message' in result) || typeof result.message !== 'string' || (ok && !isCompletedResume(result))) {
       throw new Error('unconfirmed navigation')
     }
     return { kind: 'resumed', failed: !ok, message: result.message }

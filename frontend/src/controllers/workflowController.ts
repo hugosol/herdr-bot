@@ -1,7 +1,13 @@
 import type { InputRule, OutputRule } from './schedulerController'
 
 export type RunFileInput = { id: string; path: string }
-export type RunPreflightInput = { managerTaskId: string; zone: string; userInput: string; fileInputs?: RunFileInput[] }
+export type RunPreflightInput = {
+  managerTaskId: string
+  zone: string
+  userInput: string
+  fileInputs?: RunFileInput[]
+  githubExploration?: { githubUrl: string; parentDirectory: string; explorationDirection: string }
+}
 export type PreflightIssue = { code: string; target: 'map' | 'node' | 'bot' | 'task' | 'manager' | 'zone' | 'run-input'; message: string; nodeId?: string; botId?: string; taskId?: string; inputId?: string; callChain?: string[] }
 export type RunPreflightResult = { kind: 'valid'; workspaceName: string } | { kind: 'rejected'; message: string; issues: PreflightIssue[] }
 
@@ -31,18 +37,19 @@ export async function startRun(file: string, input: RunPreflightInput): Promise<
 export type ChatReference = { sessionId: string; workspaceId: string; tabId: string; paneId: string; agentName: string }
 export type FileAddress = { id: string; path: string }
 export type ScriptLifecycle = { status: 'running'; startedAt: number } | { status: 'succeeded'; startedAt: number; endedAt: number } | { status: 'failed'; startedAt: number; endedAt: number; failure: unknown }
-type ExecutionFiles = { id: string; zone: string; inputRule: InputRule[] | null; outputRule: OutputRule[] | null; inputs: FileAddress[] | null; reportPolicy?: 'auto' | 'manual'; autoClose?: boolean }
-export type Execution = ExecutionFiles & ({ kind: 'rust_script'; rustScript: string; lifecycle: ScriptLifecycle; taskId?: never; agent?: never; chat?: never; childRunId?: never } | { kind?: never; taskId: string; agent: 'omp' | 'pi'; chat: ChatReference | null; childRunId?: string })
+type ExecutionFiles = { id: string; zone: string; zoneId?: string; inputRule: InputRule[] | null; outputRule: OutputRule[] | null; inputs: FileAddress[] | null; autoApproved: boolean; approved: boolean; approvalSource: 'auto' | 'manual' | null; autoClose?: boolean; endNode?: boolean }
+export type Execution = ExecutionFiles & ({ kind: 'typescript'; script: string; lifecycle: ScriptLifecycle; taskId?: never; agent?: never; chat?: never; childRunId?: never } | { kind: 'rust_script'; rustScript: string; lifecycle: ScriptLifecycle; taskId?: never; agent?: never; chat?: never; childRunId?: never } | { kind?: never; taskId: string; agent: 'omp' | 'pi'; chat: ChatReference | null; childRunId?: string })
 export type Failure = { stage: string; message: string; effects?: Record<string, unknown> }
 export type NodeState = {
   status: string
   execution: Execution | null
   failure: Failure | null
+  autoCloseFailure?: { code: string; message: string }
   completion: { id: string; at: number; actor: ChatReference; reason: string } | null
   previousExecutions: { execution: Execution | null; failure: Failure | null }[]
 }
-export type Run = { id: string; name?: string; map: string; createdAt: number; managerTaskId: string; zone: string; managerZoneId?: string; zoneBindings?: Record<string, string>; workspaceName: string; userInput: string; fileInputs?: FileAddress[]; inputsReady?: boolean; status: string; manager: ChatReference | null; nodes: Record<string, NodeState> }
-export type Report = { id: string; at: number; nodeId: string; executionId: string; body: string; from: ChatReference | null; source?: { kind: 'rust_script'; rustScript: string }; to: ChatReference; canComplete?: boolean; outputs: FileAddress[] }
+export type Run = { id: string; name?: string; map: string; createdAt: number; managerTaskId: string; zone: string; managerZoneId?: string; zoneBindings?: Record<string, string>; workspaceName: string; userInput: string; fileInputs?: FileAddress[]; inputsReady?: boolean; finished?: { reason?: 'handed-to-user' }; status: string; manager: ChatReference | null; nodes: Record<string, NodeState> }
+export type Report = { id: string; at: number; nodeId: string; executionId: string; body: string; from: ChatReference | null; source?: { kind: 'typescript'; script: string } | { kind: 'rust_script'; rustScript: string }; to: ChatReference; canComplete?: boolean; outputs: FileAddress[] }
 export type RunDetail = { id: string; run: Run | null; managed: boolean; readError: string | null; startupError: Failure | null; reports: Report[]; pendingReports: Record<string, string> }
 
 export type RunEntry = { id: string; managed: boolean; readError: string | null; run: { name?: string; map: string; createdAt: number; status: string; nodes: Record<string, { status: string }> } | null }
@@ -59,6 +66,17 @@ export async function listRuns(): Promise<{ runs: RunEntry[]; pollIntervalSecond
 
 export async function loadRun(id: string): Promise<RunDetail> {
   return await readJSON(`/api/workflow/runs/${encodeURIComponent(id)}`)
+}
+
+export async function locateRunChat(id: string, executionId?: string): Promise<string> {
+  const response = await fetch(`/api/workflow/runs/${encodeURIComponent(id)}/locate`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ executionId }),
+  })
+  const value = await response.json()
+  if (!response.ok || value?.outcome !== 'located' || typeof value.message !== 'string') {
+    throw new Error(typeof value?.message === 'string' ? value.message : '无法确认所选 Run Chat 已聚焦。')
+  }
+  return value.message
 }
 
 export async function renameRun(id: string, name: string): Promise<RunDetail> {

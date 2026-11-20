@@ -24,6 +24,11 @@ working_directory = '${roots.streaming}'
 script = '${roots.streaming}/shutdown-all.bat'
 working_directory = '${roots.streaming}'
 
+# 上面的启动／停止脚本只控制 streaming，TUI 和 App 可以共用。
+# 若部署脚本绑定特定宿主，保留上面的 TUI 绑定，并成对配置
+# [operations.app.start] 和 [operations.app.stop]（各有 script / working_directory）。
+# server 页反馈脚本调用，不检测宿主就绪或退出。
+
 # 关机倒计时（可选，缺省 10 秒）：手动关机与完成后关机监听共用同一个时长。
 # 合法整数范围 1..=4294967295；零、负数、小数、超过上界或拼错的字段名会让启动明确失败。
 # 改了它要重启后端（没有热加载）。
@@ -41,13 +46,18 @@ countdown_seconds = 10
 [sessions]
 history_file = "${roots.data}/session-history.json"
 
-# Herdr 控制设置（必须显式配置，没有代码缺省值）。
-# 弹窗初始选“当前”，按 zone 根目录名匹配；改选“默认”时按 workspace_name 精确查找唯一 Herdr Workspace。
-# 浏览器不能指定任意 Workspace 名称。缺失、空字符串或纯空白会让服务启动失败。
-# executable 可选，缺省按 PATH 查找 herdr；通常不需要修改。
+# 每个后端实例只选择一个宿主。先结束旧 agent、停止旧宿主，修改 backend 后重启 herdr-bot。
+# “当前”按 zone 根目录名匹配；“默认”只按 workspace_name 精确匹配唯一 Workspace（TUI）或 Space（App）。
+# workspace_name 必须显式配置；缺失、空字符串或纯空白会让服务启动失败。
+# 三个可执行路径均可长期保留；省略时分别按 PATH 查找 herdr、herdr-app、hc。
 [herdr]
+backend = 'app' # tui（省略时的默认）或 app；不接受其他值。
 workspace_name = 'bot-playground'
-# executable = '${roots.herdr}/herdr.exe' # 如需显式定位，在 roots 中定义 herdr。
+# executable = '${roots.herdr}/herdr.exe'
+# app_executable = '${roots.herdr_app}/herdr-app.exe'
+# core_executable = '${roots.herdr_core}/hc.exe'
+# App 启动与 bot 应使用同一 core 环境（非默认实例可设 HC_SESSION 或 HC_SOCKET）。
+# HERDR_APP_HOME 选择 App 窗口实例；只关闭 App 窗口不会退出 core 或其中的 agent。
 
 # zone 设置。
 # 新增 zone 的创建父目录必须显式配置；缺省未配置时只禁用“新增”，不影响登记与浏览。

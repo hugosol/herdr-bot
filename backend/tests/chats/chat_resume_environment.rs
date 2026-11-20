@@ -9,7 +9,7 @@ use std::{fs, io::{BufRead, BufReader}, net::SocketAddr, path::{Path, PathBuf}, 
 
 struct Panel { child: Child, addr: SocketAddr }
 impl Panel {
-    fn start(root: &Path) -> Self {
+    fn start(root: &Path, herdr: &HerdrFixture) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))
             .args(["--config", "panel.toml"]).current_dir(root)
             .stdin(Stdio::null()).stdout(Stdio::piped())
@@ -29,6 +29,7 @@ impl Panel {
         panel.addr.set_port(rx.recv_timeout(Duration::from_secs(20)).unwrap_or_else(|error| {
             panic!("server did not start: {error}: {}", fs::read_to_string(root.join("server-stderr.log")).unwrap())
         }));
+        fs::write(herdr.path().join("launch_endpoint.txt"), panel.addr.to_string()).unwrap();
         panel
     }
 }
@@ -53,6 +54,8 @@ registry_file = 'zones.json'
 [tasks]
 storage_file = 'tasks.json'
 metadata_file = 'options.toml'
+[suites]
+definition_file = 'suites.json'
 [sessions]
 history_file = 'history.json'
 "#, herdr.executable().display())).unwrap();
@@ -95,11 +98,19 @@ async fn read(panel: &Panel, path: &str) -> Value {
     serde_json::from_str(&response.body).unwrap()
 }
 async fn create(panel: &Panel, zone: &str, task_id: &str) -> Value {
+    let id = accept_creation(panel, zone, task_id).await;
+    finish_creation(panel, &id).await
+}
+async fn accept_creation(panel: &Panel, zone: &str, task_id: &str) -> String {
     let preview = post(panel,"/api/chats/preview",json!({"zone":zone,"taskId":task_id})).await;
     let created = post(panel,"/api/chats",json!({"zone":zone,"taskId":task_id,"chatId":preview["chatId"],"input":"USER INPUT"})).await;
+    created["id"].as_str().unwrap().to_owned()
+}
+async fn finish_creation(panel: &Panel, id: &str) -> Value {
+    let path = format!("/api/chats/{id}");
     tokio::time::timeout(Duration::from_secs(10),async {
         loop {
-            let done = read(panel,&format!("/api/chats/{}",created["id"].as_str().unwrap())).await;
+            let done = read(panel, &path).await;
             assert_ne!(done["stage"],"failed","{done}");
             if done["stage"] == "succeeded" { return done; }
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -139,10 +150,36 @@ fn native(root: &Path, herdr: &HerdrFixture, agent: &str, id: &str) -> PathBuf {
     herdr.set_behavior(json!({"native_session":{"source":format!("herdr:{agent}"),"agent":agent,"kind":"path","value":file}}));
     file
 }
-// P1/P2/P3/P4/P9/P10/P18. Independent expected set: both newest fixed entries,
-// only creation submits trigger actions. A plausible
-// violation is restoring stale fixed entries or trigger settings. Normal
-// creation, public edit, a real process restart and external argv distinguish it.
+fn assert_suite_args(agent: &str, args: &[Value], suite: &Path, root: &Path, revision: &str) {
+    let config_flag = if agent == "pi" { "--pi-suite-config" } else { "--config" };
+    let config = args.windows(2).find(|pair| pair[0] == config_flag).unwrap()[1].as_str().unwrap();
+    let manifest: Value = serde_json::from_slice(&fs::read(config).unwrap()).unwrap();
+    let mut expected = if agent == "pi" {
+        assert_eq!(manifest, json!({"version":1,"codemode":"on","mcpServers":{}}));
+        vec![json!("--no-extensions"), json!("--no-skills"), json!("--extension"), json!(suite),
+            json!("--extension"), json!("builtin:mcp"), json!("--extension"), json!("builtin:tool-search"),
+            json!("--no-prompt-templates"), json!(config_flag), json!(config)]
+    } else {
+        assert_eq!(manifest["skills"]["enabled"], false);
+        vec![json!("--no-extensions"), json!(config_flag), json!(config), json!("--extension"), json!(suite)]
+    };
+    expected.extend([json!("--extension"), json!(root.join(format!("{agent}-fixed-{revision}.ts"))),
+        json!("--extension"), json!(root.join(format!("{agent}-b-{revision}.ts")))]);
+    assert_eq!(args, expected);
+}
+
+fn add_manager_fixed_extension(root: &Path, agent: &str) {
+    use std::io::Write;
+    let entry = root.join("manager-only.ts");
+    fs::write(&entry, "export default function () {}\n").unwrap();
+    writeln!(fs::OpenOptions::new().append(true).open(root.join("options.toml")).unwrap(),
+        "[[extensions]]\nid = '{agent}-manager-chat'\nlabel = 'Manager only'\nagent = '{agent}'\nkind = 'fixed'\nentrypoint = '{}'", entry.display()).unwrap();
+}
+
+// S1 (P31/P32): real creation, public edit and restart must use a different
+// Suite and new standalone fixed extensions, without replaying any trigger.
+// Stale environment, wrong-role fixed extensions and replay are visible in argv
+// or in the exact records from the external terminal fixture.
 #[tokio::test]
 async fn source_survives_restart_and_resume_uses_latest_environment_without_trigger_replay() {
     for agent in ["pi","omp"] {
@@ -150,29 +187,51 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
         let herdr = HerdrFixture::new("source latest environment herdr");
         configure(root.path(),&herdr);
         catalog(root.path(),agent,"old",true);
+        let old_suite_entry = root.path().join("first-suite.ts");
+        let current_suite_entry = root.path().join("current-suite.ts");
+        let mut suites = Vec::new();
+        for (id, entry) in [("first-suite", &old_suite_entry), ("current-suite", &current_suite_entry)] {
+            fs::write(entry, "export default function () {}\n").unwrap();
+            let mut declaration = json!({"id":id,"name":id,"agents":[agent],"extensions":{(agent):[entry]}});
+            if agent == "pi" { declaration["pi"] = json!({"codemode":"on"}); }
+            suites.push(declaration);
+        }
+        fs::write(root.path().join("suites.json"), json!({"suites":suites}).to_string()).unwrap();
         let file = native(root.path(),&herdr,agent,"native-full-identity-001");
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         let zones = post(&panel,"/api/zones",json!({"id": root.path(), "path":root.path()})).await;
         let zone = zones["zones"][0]["id"].as_str().unwrap();
-        let saved = post(&panel,"/api/tasks",task(agent, "Source A")).await;
+        let mut preset = task(agent, "Source A");
+        preset["suite"] = json!("first-suite");
+        let saved = post(&panel,"/api/tasks",preset.clone()).await;
         let id = saved["tasks"][0]["id"].as_str().unwrap();
         create(&panel,zone,id).await;
         history(&panel,1).await;
         let initial = herdr.calls();
-        assert_eq!(initial.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],expected_args(agent, json!(["--model","provider/launch-model","--thinking","high","--no-extensions","--extension",root.path().join(format!("{agent}-fixed-old.ts")),"--extension",root.path().join(format!("{agent}-b-old.ts"))])));
+        let initial_args = initial.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"].as_array().unwrap();
+        assert_eq!(initial_args[..4], ["--model","provider/launch-model","--thinking","high"]);
+        assert_suite_args(agent, &initial_args[4..], &old_suite_entry, root.path(), "old");
         assert_eq!(common::prompt_body(initial.iter().find(|c| c["kind"] == "agent_prompt").unwrap()),"/skill:start-only INITIAL ONLY\n\nUSER INPUT");
-        let edited = request_json_over_tcp(panel.addr,"PUT",&format!("/api/tasks/{id}"),Some(&task(agent, "Source A renamed").to_string())).await;
+        preset["name"] = json!("Source A renamed");
+        preset["suite"] = json!("current-suite");
+        let edited = request_json_over_tcp(panel.addr,"PUT",&format!("/api/tasks/{id}"),Some(&preset.to_string())).await;
         assert_eq!(edited.status,200,"{}",edited.body);
         drop(panel);
         catalog(root.path(),agent,"current",true);
-        let panel = Panel::start(root.path());
+        add_manager_fixed_extension(root.path(), agent);
+        let panel = Panel::start(root.path(), &herdr);
         let offset = herdr.calls().len();
         let result = post(&panel,"/api/chats/resume",json!({"sessionId":"native-full-identity-001"})).await;
         assert_eq!(result["outcome"],"restored");
         let calls = herdr.calls();
         let resumed = &calls[offset..];
         assert!(!resumed.iter().any(|c| c["kind"] == "agent_prompt" || c["kind"] == "agent_input"));
-        assert_eq!(resumed.iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],expected_args(agent, json!(["--no-extensions","--extension",root.path().join(format!("{agent}-fixed-current.ts")),"--extension",root.path().join(format!("{agent}-b-current.ts")),if agent == "omp" {"--resume"} else {"--session"},file])));
+        let starts: Vec<_> = resumed.iter().filter(|c| c["kind"] == "agent_start").collect();
+        assert_eq!(starts.len(), 1);
+        let args = starts[0]["args"].as_array().unwrap();
+        let (environment, native) = args.split_at(args.len() - 2);
+        assert_eq!(native, [json!(if agent == "omp" {"--resume"} else {"--session"}), json!(file)]);
+        assert_suite_args(agent, environment, &current_suite_entry, root.path(), "current");
     }
 }
 
@@ -221,7 +280,7 @@ async fn entrypoint_case(agent: &str, broken: &str, failure: &str) {
     configure(root.path(), &herdr);
     catalog(root.path(), agent, "valid", true);
     let file = native(root.path(), &herdr, agent, "native-filter-entry");
-    let panel = Panel::start(root.path());
+    let panel = Panel::start(root.path(), &herdr);
     let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
     let zone = zones["zones"][0]["id"].as_str().unwrap();
     let saved = post(&panel, "/api/tasks", task(agent, "Entry source")).await;
@@ -277,7 +336,7 @@ async fn empty_explicit_environment_retains_each_warning_without_assuming_confir
         configure(root.path(), &herdr);
         catalog(root.path(), agent, "valid", true);
         let file = native(root.path(), &herdr, agent, "native-empty-explicit");
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
         let zone = zones["zones"][0]["id"].as_str().unwrap();
         let saved = post(&panel, "/api/tasks", task(agent, "Empty source")).await;
@@ -320,7 +379,7 @@ async fn invalid_model_or_initial_skill_does_not_block_environment_restoration()
             configure(root.path(), &herdr);
             catalog(root.path(), agent, "valid", true);
             let file = native(root.path(), &herdr, agent, "native-trigger-independent");
-            let panel = Panel::start(root.path());
+            let panel = Panel::start(root.path(), &herdr);
             let zones = post(&panel,"/api/zones",json!({"id": root.path(), "path":root.path()})).await;
             let zone = zones["zones"][0]["id"].as_str().unwrap().to_owned();
             let saved = post(&panel,"/api/tasks",task(agent, "Source")).await;
@@ -334,7 +393,7 @@ async fn invalid_model_or_initial_skill_does_not_block_environment_restoration()
                 if missing == "model" { "id = 'launch-model'" } else { "id = 'launch-skill'" },
                 "id = 'replacement-not-selected'",
             )).unwrap();
-            let panel = Panel::start(root.path());
+            let panel = Panel::start(root.path(), &herdr);
             let offset = herdr.calls().len();
             let result = post(&panel,"/api/chats/resume",json!({"sessionId":"native-trigger-independent"})).await;
             assert_eq!(result["outcome"],"restored");
@@ -370,7 +429,7 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         let file = native(root.path(),&herdr,"omp",target);
         let original_native = fs::read(&file).unwrap();
         fs::write(root.path().join("history.json"),json!([{"sessionId":other,"sessionName":"Same name","agentType":"omp","cwd":root.path(),"firstRecordedAt":123,"memo":"independent memo"}]).to_string()).unwrap();
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         let zones = post(&panel,"/api/zones",json!({"id": root.path(), "path":root.path()})).await;
         let zone = zones["zones"][0]["id"].as_str().unwrap();
         let saved = post(&panel,"/api/tasks",task("omp", "Same display name")).await;
@@ -395,8 +454,9 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         } else {
             let release = root.path().join("release-native");
             herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"path","value":file},"native_session_gate":{"wait_for_file":release,"timeout_ms":10000}}));
-            let done = create(&panel,zone,source_a).await;
+            let id = accept_creation(&panel, zone, source_a).await;
             assert!(common::wait_until(Duration::from_secs(3),|| herdr.calls().iter().any(|call| call["kind"] == "agent_get")).await);
+            assert!(!herdr.calls().iter().any(|call| call["kind"] == "agent_prompt"));
             let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(4));
             let writes = [target,other,"native-shared-full-prefix-003"].map(|id| {
                 let barrier = barrier.clone();
@@ -411,6 +471,7 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
             barrier.wait().await;
             fs::write(&release,b"release").unwrap();
             for write in writes { write.await.unwrap(); }
+            let done = finish_creation(&panel, &id).await;
             let row = collected(&panel,target,&done["name"]).await;
             first_time = row["firstRecordedAt"].clone();
             memo(&panel,target,"first memo\n保留").await;
@@ -427,7 +488,7 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         assert_eq!(target_row["cwd"],json!(root.path()));
         assert_eq!(target_row["agentType"],"omp");
         drop(panel);
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         let after = read(&panel,"/api/sessions/history").await;
         assert_eq!(after,before);
         let mut ids = after["sessions"].as_array().unwrap().iter().map(|row| row["sessionId"].as_str().unwrap()).collect::<Vec<_>>();
@@ -449,7 +510,7 @@ async fn intake_orders_and_concurrent_writes_preserve_first_source_time_memo_and
         let done = create(&panel,zone,source_a).await;
         collected(&panel,other,&done["name"]).await;
         drop(panel);
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         let offset = herdr.calls().len();
         assert_eq!(post(&panel,"/api/chats/resume",json!({"sessionId":other})).await["outcome"],"restored");
         assert_eq!(herdr.calls()[offset..].iter().find(|c| c["kind"] == "agent_start").unwrap()["args"],json!(["--no-extensions","--extension",root.path().join("omp-fixed-merge.ts"),"--extension",root.path().join("omp-b-merge.ts"),"--resume",other_file]));
@@ -474,7 +535,7 @@ async fn missing_source_and_deleted_task_use_native_discovery_without_guessing()
             configure(root.path(), &herdr);
             catalog(root.path(), agent, "discovery", true);
             let file = native(root.path(), &herdr, agent, "native-discovery-full-001");
-            let panel = Panel::start(root.path());
+            let panel = Panel::start(root.path(), &herdr);
             let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
             let saved = post(&panel, "/api/tasks", task(agent, "Same name")).await;
             let source = saved["tasks"][0]["id"].as_str().unwrap();
@@ -498,7 +559,7 @@ async fn missing_source_and_deleted_task_use_native_discovery_without_guessing()
             }
             drop(panel);
             let before = fs::read(root.path().join("history.json")).unwrap();
-            let panel = Panel::start(root.path());
+            let panel = Panel::start(root.path(), &herdr);
             let offset = herdr.calls().len();
             let result = post(&panel, "/api/chats/resume", json!({"sessionId":"native-discovery-full-001"})).await;
             assert_eq!(result["outcome"], "restored", "{agent}/{scenario}: {result}");
@@ -541,7 +602,7 @@ async fn history_reads_only_resolve_workspace_names_without_any_persistent_enric
             {"workspace_id":"w-decoy", "label":"Original name", "focused":true}
         ]));
         herdr.set_behavior(json!({"fail_workspace_list":label.is_none()}));
-        let panel = Panel::start(root.path());
+        let panel = Panel::start(root.path(), &herdr);
         for _ in 0..3 {
             let view = read(&panel, "/api/sessions/history").await;
             let row = &view["sessions"][0];
@@ -560,31 +621,46 @@ async fn history_reads_only_resolve_workspace_names_without_any_persistent_enric
         drop(panel);
     }
     fs::remove_file(&history_file).unwrap();
-    let panel = Panel::start(root.path());
+    let panel = Panel::start(root.path(), &herdr);
     assert_eq!(read(&panel, "/api/sessions/history").await["total"], 0);
     assert!(!history_file.exists(), "empty history read initialized persistence");
 }
 
-// P17: corruption, OS read failure, TOML parse failure and TOML OS read failure
-// are not deletion. Keep real storage/config IO in the path, alter one boundary
-// after a successful ordinary launch, and observe HTTP plus no new external
-// Tab/start/input. A catch-all NotFound fallback would start native discovery.
+// S1 / B1 (P33/P36/P52): a known source with broken env config or Suite uses
+// default discovery, not deletion, and neither writes history nor replays input.
+// Breaking one real file after a successful launch distinguishes both a hard
+// settings failure and a misleading "source deleted" fallback.
 #[tokio::test]
-async fn unreadable_task_storage_or_catalog_fails_without_start_or_repair() {
+async fn resume_uses_default_discovery_for_unreadable_environment_or_invalid_suite() {
     for agent in ["pi", "omp"] {
-        for mechanism in ["tasks-corrupt", "tasks-unreadable", "catalog-parse", "catalog-unreadable"] {
+        for mechanism in ["tasks-corrupt", "tasks-unreadable", "catalog-parse", "catalog-unreadable", "suite-invalid"] {
             let root = TempDir::new("resume storage failures");
             let herdr = HerdrFixture::new("resume storage failure herdr");
             configure(root.path(), &herdr);
             catalog(root.path(), agent, "failures", true);
-            native(root.path(), &herdr, agent, "native-error-full-001");
-            let panel = Panel::start(root.path());
+            let file = native(root.path(), &herdr, agent, "native-error-full-001");
+            let panel = Panel::start(root.path(), &herdr);
             let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
-            let saved = post(&panel, "/api/tasks", task(agent, "Source")).await;
-            create(&panel, zones["zones"][0]["id"].as_str().unwrap(), saved["tasks"][0]["id"].as_str().unwrap()).await;
+            let zone = zones["zones"][0]["id"].as_str().unwrap();
+            let mut preset = task(agent, "Source");
+            let mut suite = json!({"id":"chosen","name":"Chosen Suite","agents":[agent]});
+            if agent == "pi" { suite["pi"] = json!({"codemode":"on"}); }
+            if mechanism == "suite-invalid" {
+                fs::write(root.path().join("suites.json"), json!({"suites":[suite]}).to_string()).unwrap();
+                preset["suite"] = json!("chosen");
+            }
+            let saved = post(&panel, "/api/tasks", preset).await;
+            let source = saved["tasks"][0]["id"].as_str().unwrap();
+            create(&panel, zone, source).await;
             history(&panel, 1).await;
+            let preview = post(&panel,"/api/chats/preview",json!({"zone":zone,"taskId":source})).await;
             let history_bytes = fs::read(root.path().join("history.json")).unwrap();
-            let affected = root.path().join(if mechanism.starts_with("tasks") { "tasks.json" } else { "options.toml" });
+            assert_eq!(serde_json::from_slice::<Value>(&history_bytes).unwrap()[0]["sourceTaskId"], source);
+            let affected = root.path().join(match mechanism {
+                "suite-invalid" => "suites.json",
+                mechanism if mechanism.starts_with("tasks") => "tasks.json",
+                _ => "options.toml",
+            });
             let unreadable = mechanism.ends_with("unreadable");
             if unreadable {
                 fs::remove_file(&affected).unwrap();
@@ -594,16 +670,27 @@ async fn unreadable_task_storage_or_catalog_fails_without_start_or_repair() {
                 fs::write(&affected, "{ independently invalid document !!!").unwrap();
             }
             let offset = herdr.calls().len();
-            let tab_count = herdr.tabs().len();
             let response = post_json_over_tcp(panel.addr, "/api/chats/resume", r#"{"sessionId":"native-error-full-001"}"#).await;
-            assert_eq!(response.status, 502, "{agent}/{mechanism}: {}", response.body);
+            assert_eq!(response.status, 200, "{agent}/{mechanism}: {}", response.body);
             let result: Value = serde_json::from_str(&response.body).unwrap();
-            assert_eq!(result["outcome"], "failed");
-            assert_eq!(result["stage"], "settings");
-            assert_eq!(result["code"], if mechanism.starts_with("tasks") { mechanism } else { "invalid-agent-settings" });
-            assert_eq!(result["degradations"], json!([]), "a read error must not select discovery: {result}");
-            assert!(!herdr.calls()[offset..].iter().any(|call| ["tab_create", "agent_start", "agent_prompt", "agent_input"].contains(&call["kind"].as_str().unwrap())));
-            assert_eq!(herdr.tabs().len(), tab_count);
+            assert_eq!(result["outcome"], "restored");
+            assert_eq!(result["degradations"].as_array().unwrap().len(), 1, "{result}");
+            let warning = &result["degradations"][0];
+            assert_eq!(warning["element"], "extensions");
+            let reason = warning["reason"].as_str().unwrap();
+            assert!(reason.contains(source) && reason.contains(if mechanism == "suite-invalid" { "Suite 配置" } else { "env config" }), "{result}");
+            assert!(warning["strategy"].as_str().unwrap().contains("原生默认扩展发现"), "{result}");
+            let calls = herdr.calls();
+            let calls = &calls[offset..];
+            let starts: Vec<_> = calls.iter().filter(|call| call["kind"] == "agent_start").collect();
+            assert_eq!(starts.len(), 1);
+            assert_eq!(starts[0]["args"], json!([if agent == "omp" {"--resume"} else {"--session"}, file]));
+            assert_eq!(calls.iter().filter(|call| call["kind"] == "tab_create").count(), 1);
+            assert!(!calls.iter().any(|call| call["kind"] == "agent_prompt" || call["kind"] == "agent_input"));
+            let offset = herdr.calls().len();
+            let rejected = post_json_over_tcp(panel.addr, "/api/chats", &json!({"zone":zone,"taskId":source,"chatId":preview["chatId"],"input":"do not start"}).to_string()).await;
+            assert!(rejected.status >= 400, "new Chat must not use Resume fallback: {}", rejected.body);
+            assert_eq!(herdr.calls().len(), offset);
             assert_eq!(fs::read(root.path().join("history.json")).unwrap(), history_bytes);
             if unreadable {
                 assert!(affected.is_dir());

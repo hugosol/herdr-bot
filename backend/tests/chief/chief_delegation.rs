@@ -11,6 +11,8 @@ mod map;
 mod reports;
 #[path = "chief_delegation/receipts.rs"]
 mod receipts;
+#[path = "chief_delegation/role_recovery.rs"]
+mod role_recovery;
 use process::TestServer;
 use serde_json::{Value, json};
 use std::{fs, time::Duration};
@@ -51,7 +53,11 @@ struct Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
-        let root = TempDir::new("chief delegation S2");
+        Self::with_host(false, "pi").await
+    }
+
+    async fn with_host(app: bool, agent: &str) -> Self {
+        let root = TempDir::new("chief delegation S1");
         let herdr = HerdrFixture::new("chief delegation CLI");
         let mut config = common::config(&root.path().join("unused.bat"), root.path());
         config.base_directory = root.path().to_owned();
@@ -66,6 +72,21 @@ impl Fixture {
         config.suites.definition_file = root.path().join("suites.json");
         config.suites.mcp_file = root.path().join("mcp.json");
         config.herdr.executable = herdr.executable().to_owned();
+        if app {
+            fs::write(herdr.path().join("chat-app-mode"), "").unwrap();
+            config.herdr.backend = herdr_bot::config::HerdrBackend::App;
+            config.herdr.app_executable = herdr.executable().to_owned();
+            config.herdr.core_executable = herdr.executable().to_owned();
+            // App deployments need neither official TUI state entrypoint.
+            let mut catalog: toml::Value = toml::from_str(&fs::read_to_string(&config.tasks.metadata_file).unwrap()).unwrap();
+            for extension in catalog["extensions"].as_array_mut().unwrap() {
+                if matches!(extension["id"].as_str(), Some("omp-herdr-agent-state" | "pi-herdr-agent-state")) {
+                    extension["entrypoint"] = toml::Value::String("not-installed-tui-state.ts".into());
+                }
+            }
+            config.tasks.metadata_file = root.path().join("app-task-options.toml");
+            fs::write(&config.tasks.metadata_file, toml::to_string(&catalog).unwrap()).unwrap();
+        }
         fs::create_dir(root.path().join("bots")).unwrap();
         fs::create_dir(root.path().join("work")).unwrap();
         fs::create_dir(root.path().join("materials")).unwrap();
@@ -88,7 +109,8 @@ impl Fixture {
             ("entry", "chief", "Chief preset"),
             ("worker", "normal", "Worker preset"),
         ] {
-            let result=post(&server,"/api/tasks",json!({"name":name,"taskType":role,"chatName":"work {chat.id}","agent":"pi","model":"default","prompt":prompt})).await;
+            let chat_name = if app && role == "chief" { "Same chief title" } else { "work {chat.id}" };
+            let result=post(&server,"/api/tasks",json!({"name":name,"taskType":role,"chatName":chat_name,"agent":agent,"model":"default","prompt":prompt})).await;
             tasks.push(
                 result["tasks"]
                     .as_array()
@@ -107,36 +129,63 @@ impl Fixture {
             server,
             worker: tasks[1].clone(),
         };
-        fixture.identity("chief-a");
-        let preview = post(
-            &fixture.server,
-            "/api/chats/preview",
-            json!({"zone":"work-zone","taskId":tasks[0]["id"]}),
-        )
-        .await;
-        let started = body(
-            post_json_over_tcp(
-                fixture.server.addr(),
-                "/api/chats",
-                &json!({"zone":"work-zone","taskId":tasks[0]["id"],"chatId":preview["chatId"]})
-                    .to_string(),
-            )
-            .await,
-            202,
-        );
-        assert_eq!(
-            terminal(&fixture.server, started["id"].as_str().unwrap()).await["stage"],
-            "succeeded"
-        );
-        post(&fixture.server,"/api/sessions/events",json!({"sessionId":"chief-a","kind":"register","data":{"cwd":fixture.root.path().join("work"),"agentType":"pi"}})).await;
-        fixture.identity("worker-a");
+        fixture.start_chief("chief-a", &tasks[0]).await;
+        if !app {
+            fixture.identity("worker-a");
+        }
         fixture
+    }
+
+    fn is_app(&self) -> bool {
+        self.config.herdr.backend == herdr_bot::config::HerdrBackend::App
+    }
+
+    async fn start_chief(&self, session_id: &str, task: &Value) -> Value {
+        if !self.is_app() {
+            self.identity(session_id);
+        }
+        let preview = post(&self.server, "/api/chats/preview", json!({"zone":"work-zone","taskId":task["id"]})).await;
+        let started = body(post_json_over_tcp(self.server.addr(), "/api/chats",
+            &json!({"zone":"work-zone","taskId":task["id"],"chatId":preview["chatId"]}).to_string()).await, 202);
+        let id = started["id"].as_str().unwrap();
+        if self.is_app() {
+            let tab = self.app_tab(id).await;
+            self.app_event(&tab, session_id, "launch_identity").await;
+            self.app_event(&tab, session_id, "launch_ready").await;
+        }
+        let finished = terminal(&self.server, id).await;
+        assert_eq!(finished["stage"], "succeeded", "{finished}");
+        post(&self.server, "/api/sessions/events", json!({"sessionId":session_id,"kind":"register","data":{
+            "cwd":self.root.path().join("work"),"agentType":task["agent"]
+        }})).await;
+        finished
+    }
+
+    async fn app_tab(&self, id: &str) -> Value {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let view = body(get_over_tcp(self.server.addr(), &format!("/api/chats/{id}")).await, 200);
+                if view["stage"] == "initializing" {
+                    return common::read_json_lines(&self.herdr.path().join("app-tabs.jsonl"))
+                        .into_iter().find(|tab| tab["tab"] == view["tabId"]).expect("created App Tab");
+                }
+                assert_ne!(view["stage"], "failed", "{view}");
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        }).await.expect("App Chat initializes")
+    }
+
+    async fn app_event(&self, tab: &Value, session_id: &str, kind: &str) {
+        let argv = &tab["options"]["argv"];
+        post(&self.server, "/api/sessions/events", json!({"sessionId":session_id,"kind":kind,"data":{
+            "launchId":argv[4],"targetId":argv[5],"agentType":argv[6],"cwd":tab["options"]["folder"],"pid":43127
+        }})).await;
     }
     fn identity(&self, id: &str) {
         let file = self.root.path().join(format!("{id}.jsonl"));
         fs::write(&file,json!({"type":"session","version":3,"id":id,"timestamp":"2026-11-12T00:00:00.000Z","cwd":self.root.path().join("work")}).to_string()+"\n").unwrap();
         self.herdr.set_behavior(
-            json!({"native_session":{"source":"herdr:pi","agent":"pi","kind":"path","value":file}}),
+            json!({"native_session":{"source":format!("herdr:{}", self.worker["agent"].as_str().unwrap()),"agent":self.worker["agent"],"kind":"path","value":file}}),
         );
     }
     fn request(&self) -> Value {
@@ -354,54 +403,96 @@ async fn startup_failures_keep_real_association_and_uncertain_submission_feedbac
     }
 }
 
-// A real external prompt gate proves the association is already readable before
-// the host accepts business input, rather than being backfilled after success.
+// S1/P23/P37: public dispatch and history, plus the selected host's terminal
+// boundary. The gate holds the first real business input: absent or late
+// history/provenance fails the public reads, and argv prefill fails independently.
 #[tokio::test]
 async fn sender_is_durable_before_external_input_is_accepted() {
-    let f = Fixture::new().await;
-    let preview = f.preview().await;
-    let release = f.root.path().join("release-prompt");
-    let mut behavior: Value =
-        serde_json::from_str(&fs::read_to_string(f.herdr.path().join("behavior.json")).unwrap())
-            .unwrap();
-    behavior["prompt_gate"] = json!({"wait_for_file":release,"timeout_ms":10000});
-    f.herdr.set_behavior(behavior);
-    let accepted = body(
-        post_json_over_tcp(
-            f.server.addr(),
-            "/api/chief/delegations",
-            &json!({"sessionId":"chief-a","previewId":preview["previewId"]}).to_string(),
-        )
-        .await,
-        202,
-    );
-    let observed = tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            if f.herdr.calls().iter().any(|call| {
-                call["kind"] == "agent_prompt" && call["text"] == preview["facts"]["prompt"]
-            }) {
-                break;
+    for (app, agent) in [(true, "omp"), (true, "pi"), (false, "omp"), (false, "pi")] {
+        let f = Fixture::with_host(app, agent).await;
+        let current = body(get_over_tcp(f.server.addr(), "/api/chief").await, 200);
+        assert_eq!(current["current"]["sessionId"], "chief-a");
+        assert_eq!(current["current"]["phase"], "registered");
+        let before = f.herdr.calls().len();
+        let mut denied = f.request();
+        denied["sessionId"] = json!("unrelated-chat");
+        let denied = body(post_json_over_tcp(f.server.addr(), "/api/chief/delegations/preview", &denied.to_string()).await, 409);
+        assert_eq!(denied["code"], "chief-not-current");
+        let preview = f.preview().await;
+        assert_eq!(f.herdr.calls().len(), before, "preview/denial must not launch work");
+        assert_eq!(preview["facts"]["bot"]["id"], "brief-bot");
+        assert_eq!(preview["facts"]["task"]["id"], f.worker["id"]);
+        let literal = "Summarize only the supplied brief; do not publish.";
+        let prompt = preview["facts"]["prompt"].as_str().unwrap();
+        assert!(prompt.starts_with(&format!("Worker preset\n\n{literal}\n\n")));
+        let release = f.root.path().join("release-prompt");
+        let settings = f.herdr.path().join("behavior.json");
+        let mut behavior = if app { json!({}) } else { serde_json::from_slice(&fs::read(&settings).unwrap()).unwrap() };
+        behavior["prompt_gate"] = json!({"wait_for_file":release,"timeout_ms":10000});
+        f.herdr.set_behavior(behavior);
+        let accepted = body(post_json_over_tcp(f.server.addr(), "/api/chief/delegations", &json!({
+            "sessionId":"chief-a","previewId":preview["previewId"]
+        }).to_string()).await, 202);
+        let id = accepted["id"].as_str().unwrap();
+        let app_tab = if app {
+            let tab = f.app_tab(id).await;
+            assert_eq!(tab["space"], "space-default");
+            assert!(tab["options"].get("task").is_none());
+            assert!(!tab["options"]["argv"].to_string().contains(literal));
+            assert!(!tab["options"]["argv"].to_string().contains("not-installed-tui-state"));
+            f.app_event(&tab, "worker-a", "launch_identity").await;
+            assert_eq!(common::read_json_lines(&f.herdr.path().join("submitted.jsonl")).len(), 1);
+            f.app_event(&tab, "worker-a", "launch_ready").await;
+            Some(tab)
+        } else { None };
+        let sent_kind = if app { "core_send" } else { "agent_prompt" };
+        let observed = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if let Some(call) = f.herdr.calls().into_iter().find(|call| call["kind"] == sent_kind && call["text"] == prompt) {
+                    let record = get_over_tcp(f.server.addr(), "/api/chief/delegations?sessionId=worker-a").await;
+                    let history = get_over_tcp(f.server.addr(), "/api/sessions/history").await;
+                    // The existing durable history format carries the source
+                    // Task; the public history list deliberately omits it.
+                    let persisted = fs::read(&f.config.sessions.history_file);
+                    return (call, record, history, persisted);
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
             }
-            tokio::time::sleep(Duration::from_millis(25)).await;
+        }).await;
+        let submitted_before_release = common::read_json_lines(&f.herdr.path().join("submitted.jsonl")).len();
+        fs::write(&release, "release owned external process").unwrap();
+        let (call, record, history, persisted) = observed.expect("selected host must reach the input gate");
+        let finished = terminal(&f.server, id).await;
+        assert_eq!(finished["stage"], "succeeded", "{finished}");
+        assert_eq!(finished["inputSubmitted"], true);
+        assert_eq!(submitted_before_release, 1, "only the chief input was accepted before release");
+        let record = body(record, 200);
+        assert_eq!(record["delegations"][0]["id"], id);
+        assert_eq!(record["delegations"][0]["sessionId"], "worker-a");
+        assert_eq!(record["delegations"][0]["facts"], preview["facts"]);
+        let history = body(history, 200);
+        let worker = history["sessions"].as_array().unwrap().iter().find(|chat| chat["sessionId"] == "worker-a").expect("worker history must be public before input");
+        let persisted: Vec<Value> = serde_json::from_slice(&persisted.unwrap()).unwrap();
+        let stored_worker = persisted.iter().find(|chat| chat["sessionId"] == "worker-a").expect("worker history on disk before input");
+        assert_eq!(stored_worker["sourceTaskId"], f.worker["id"]);
+        assert_eq!(worker["agentType"], agent);
+        assert!(common::same_path(std::path::Path::new(worker["cwd"].as_str().unwrap()), &f.root.path().join("work")));
+        if let Some(tab) = app_tab {
+            assert_eq!(call["terminal"], tab["terminal"]);
+            assert_eq!(finished["tabId"], tab["tab"]);
+            assert_eq!(worker["originalWorkspaceId"], "space-default");
+        } else {
+            let starts = common::read_json_lines(&f.herdr.path().join("started.jsonl"));
+            assert_eq!(call["target"], starts[1]["name"]);
+            assert_eq!(finished["paneId"], starts[1]["pane_id"]);
+            let invocations = common::read_json_lines(&f.herdr.path().join("invocations.jsonl"));
+            assert!(invocations.iter().filter(|row| row["argv"][1] == "create" || row["argv"][1] == "start")
+                .all(|row| !row["argv"].to_string().contains(literal)));
         }
-        get_over_tcp(f.server.addr(), "/api/chief/delegations?sessionId=worker-a").await
-    })
-    .await;
-    let submitted_before_release =
-        common::read_json_lines(&f.herdr.path().join("submitted.jsonl")).len();
-    fs::write(&release, "release owned external process").unwrap();
-    let finished = terminal(&f.server, accepted["id"].as_str().unwrap()).await;
-    let record = body(
-        observed.expect("external gate entered within five seconds"),
-        200,
-    );
-    assert_eq!(record["delegations"][0]["sessionId"], "worker-a");
-    assert_eq!(record["delegations"][0]["facts"], preview["facts"]);
-    assert_eq!(
-        submitted_before_release, 1,
-        "only the initial chief input was accepted before release"
-    );
-    assert_eq!(finished["stage"], "succeeded");
+        let submitted = common::read_json_lines(&f.herdr.path().join("submitted.jsonl"));
+        assert_eq!(submitted.len(), 2);
+        assert_eq!(submitted[1]["text"], prompt);
+    }
 }
 
 #[tokio::test]

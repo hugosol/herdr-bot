@@ -246,6 +246,8 @@ export default function(pi) {
         # unchanged. No original source/production definition is rewritten.
         self.http('/api/zones', {'id': 'hugosol/herdr-bot', 'path': str(self.root / 'zone')})
         self.http('/api/zones', {'id': 'p03/planning', 'path': str(self.root / 'zone')})
+        shutil.copytree(REPO / 'meta-data/scripts', self.root / 'scripts', dirs_exist_ok=True)
+        self.evidence['scriptDeployment'] = {path.name: digest(path) for path in (self.root / 'scripts').glob('*.ts')}
         for filename in maps:
             shutil.copy2(REPO / 'meta-data/workflow-maps' / filename, self.root / 'maps' / filename)
         for filename, _ in bots.values():
@@ -696,7 +698,7 @@ export default function(pi) {
             for node_id, node in run['nodes'].items():
                 execution = node['execution']
                 if not execution.get('chat'):
-                    require(execution.get('rustScript') in ['create_blank_bot', 'save_bot_guides'], ('Missing real Rust execution target', execution))
+                    require(execution.get('kind') == 'typescript' and execution.get('script') in ['create-blank-bot.ts', 'save-bot-guides.ts'], ('Missing real TypeScript execution target', execution))
                     continue
                 chat = self.native_chat({**execution['chat'], 'agent': execution['agent']})
                 native = self.observe_turn(chat)

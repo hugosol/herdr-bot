@@ -35,12 +35,28 @@ pub(crate) async fn manager_collect(
     }
 }
 
+pub(crate) async fn manager_script_output(
+    State(state): State<AppState>,
+    _: LocalRunSource,
+    input: CommandJson<runs::StatusRequest, input::ScriptOutput>,
+) -> Result<Json<runs::script_output::ScriptOutputSnapshot>, HttpError<runs::RunError>> {
+    runs::script_output::manager_script_output(state, input.value).await.map(Json).map_err(HttpError)
+}
+
 pub(crate) async fn node_context(
     State(state): State<AppState>,
     _: LocalRunSource,
     input: CommandJson<crate::scheduler::JsonObject<runs::reports::ContextRequest>, input::NodeContext>,
 ) -> RunHttpResult {
     runs::reports::node_context(state, input.value.0).await.map(RunResponse).map_err(HttpError)
+}
+
+pub(crate) async fn node_approve(
+    State(state): State<AppState>,
+    _: LocalRunSource,
+    input: CommandJson<crate::scheduler::JsonObject<runs::reports::ApproveRequest>, input::NodeApprove>,
+) -> RunHttpResult {
+    runs::reports::node_approve(state, input.value.0).await.map(RunResponse).map_err(HttpError)
 }
 
 pub(crate) async fn node_report(
@@ -137,6 +153,14 @@ pub(crate) async fn list_runs(State(state): State<AppState>) -> RunHttpResult {
 pub(crate) async fn get_run(State(state): State<AppState>, Path(id): Path<String>) -> RunHttpResult {
     runs::get_run(state, id).await.map(RunResponse).map_err(HttpError)
 }
+pub(crate) async fn locate_chat(
+    State(state): State<AppState>,
+    RunId(id): RunId,
+    input: CommandJson<runs::LocateRequest, input::Locate>,
+) -> Result<Json<serde_json::Value>, HttpError<crate::chats::Error>> {
+    runs::locate_chat(state, &id, input.value).await.map(Json).map_err(HttpError)
+}
+
 pub(crate) async fn rename_run(
     State(state): State<AppState>,
     RunId(id): RunId,

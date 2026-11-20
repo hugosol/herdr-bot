@@ -21,6 +21,8 @@ zone_parent = 'E:/Developer/bot-playground'
 
 # 以下来自旧机器真实依赖验收记录，仅在需要时启用并更新版本/位置。
 # herdr = 'C:/Users/hugos/.herdr/packages/standalone/releases/0.9.5-x86_64-pc-windows-msvc'
+# herdr_app = 'C:/Users/hugos/AppData/Local/Programs/herdr-app'
+# herdr_core = 'C:/Users/hugos/AppData/Local/Programs/herdr-core'
 # pi_package = 'D:/nvm4w/nodejs/node_modules/@earendil-works/pi-coding-agent'
 # 原生会话验收还需 omp_package：填写已安装 OMP 包目录，旧记录无可确认的默认值。
 # 集中 MCP 配置引用此安装目录；按本机安装位置调整，不依赖 PATH 定位程序。

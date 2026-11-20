@@ -149,7 +149,8 @@ async fn node_dispatch_commits_identity_before_literal_trigger_and_uses_manager_
     let text = common::prompt_body(prompt);
     assert!(text.starts_with(&format!("/skill:teach NODE-FIXED\n\nNode ID: A\nNode: Worker A\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n", s.config.scheduler.run_instructions.display(),root.join("run.json").display(),root.join("history.jsonl").display(),root.join("messages.jsonl").display())));
     assert!(text.ends_with("\nNODE-INPUT\n第二行"));
-    assert_eq!(saved["nodes"]["A"]["execution"]["reportPolicy"], "auto");
+    assert_eq!(saved["nodes"]["A"]["execution"]["autoApproved"], true);
+    assert_eq!(saved["nodes"]["A"]["execution"]["approved"], false);
     let start = calls.iter().filter(|c| c["kind"] == "agent_start").nth(1).unwrap();
     assert_eq!(&start["args"].as_array().unwrap()[..4], &[json!("--model"),json!("openai-codex/gpt-6.1-sol"),json!("--thinking"),json!("high")]);
     let tab = s.herdr.tabs().pop().unwrap();
@@ -263,9 +264,10 @@ async fn association_write_failure_exposes_native_chat_without_submitting_or_cla
     let original = fs::read(&path).unwrap();
     let release = s.data.path().join("identity-release");
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-association-failed"},"native_session_gate":{"wait_for_file":release,"timeout_ms":10000}}));
+    let before_dispatch = s.herdr.calls().len();
     let addr = s.server.addr();
     let request = tokio::spawn(async move { post_json_over_tcp(addr,"/api/workflow/manager/dispatch",&json!({"sessionId":"manager-association","nodes":["A"]}).to_string()).await });
-    common::wait_until(Duration::from_secs(5),|| s.herdr.calls().iter().filter(|c| c["kind"] == "agent_get").count() == 2).await;
+    assert!(common::wait_until(Duration::from_secs(5), || s.herdr.calls().iter().skip(before_dispatch).any(|call| call["kind"] == "agent_get")).await);
     assert_eq!(s.herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count(),1);
     fs::remove_file(&path).unwrap();
     fs::create_dir(&path).unwrap();
@@ -293,12 +295,13 @@ async fn node_history_failure_retains_saved_identity_without_initial_prompt() {
     let started = s.start("manager-history").await;
     let release = s.data.path().join("history-identity-release");
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-history-failed"},"native_cwd":s.data.path().join("node-zone"),"native_session_gate":{"wait_for_file":release,"timeout_ms":10000}}));
+    let before_dispatch = s.herdr.calls().len();
     let request = common::OpenJsonRequest::submit(
         s.server.addr(), "/api/workflow/manager/dispatch",
         &json!({"sessionId":"manager-history","nodes":["A"]}).to_string(),
     ).await;
     assert!(common::wait_until(Duration::from_secs(5), || {
-        s.herdr.calls().iter().filter(|call| call["kind"] == "agent_get").count() == 2
+        s.herdr.calls().iter().skip(before_dispatch).any(|call| call["kind"] == "agent_get")
     }).await);
     let original_history = fs::read(&s.config.sessions.history_file).unwrap();
     fs::remove_file(&s.config.sessions.history_file).unwrap();
@@ -346,19 +349,30 @@ async fn missing_manager_workspace_never_falls_back_or_creates_a_tab() {
     assert_eq!(s.herdr.calls().iter().filter(|c| c["kind"] == "agent_start").count(),1);
 }
 
-// A new Tab is insufficient: replaying the manager native identity must fail
-// without sending node instructions, even though the host created another pane.
+// Unrelated unreadable history must not block binding a newly started Chat
+// or delivering its complete fixed and business instructions.
 #[tokio::test]
-async fn new_tab_with_reused_native_identity_is_not_accepted_as_independent_chat() {
+async fn startup_dispatch_ignores_unreadable_history_and_submits_full_input() {
     let s = Scenario::new().await;
-    s.start("same-native").await;
-    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"same-native"}}));
-    let batch = s.dispatch("same-native", &["A"]).await;
-    assert_eq!(batch["results"][0]["status"],"failed");
-    assert_eq!(batch["results"][0]["failure"]["stage"],"identity");
-    assert_eq!(batch["results"][0]["effects"]["sessionId"],"same-native");
-    assert_eq!(s.herdr.tabs().len(),2);
-    assert_eq!(s.herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count(),1);
+    let started = s.start("history-independent-manager").await;
+    let historical = s.config.scheduler.run_directory.join("unreadable-history");
+    fs::create_dir(&historical).unwrap();
+    fs::write(historical.join("run.json"), b"{}").unwrap();
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"history-independent-node"},"native_cwd":s.data.path().join("node-zone")}));
+    let batch = s.dispatch("history-independent-manager", &["A"]).await;
+    assert_eq!(batch["results"][0]["status"], "running", "{batch}");
+    assert_eq!(batch["results"][0]["effects"]["associationSaved"], true);
+    assert_eq!(batch["results"][0]["effects"]["inputSubmitted"], true);
+    let root = s.config.scheduler.run_directory.join(started["id"].as_str().unwrap());
+    let saved: Value = serde_json::from_slice(&fs::read(root.join("run.json")).unwrap()).unwrap();
+    assert_eq!(saved["nodes"]["A"]["execution"]["chat"]["sessionId"], "history-independent-node");
+    let calls = s.herdr.calls();
+    let prompts: Vec<_> = calls.iter().filter(|c| c["kind"] == "agent_prompt").collect();
+    assert_eq!(prompts.len(), 2);
+    let text = common::prompt_body(prompts[1]);
+    assert!(text.starts_with("/skill:teach NODE-FIXED\n\nNode ID: A\n"));
+    assert!(text.ends_with("\nNODE-INPUT\n第二行"));
+    assert_eq!(fs::read(historical.join("run.json")).unwrap(), b"{}");
 }
 
 #[tokio::test]

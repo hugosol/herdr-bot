@@ -95,7 +95,7 @@ try {
 5. 选择 `another-trip.json` 与 E，核对广州、日期和同一「目的地天气摘要」。可以在隔离 capabilities 内重命名 weather 文件，点击“刷新全部”，关联仍按 id 成立。
 6. 在 Bot 预览点 `edit`：独立 ID 只读，JSON 只加载当前真实内容且不含顶层 id。修改 name 或 plan_guide 后显式保存，直接显示新预览，无需 `refresh`；外侧 `scheduler` 入口重读来源并保留仍存在的 node 选择。来源 node 或 Map 被外部移除则显示失效原因。所有引用同 ID 的 A、B、E 都读取同一份共享能力，不产生 Bot 副本。若用外部编辑器改文件，显式刷新可重读；刷新会清除 node 选择，依赖图仍常驻展示（Bot 页按钮为 `refresh`，Map 页为“刷新全部”）。**避免在页面提交期间直接修改相关定义**，不承诺与不参与协调的外部编辑器跨文件原子提交。
    直接点页面上方 `new`（空列表也可新增）：ID 初始为空，JSON 预填天气示例除 id 外的完整内容。该示例随应用编译打包，以本目录 weather-capability.json 为单一内容来源，不要求部署时存在开发仓库。可以删改条目但保留必需结构；打开或放弃不会写文件。页面不要求文件名，保存后自动使用安全且不覆盖既有文件的名称，编辑已有 Bot 保留原名。无效 JSON、结构错误、重复 ID 或旧版本冲突均保留原始草稿并显示原因，不跳到成功预览；需要重新加载时先复制草稿，再放弃并重开。修改后返回、切换 tab／server、刷新全部或浏览器刷新均确认放弃，取消继续编辑。
-7. 在当前 Map 点“新增 node”：独立 ID 初始为空，JSON 预填本目录 trip-readiness.json 的 A（上海、2026-11-01、步行／带伞说明、`report_policy: "auto"`、示例 zone 与空 blocked_by），示例随应用打包，部署不依赖仓库。先放弃确认文件未变化，再重新打开，填入不同 ID 并实际删改示例后保存。不会自动安装 destination-weather Bot。选中已有 node 点“修改 node”，ID 只读且 JSON 只来自真实 node。改变标题、input、zone 或 blocked_by，保存后不点刷新，核对当前 Map、选中 node、列表、详情和依赖图立即更新。其他 node 的输入、zone 与依赖、Map 标题说明和其他 Map 文件不应改变（当前 Map 排版可变化）。
+7. 在当前 Map 点“新增 node”：独立 ID 初始为空，JSON 预填本目录 trip-readiness.json 的 A（上海、2026-11-01、步行／带伞说明、`auto_approved: true`、示例 zone 与空 blocked_by），示例随应用打包，部署不依赖仓库。先放弃确认文件未变化，再重新打开，填入不同 ID 并实际删改示例后保存。不会自动安装 destination-weather Bot。选中已有 node 点“修改 node”，ID 只读且 JSON 只来自真实 node。改变标题、input、zone 或 blocked_by，保存后不点刷新，核对当前 Map、选中 node、列表、详情和依赖图立即更新。其他 node 的输入、zone 与依赖、Map 标题说明和其他 Map 文件不应改变（当前 Map 排版可变化）。
    node 只在所属 Map 内唯一，不同 Map 可复用同一 ID；整个 Map 的未知前置、自依赖或环均被拒绝，不自动修复。字符串 input（包括 Markdown）、未登记 zone／Task、缺失 Bot 引用仍可保存，但页面明确提示缺失 Bot。失败保留独立 ID 与原始 JSON；整个 Map 文件是冲突单位，即使只改另一 node，旧草稿也须重新加载，不自动合并。离开编辑器、选择其他 Map、Bot 管理、切换页面或刷新均沿用草稿保护。**页面提交期间不要直接修改相关定义**。
    将另一个 JSON 副本放入隔离 plans，点击“刷新全部”看到新增文件；删除该副本后刷新则移除。刷新也重新读取当前 Map 与 Bot；不自动监听文件。
 8. 从 scheduler 点右上角 `server`，原页面内进入独立内容页，再点右上角原位置的“返回”。不要用新窗口或在功能分组中寻找 server。
@@ -120,10 +120,10 @@ try {
 |对象|必需字段与类型|
 |---|---|
 |Map|`title`、`description`: 字符串；`nodes`: Map 内 ID 到 node 的对象|
-|node|`title`、`bot_id`、`input`、`zone`: 字符串；`blocked_by`: 同图前置 ID 字符串数组；可选 `report_policy`: `"auto"`（缺省）或 `"manual"`|
+|node|`title`、`bot_id`、`input`、`zone`: 字符串；`blocked_by`: 同图前置 ID 字符串数组；可选 `auto_approved`: 布尔，缺省 `true`|
 |Bot|`id`、`name`、`when`、`plan_guide`、`node_guide`: 字符串；可选 `task_id`: Task ID 字符串，省略或 `null` 表示未绑定|
 
-示例显式填写全部 node 的 `report_policy`：A、B、D、E 为 `auto`，C 为 `manual`。`auto` 表示交付结果就绪后不等待用户确认即可上报；`manual` 表示每次交接上报前，先在该 node Chat 展示摘要、结果位置和限制，等待用户明确确认后再上报。两者都不自动完成 node，完成仍由管理者决定；静态预览不会因此执行工作。
+示例显式填写全部 node 的 `auto_approved`：A、B、D、E 为 `true`，C 为 `false`。自动模式由执行者主动批准成果，人工模式由原生确认的显式 Yes 批准；派发时都尚未批准。报告随时可发，不要求发送确认，也不改变批准事实。批准不自动完成 node；管理者仍须验收最新可交接报告与约定交付并显式 complete。静态预览不会因此执行工作。
 
 三份 Bot 显式填写 `task_id: null`，保留可浏览但不可执行的未绑定状态；读取或保存后的服务响应会省略无绑定字段。需要执行时，应改为本机真实存在的 `normal` Task ID，并配置有效 zone，而不是假设示例 ID 已登记。
 

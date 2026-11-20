@@ -34,6 +34,7 @@ fn config_with_operations(
                 script: stop_script.to_path_buf(),
                 working_directory: stop_working_directory.to_path_buf(),
             },
+            app: None,
         },
         mdns: herdr_bot::MdnsConfig::default(),
         shutdown: herdr_bot::ShutdownConfig::default(),
@@ -44,6 +45,48 @@ fn config_with_operations(
         git: herdr_bot::GitConfig::default(),
         scheduler: herdr_bot::SchedulerConfig::default(),
         ..common::config(start_script, start_working_directory)
+    }
+}
+
+/// S1: both pairs are declared; changing only backend must change which scripts
+/// actually execute, without adding a host-ready or host-exited result field.
+#[tokio::test]
+async fn selected_backend_uses_its_own_fixed_operation_pair() {
+    let tree = FixtureTree::new("fixed operations backend selection");
+    let root = tree.root();
+    let (success, failure) = scripts(&tree);
+    for (backend, start_exit, stop_exit) in [("", 0, 3), ("backend = 'tui'", 0, 3), ("backend = 'app'", 3, 0)] {
+        let config = herdr_bot::Config::from_toml_at(&format!(r#"
+listen_addr = '127.0.0.1:0'
+[herdr]
+workspace_name = 'literal-target'
+{backend}
+[operations.start]
+script = '{}'
+working_directory = '{}'
+[operations.stop]
+script = '{}'
+working_directory = '{}'
+[operations.app.start]
+script = '{}'
+working_directory = '{}'
+[operations.app.stop]
+script = '{}'
+working_directory = '{}'
+"#, success.display(), root.display(), failure.display(), root.display(),
+    failure.display(), root.display(), success.display(), root.display()), &root.join("backend.toml")).unwrap();
+        let app = herdr_bot::app(&config);
+        for (operation, exit_code) in [("start", start_exit), ("stop", stop_exit)] {
+            let (status, actual) = common::post_operation(app.clone(), operation).await;
+            assert_eq!(status, StatusCode::OK);
+            let mut expected = json!({ "operation": operation, "started": true, "ended": true,
+                                       "exitCode": exit_code, "outcome": "completed" });
+            if exit_code != 0 {
+                expected["outcome"] = "failed".into();
+                expected["failure"] = "failed-exit".into();
+            }
+            assert_eq!(actual, expected, "{backend} / {operation}");
+        }
     }
 }
 

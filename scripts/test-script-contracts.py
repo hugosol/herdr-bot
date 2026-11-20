@@ -15,11 +15,10 @@ ROOT = Path(__file__).resolve().parents[1] / "docs" / "contracts"
 
 class ScriptContracts(unittest.TestCase):
     def test_public_literals(self):
-        # A plausible violation is treating an arbitrary capability as runnable.
-        # Literal unknown/mixed targets must fail, both fixed identifiers pass.
-        schema = json.loads((ROOT / "rust-script-bots.schema.json").read_text(encoding="utf-8"))
+        # Literal invalid paths and mixed targets must fail; arbitrary .ts paths are valid.
+        schema = json.loads((ROOT / "script-bots.schema.json").read_text(encoding="utf-8"))
         Draft202012Validator.check_schema(schema)
-        cases = [json.loads(line) for line in (ROOT / "rust-script-bots.examples.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+        cases = [json.loads(line) for line in (ROOT / "script-bots.examples.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
         self.assertTrue(cases)
         for case in cases:
             with self.subTest(case=case["id"]):

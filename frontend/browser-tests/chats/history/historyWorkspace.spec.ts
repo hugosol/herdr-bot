@@ -52,7 +52,7 @@ test('Resume returns to the persisted original workspace and explains deleted-or
   const fallback = await (await fallbackResponse).json()
   expect(fallback.outcome).toBe('restored')
   expect(fallback.fallback).toBe(true)
-  await expect(row.getByRole('status')).toContainText('原 Workspace 已删除')
+  await expect(row.getByRole('status')).toContainText('当前宿主未找到原 Workspace')
   await expect(row.getByRole('status')).toContainText('默认 Workspace')
   expect(server.herdrTabs().map(t => t.workspace)).toEqual(['w-other', 'w-target'])
   await page.screenshot({ path: test.info().outputPath('deleted-original-fallback.png'), fullPage: true })

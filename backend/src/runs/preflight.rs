@@ -2,7 +2,7 @@
 use crate::files::FileAccess;
 use crate::scheduler::{DirectoryError, object_array, with_definitions};
 use crate::scheduler::bots::{BotCatalog, read_bots};
-use crate::scheduler::maps::{WorkflowMap, InputRule, MapFileInput, ReportPolicy, ResolvedFile, read_map};
+use crate::scheduler::maps::{WorkflowMap, InputRule, MapFileInput, ResolvedFile, read_map};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 
@@ -28,12 +28,31 @@ pub(crate) struct RunPreflightRequest {
     pub user_input: String,
     #[serde(default, deserialize_with = "object_array")]
     pub file_inputs: Vec<ResolvedFile>,
+    pub github_exploration: Option<GitHubExploration>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct GitHubExploration {
+    pub github_url: String,
+    pub parent_directory: String,
+    pub exploration_direction: String,
+}
+
+impl GitHubExploration {
+    pub(super) const CLONE: &'static str = "clone_request";
+    pub(super) const BRIEF: &'static str = "exploration_brief";
+
+    pub(super) fn has_clone(&self) -> bool { !self.github_url.trim().is_empty() }
+    pub(super) fn has_brief(&self) -> bool { !self.exploration_direction.trim().is_empty() }
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RunPreflight {
     pub workspace_name: String,
+    #[serde(skip)]
+    pub naming: super::RunNaming,
     #[serde(skip)]
     pub node_ids: Vec<String>,
     #[serde(skip)]
@@ -102,22 +121,28 @@ fn check_zone<'a>(zones: &'a [crate::zones::RegisteredZone], requested: &str, ta
 }
 
 fn check_map_calls(
-    access: &FileAccess, directory: &Path, map: &WorkflowMap, bots: &BotCatalog,
+    state: &crate::AppState, access: &FileAccess, directory: &Path, map: &WorkflowMap, bots: &BotCatalog,
     tasks: &[crate::tasks::Task], zones: &[crate::zones::RegisteredZone],
-    manager_zone: &str, path: &mut Vec<String>, issues: &mut Vec<PreflightIssue>,
+    manager_zone: Option<&str>, path: &mut Vec<String>, issues: &mut Vec<PreflightIssue>,
 ) {
     for (id, node) in &map.nodes {
         let node = &node.0;
         let first_issue = issues.len();
+        if node.end_node && bots.bots.iter().find(|bot| bot.id == node.bot_id).is_some_and(|bot| bot.script.is_some() || bot.map_file.is_some() || bot.task_id.is_none() || node.manager_task_id.is_some()) {
+            issues.push(PreflightIssue::new("end-node-target-invalid", "node", "end_node 仅允许普通 Task Bot。"));
+        }
         match bots.bots.iter().find(|bot| bot.id == node.bot_id) {
             None => {
                 let reason = bots.problems.iter().find(|problem| problem.bot_id.as_deref() == Some(node.bot_id.as_str()))
                     .map_or("共享 Bot 缺失或无效；请修正引用或文件。", |problem| problem.message.as_str());
                 issues.push(PreflightIssue::new("bot-missing", "node", format!("node {id} 的 Bot {}：{reason}", node.bot_id)));
             }
-            Some(bot) if bot.rust_script.is_some() => {
-                if node.manager_task_id.is_some() || node.report_policy != ReportPolicy::Auto || node.auto_close {
-                    issues.push(PreflightIssue::new("script-policy-invalid", "node", "脚本节点仅允许 report_policy:auto、auto_close:false，且无 manager_task_id。"));
+            Some(bot) if bot.script.is_some() => {
+                if let Err(error) = super::scripts::validate_binding(state, bot.script.as_deref().expect("script binding")) {
+                    issues.push(PreflightIssue::new("script-invalid", "bot", error));
+                }
+                if node.manager_task_id.is_some() || !node.auto_approved || node.auto_close {
+                    issues.push(PreflightIssue::new("script-policy-invalid", "node", "脚本节点仅允许 auto_approved:true、auto_close:false，且无 manager_task_id。"));
                 }
             }
             Some(bot) => match (&bot.task_id, &bot.map_file) {
@@ -145,7 +170,7 @@ fn check_map_calls(
                             Ok(child) if child.nodes.is_empty() => issues.push(PreflightIssue::new("map-empty", "map", format!("目标 Map {target} 为空，不能启动。"))),
                             Ok(child) => {
                                 path.push(target.clone());
-                                check_map_calls(access, directory, &child, bots, tasks, zones, &node.zone, path, issues);
+                                check_map_calls(state, access, directory, &child, bots, tasks, zones, node.zone.fixed(), path, issues);
                                 path.pop();
                             }
                             Err(error) => issues.push(PreflightIssue::new(error.code, "map", format!("目标 Map {target} 无法读取：{}", error.message))),
@@ -155,10 +180,14 @@ fn check_map_calls(
                 _ => issues.push(PreflightIssue::new("bot-task-required", "bot", format!("Bot {} 尚未绑定唯一的 Task 或 Map 执行目标。", bot.id))),
             },
         }
-        if let Err(issue) = check_zone(zones, &node.zone, "node") { issues.push(issue); }
+        if let Some(zone) = node.zone.fixed() {
+            if let Err(issue) = check_zone(zones, zone, "node") { issues.push(issue); }
+        }
         for rule in &node.input_rule {
             if let InputRule::File { zone_id, .. } = rule {
-                if let Err(issue) = check_zone(zones, zone_id.as_deref().unwrap_or(manager_zone), "file") { issues.push(issue); }
+                if let Some(zone) = zone_id.as_deref().or(manager_zone) {
+                    if let Err(issue) = check_zone(zones, zone, "file") { issues.push(issue); }
+                }
             }
         }
         for issue in &mut issues[first_issue..] {
@@ -208,6 +237,29 @@ pub(crate) fn check_prepared_inputs(directory: &Path, name: &str, files: &[Resol
     }).map_err(|error| error.message)
 }
 
+fn github_material_issues(name: &str, declarations: &[MapFileInput], input: &RunPreflightRequest) -> Vec<PreflightIssue> {
+    let Some(github) = &input.github_exploration else { return Vec::new(); };
+    if name != "github-repository-exploration.json" {
+        return vec![PreflightIssue::new("github-inputs-unsupported", "map", "此 Map 不接受 GitHub 探索表单输入。")];
+    }
+    let mut issues = Vec::new();
+    let has_parent = !github.parent_directory.trim().is_empty();
+    if github.has_clone() != has_parent {
+        let mut issue = PreflightIssue::new("github-clone-pair-required", "run-input", "GitHub 仓库链接和克隆父目录须一起填写，或一起留空。");
+        issue.input_id = Some(if github.has_clone() { "parent_directory" } else { "github_url" }.into());
+        issues.push(issue);
+    }
+    for (present, id) in [(github.has_clone(), GitHubExploration::CLONE), (github.has_brief(), GitHubExploration::BRIEF)] {
+        if !present { continue; }
+        if !declarations.iter().any(|binding| binding.id == id) {
+            issues.push(PreflightIssue::new("run-input-undeclared", "map", format!("Map 未声明表单生成的文件输入：{id}")));
+        } else if input.file_inputs.iter().any(|binding| binding.id == id) {
+            issues.push(PreflightIssue::new("run-input-duplicate", "map", format!("不能同时生成和绑定已有文件输入：{id}")));
+        }
+    }
+    issues
+}
+
 /// Shared by the read-only form and the real launch operation. Every call reads
 /// current definitions, Task roles and registered roots; it never allocates a
 /// Run, Chat identity, Tab, or fallback binding. user_input remains opaque.
@@ -229,15 +281,15 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
     }
     let tasks = state.tasks.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "task", error.message())]))?;
     let zones = state.zones.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "zone", error.message())]))?;
-    let mut issues = Vec::new();
-    issues.extend(input_issues(&map_name, &map.input_files, &input.file_inputs, false));
+    let mut issues = github_material_issues(map_name, &map.input_files, input);
+    issues.extend(input_issues(map_name, &map.input_files, &input.file_inputs, false));
     if let Some(issue) = check_role(&tasks, &input.manager_task_id, crate::tasks::TaskType::Manager, "manager") { issues.push(issue); }
     let manager_zone = match check_zone(&zones, &input.zone, "manager") {
         Ok(zone) => Some(zone),
         Err(issue) => { issues.push(issue); None },
     };
     with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "map-read-failed", |access| {
-        check_map_calls(access, &state.map_directory, &map, &bots, &tasks, &zones, &input.zone, &mut vec![root_name], &mut issues);
+        check_map_calls(state, access, &state.map_directory, &map, &bots, &tasks, &zones, Some(&input.zone), &mut vec![root_name], &mut issues);
         Ok(())
     }).map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code, "map", error.message)]))?;
     if !issues.is_empty() { return Err(PreflightFailure(issues)); }
@@ -252,12 +304,16 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
     let mut zone_bindings = BTreeMap::new();
     zone_bindings.insert(input.zone.clone(), zone.to_owned());
     for node in map.nodes.values() {
-        for id in std::iter::once(node.0.zone.as_str()).chain(node.0.input_rule.iter().filter_map(|rule| match rule {
+        for id in node.0.zone.fixed().into_iter().chain(node.0.input_rule.iter().filter_map(|rule| match rule {
             InputRule::File { zone_id: Some(id), .. } => Some(id.as_str()), _ => None,
         })) {
             let path = zones.iter().find(|zone| zone.id == id).expect("preflight checked binding").path.clone();
             zone_bindings.insert(id.to_owned(), path);
         }
     }
-    Ok(RunPreflight { workspace_name, node_ids: map.nodes.into_keys().collect(), zone_bindings })
+    let naming = super::RunNaming {
+        map_path: vec![map.title],
+        node_titles: map.nodes.iter().map(|(id, node)| (id.clone(), node.0.title.clone())).collect(),
+    };
+    Ok(RunPreflight { workspace_name, naming, node_ids: map.nodes.into_keys().collect(), zone_bindings })
 }

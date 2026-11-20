@@ -9,13 +9,13 @@ Windows 上的 agent 对话主界面，本机浏览器与局域网设备访问�
 - **suite**：维护场景工具集与按宿主声明的资源。探索／实现及 Pi 网页访问定义、旧部署的显式离线迁移见[使用说明](docs/usage.md#当前交付定义与旧格式更新)；发布不自动操作用户生产 Task。
 - **zone**：管理服务主机上的目录，浏览文件、审查 Git 变更，并选择 Task 发起 Chat。
 - **bot**：独立访问共享 Bot 能力定义，复用 scheduler 的原有管理功能。
-- **scheduler**：浏览和编辑 Map、node 与共享 Bot，校验配置并发起独立管理者 Run（需部署角色扩展）。node 可配置 `report_policy: auto/manual`；Map 与 Run 图用圆角／切角节点区分策略，详情显示具体值。
+- **scheduler**：浏览和编辑 Map、node 与共享 Bot，校验配置并发起独立管理者 Run（需部署角色扩展）。node 可配置成果批准模式 `auto_approved`（省略默认自动、显式自动或人工）；Map 与 Run 图区分模式，Run 详情分别显示冻结模式、批准事实与来源。
 - **workflow**：按日期倒序浏览和筛选全部 Run；全宽详情中用固定节点列表、横向状态图与报告查看现场，图中显示 Task 名称及独立运行标记，Resume 已关联 Chat；返回保留列表上下文，可见时轮询，查询失败保留上次内容，刷新不重新启动。需求、配置与限制见 [Map Run 长期契约](docs/workflow-contract.md)与[运行说明](docs/workflow-runtime.md)。
 - **server**：调用预先配置的启动／停止脚本，以及手动关机。
 
 ## 构建与运行
 
-需要 Rust 1.98+、Node.js 24+（含 npm）及 Bun 1.4.4；发起 Chat 还需要已运行的 herdr 及已安装的目标 agent。
+构建需要 Rust 1.98+、Node.js 24+（含 npm）及 Bun 1.4.4；发起 Chat 还需要已运行的 herdr 及已安装的目标 agent。动态脚本运行同样要求后端 PATH 中已有 Bun，不随产品打包或自动安装。用户可在 `meta-data/scripts` 添加可信 TS，并通过 Bot 的 `script` 字段绑定；见[编写与返回约定](docs/usage.md#动态-typescript-脚本)。
 
 前端依赖由 Bun 安装，`frontend/bun.lock` 是唯一依赖锁文件；构建和测试仍通过 npm 脚本运行，保留 Node.js 运行时及 `pretest` 网络护栏。`frontend/bunfig.toml` 启用 isolated linker 和 Global Virtual Store，新建 worktree 自动继承配置，但 Git 不会自动安装依赖：在各 worktree 根执行下面的冻结安装命令即可链接共享包，不需要复制 `node_modules`。
 
@@ -28,7 +28,9 @@ cargo build --release --manifest-path backend\Cargo.toml
 backend\target\release\herdr-bot.exe --config herdr-bot.toml
 ```
 
-首次运行前，将 [`paths.example.toml`](paths.example.toml) 复制为仓库根的 `paths.local.toml`，按新机器调整根目录；已有本机配置时不要覆盖。样例保留旧机器已知路径，不代表新机器上存在这些目录。实际配置已被 Git 忽略，程序不会自动回退到样例。另检查 [`herdr-bot.toml`](herdr-bot.toml) 的监听地址、Herdr Workspace，以及 [`meta-data/task-options.toml`](meta-data/task-options.toml) 的模型与扩展选择。请从控制台启动，以便脚本继承可用的控制台。
+首次运行前，将 [`paths.example.toml`](paths.example.toml) 复制为仓库根的 `paths.local.toml`，按新机器调整根目录；已有本机配置时不要覆盖。实际配置已被 Git 忽略，程序不会自动回退到样例。另检查 [`herdr-bot.toml`](herdr-bot.toml) 的监听地址、[宿主选择与默认容器](docs/usage.md#选择-herdr-宿主)，以及 [`meta-data/task-options.toml`](meta-data/task-options.toml) 的模型与扩展选择。请从控制台启动，以便脚本继承可用的控制台。
+
+Task 选项目录内置 `GPT-6.2-Sol` 和 `GPT-6.2-Astra`，在 omp 和 pi 中均使用 `openai-codex`。两端都可选 `low`、`medium`、`high`、`xhigh`、`max`，pi 额外提供 `minimal`（映射为 `low`）。两端均可保留 `default`，不显式指定思考级别；已有 Task 和默认模型不变。
 
 ### 本机根目录与解析规则
 
@@ -156,7 +158,7 @@ Map／Bot 编辑协调集中在 `frontend/src/scheduler/useSchedulerEditor.ts`�
 
 后端 `scheduler/bots/` 与 `scheduler/maps/` 分别拥有 Bot 和 Map／node 定义行为，Run 预检归 `runs/preflight.rs`。跨定义引用、协调范围及 chief 委派所需定义核对仍由 scheduler 持有；chief 授权与实际委派不移入 scheduler。归属调整不改变 revision／引用检查顺序、文件协调与 Run 操作锁范围、部分失败语义或数据格式，也不保留旧路径转发。
 
-Herdr 集成统一通过 `crate::herdr` 使用；`client` 与 `identity` 保持私有实现，宿主调用与原生身份类型由模块接口导出，内部位置映射通过 `crate::herdr::placement` 使用。本次仅调整源码归属，不改变运行行为。
+Herdr 集成统一通过 `crate::herdr` 使用；`client`、`app` 与 `identity` 保持私有实现。TUI CLI 和 App／core 的协议留在控制模块；宿主调用与原生身份类型由模块接口导出，位置决策继续归 `crate::herdr::placement`。
 
 位置映射集中在 `backend/src/herdr/placement.rs`：`Scenario` 枚举显式区分普通 Chat、chief、chief 委派 Task、根 Map 管理者、chief 委派 Map、node、嵌套 Map 管理者和历史 Chat 恢复，共用按名称放置、跟随管理者、恢复历史位置三套规则。interface 只接收位置依据，不接收整个 Task／Run／AppState；zone 仍是稳定逻辑工作位置，执行目录要求与宿主 Workspace 选择分开表达。映射只进行必要的只读查询，不创建 Tab、启动 agent 或修改历史。
 

@@ -98,7 +98,7 @@ test('从普通目录与 Git 工作树对应的 zone 行发起 Chat：预览名�
   server = await startServer({
     herdr: {
       workspaces: [{ workspace_id: 'w-target', label: 'alpha' }, { workspace_id: 'w-beta', label: 'beta' }],
-      behavior: { agent_start_delay_ms: 2_000, prompt_delay_ms: 1_500 },
+      behavior: { manual_launch_events: true, agent_start_delay_ms: 2_000, prompt_delay_ms: 1_500 },
     },
   })
   const zones = await prepareZones(server.baseURL)
@@ -131,12 +131,18 @@ test('从普通目录与 Git 工作树对应的 zone 行发起 Chat：预览名�
   await dialog.getByTestId('chat-input').fill('普通任务：检查登录逻辑')
   await dialog.getByTestId('chat-create-submit').click()
 
-  // 启动阶段是稳定的界面状态；受控 agent 尚未就绪时绝无初始输入。
-  await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在启动')
+  // S1/P50: a Tab and agent-start request do not authorize input. The page
+  // must show the backend-owned initialization phase, not infer submission.
   await waitForHerdrCall(page, 'agent_start')
+  await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在初始化输入')
   expect(callsOfKind('agent_prompt')).toHaveLength(0)
-  await page.waitForTimeout(300)
+  const argv = callsOfKind('tab_create')[0].argv as string[]
+  const env = (key: string) => argv.find(arg => arg.startsWith(`${key}=`))?.slice(key.length + 1)
+  const data = { launchId: env('HERDR_BOT_LAUNCH_ID'), targetId: env('HERDR_BOT_LAUNCH_TARGET_ID'), agentType: 'omp', cwd: zones.normalPath, pid: 43127 }
+  await jsonPost(server.baseURL, '/api/sessions/events', { kind: 'launch_identity', sessionId: 'browser-owned-native', data })
+  await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在初始化输入')
   expect(callsOfKind('agent_prompt')).toHaveLength(0)
+  await jsonPost(server.baseURL, '/api/sessions/events', { kind: 'launch_ready', sessionId: 'browser-owned-native', data })
 
   // 就绪之后才进入提交阶段；提交响应未确认之前没有成功。
   await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在提交初始指示', {
@@ -171,8 +177,85 @@ test('从普通目录与 Git 工作树对应的 zone 行发起 Chat：预览名�
   await expect(page.getByTestId('chat-creation-dialog')).toHaveCount(0)
 })
 
-test('提交被明确拒绝时失败留在弹窗，页面与外部已保留的现场一致', { tag: '@time-contract' }, async ({ page }) => {
-  server = await startServer({ herdr: { behavior: { fail_prompt: true } } })
+function terminalInputs(base: E2EServer): Record<string, unknown>[] {
+  const log = path.join(path.dirname(base.configPath), 'herdr', 'submitted.jsonl')
+  return fs.existsSync(log)
+    ? fs.readFileSync(log, 'utf8').trim().split('\n').map(line => JSON.parse(line))
+    : []
+}
+
+test('P20 P25 P52 刷新等待中的页面不重建，原目标仅收到一次指示', { tag: '@time-contract' }, async ({ page }) => {
+  const backend = server = await startServer({ herdr: { behavior: { block_prompt: true } } })
+  const zones = await prepareZones(backend.baseURL)
+  await prepareTask(backend.baseURL)
+  await page.goto(backend.baseURL)
+  const dialog = await openChatDialog(page, zones.normal)
+  const input = '刷新不重复创建'
+  await dialog.getByTestId('chat-input').fill(input)
+  let creates = 0
+  page.on('request', request => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/chats') creates++
+  })
+  const receipt = page.waitForResponse(response => response.status() === 202 && new URL(response.url()).pathname === '/api/chats')
+  await dialog.getByTestId('chat-create-submit').click()
+  const { id } = await (await receipt).json()
+  await expect(dialog.getByTestId('chat-create-stage')).toContainText('初始指示未提交，1 秒后重试（最多重试 5 次）')
+  await page.reload()
+  await expect(page.getByTestId('chat-creation-dialog')).toHaveCount(0)
+  expect(terminalInputs(backend)).toEqual([])
+  backend.setHerdrBehavior({})
+  await expect.poll(async () => {
+    const result = await page.request.get(`${backend.baseURL}/api/chats/${encodeURIComponent(id)}`)
+    return result.json()
+  }, { timeout: 10_000 }).toMatchObject({ id, stage: 'succeeded', inputSubmitted: true })
+  expect(creates).toBe(1)
+  expect(backend.herdrTabs()).toHaveLength(1)
+  expect(callsOfKind('agent_start')).toHaveLength(1)
+  const attempts = callsOfKind('agent_prompt')
+  expect(attempts.length).toBeGreaterThanOrEqual(2)
+  expect(attempts.length).toBeLessThanOrEqual(6)
+  for (const attempt of attempts) expect(attempt.target).toBe(attempts[0].target)
+  expect(terminalInputs(backend)).toEqual([{ target: attempts[0].target, text: input }])
+})
+
+test('P28 P50 原进程被替换时页面显示取消且不向新 owner 提交', { tag: '@time-contract' }, async ({ page }) => {
+  const backend = server = await startServer({ herdr: { behavior: { block_prompt: true } } })
+  const zones = await prepareZones(backend.baseURL)
+  await prepareTask(backend.baseURL)
+  await page.goto(backend.baseURL)
+  const dialog = await openChatDialog(page, zones.normal)
+  await dialog.getByTestId('chat-input').fill('不得送给替换进程')
+  await dialog.getByTestId('chat-create-submit').click()
+  await expect(dialog.getByTestId('chat-create-stage')).toContainText('初始指示未提交，1 秒后重试（最多重试 5 次）')
+  backend.setHerdrBehavior({ launch_pid: 43128 })
+  const failure = dialog.getByTestId('chat-create-failure')
+  await expect(failure).toContainText('已取消重试')
+  await expect(failure).toContainText('初始指示未提交，不会自动重发')
+  expect(callsOfKind('agent_prompt')).toHaveLength(1)
+  expect(callsOfKind('agent_start')).toHaveLength(1)
+  expect(backend.herdrTabs()).toHaveLength(1)
+  expect(terminalInputs(backend)).toEqual([])
+})
+
+test('P27 P50 外部输入已发生但响应不明确，页面不声称未发送', { tag: '@time-contract' }, async ({ page }) => {
+  const backend = server = await startServer({ herdr: { behavior: { invalid_prompt_response: true } } })
+  const zones = await prepareZones(backend.baseURL)
+  await prepareTask(backend.baseURL)
+  await page.goto(backend.baseURL)
+  const dialog = await openChatDialog(page, zones.normal)
+  await dialog.getByTestId('chat-input').fill('已写入但没有确认')
+  await dialog.getByTestId('chat-create-submit').click()
+  const failure = dialog.getByTestId('chat-create-failure')
+  await expect(failure).toContainText('初始指示的投递结果未确认')
+  await expect(failure).not.toContainText('初始指示未提交')
+  await expect(dialog.getByTestId('chat-create-success')).toHaveCount(0)
+  expect(terminalInputs(backend)).toEqual([{ target: callsOfKind('agent_prompt')[0].target, text: '已写入但没有确认' }])
+  expect(callsOfKind('agent_prompt')).toHaveLength(1)
+  expect(backend.herdrTabs()).toHaveLength(1)
+})
+
+test('P24 P25 P26 P50 明确未提交时页面显示重试等待，第六次阻塞后停止', { tag: '@time-contract' }, async ({ page }) => {
+  server = await startServer({ herdr: { behavior: { block_prompt: true } } })
   const zones = await prepareZones(server.baseURL)
   await prepareTask(server.baseURL)
   await page.goto(server.baseURL)
@@ -182,26 +265,35 @@ test('提交被明确拒绝时失败留在弹窗，页面与外部已保留的�
   await dialog.getByTestId('chat-input').fill('会被拒绝的指示')
   await dialog.getByTestId('chat-create-submit').click()
 
-  const failure = dialog.getByTestId('chat-create-failure')
-  await expect(failure).toBeVisible({ timeout: 10_000 })
-  await expect(failure).toContainText('提交初始指示')
-  await expect(failure).toContainText(
-    '现场已存在：agent 已就绪，但初始指示的提交被明确拒绝；不会自动重发。',
-  )
-  await expect(dialog.getByTestId('chat-create-success')).toHaveCount(0)
+  const stage = dialog.getByTestId('chat-create-stage')
+  await expect(stage).toContainText(/初始指示未提交，1 秒后重试（最多重试 5 次）：.*controlled modal/)
+  expect(terminalInputs(server)).toEqual([])
+  await expect(dialog.getByTestId('chat-create-submit')).toBeDisabled()
+  await page.screenshot({ path: test.info().outputPath('initial-input-retrying.png'), fullPage: true })
 
-  // 外部独立现场：Tab 已创建并保留；提交只到达一次且被拒绝，没有清理动作。
+  const failure = dialog.getByTestId('chat-create-failure')
+  await expect(failure).toContainText('controlled modal', { timeout: 10_000 })
+  await expect(failure).toContainText('初始指示未提交，不会自动重发')
+  await expect(dialog.getByTestId('chat-create-success')).toHaveCount(0)
+  await page.screenshot({ path: test.info().outputPath('initial-input-retries-exhausted.png'), fullPage: true })
+
+  // The external host rejected all six attempts at the same target without creating a new Tab.
   const tabs = server.herdrTabs()
   expect(tabs).toHaveLength(1)
   await expect(dialog.getByTestId('chat-result-tab')).toHaveText(String(tabs[0].tab_id))
   await expect(dialog.getByTestId('chat-result-pane')).toHaveText(String(tabs[0].pane_id))
   const prompts = callsOfKind('agent_prompt')
-  expect(prompts).toHaveLength(1)
+  expect(prompts).toHaveLength(6)
   expect(prompts[0].text).toMatch(/^会被拒绝的指示(?:\n\n|$)/)
+  for (const [index, prompt] of prompts.slice(1).entries()) {
+    expect(prompt.text).toBe(prompts[0].text)
+    expect(prompt.target).toBe(prompts[0].target)
+    expect(Number(prompt.at) - Number(prompts[index].at)).toBeGreaterThanOrEqual(1_000)
+  }
   expect(server.herdrCalls().filter((call) => call.kind === 'unsupported')).toHaveLength(0)
-  await page.waitForTimeout(300)
-  expect(callsOfKind('agent_prompt')).toHaveLength(1)
+  expect(callsOfKind('agent_start')).toHaveLength(1)
   expect(server.herdrTabs()).toHaveLength(1)
+  expect(terminalInputs(server)).toEqual([])
 
   // 结果留在弹窗与文件列表；用户关闭前不自动切换会话列表。
   await expect(page.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')

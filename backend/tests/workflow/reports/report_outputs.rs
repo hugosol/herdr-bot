@@ -199,9 +199,9 @@ async fn execution_rules_are_frozen_until_an_explicit_retry() {
     submit(&s, json!({"sessionId":"frozen-new","body":"Replacement output","canComplete":true,"outputs":[{"id":"new","path":"Z:/new/result.md"}]}), 200).await;
 }
 
-// P8: independent persisted associations can be ambiguous even if normal
-// dispatch prevents identity reuse. Choosing the first match would commit to
-// one of these two live Runs; HTTP rejection and unchanged records catch it.
+// P8: operation authorization still rejects ambiguous persisted associations.
+// Choosing the first match would commit to one of these two live Runs;
+// HTTP rejection and unchanged records catch it.
 #[tokio::test]
 async fn ambiguous_node_associations_cannot_register_for_either_run() {
     let s = Scenario::new().await;

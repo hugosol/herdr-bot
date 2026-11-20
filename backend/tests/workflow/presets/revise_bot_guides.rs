@@ -30,7 +30,7 @@ async fn revise_bot_guides_publishes_independent_five_node_material_interface() 
         assert_eq!(node["bot_id"], bot);
         assert_eq!(node["input_rule"], json!([baseline.clone()]));
         assert_eq!(node["blocked_by"], json!(["w1"]));
-        assert_eq!(node["report_policy"], "manual");
+        assert_eq!(node["auto_approved"], false);
         assert_eq!(node["output_rule"], json!([{"id":"text"},{"id":"handoff"}]));
         for role in ["text","handoff"] {
             final_inputs.push(json!({"id":format!("{field}_{role}"),"type":"node","node_id":id,"output_id":role}));
@@ -78,6 +78,7 @@ async fn revise_bot_guides_publishes_independent_five_node_material_interface() 
         let saved = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/nodes/save"), &json!({"id":id,"content":node.to_string(),"revision":draft["revision"],"create":true}).to_string()).await;
         assert_eq!(saved.status, 200, "{}", saved.body);
         let read = get_over_tcp(s.server.addr(), &endpoint).await;
+        node["end_node"] = json!(false);
         assert_eq!(serde_json::from_str::<Value>(&read.body).unwrap()["nodes"][id], node);
     }
     let request = s.data.path().join("revision-request.md");

@@ -20,15 +20,15 @@ test('P23 migrated creator and dedicated saver match complete public definitions
   try {
     for (const key of keys) { process.env[key] = path.join(home, key); fs.mkdirSync(process.env[key]!) }
     server = await startServer({ separateCwd: true, herdr: {} })
-    for (const tree of ['bots', 'workflow-maps']) fs.cpSync(path.join(root, 'meta-data', tree), path.join(server.cwd, 'meta-data', tree), { recursive: true })
+    for (const tree of ['bots', 'workflow-maps', 'scripts']) fs.cpSync(path.join(root, 'meta-data', tree), path.join(server.cwd, 'meta-data', tree), { recursive: true })
     const expected: Record<string, unknown> = {}
     for (const [file, id, capability] of [
-      ['bot-1793348060748020300-25960-2.json', 'create-blank-bot', 'create_blank_bot'],
-      ['save-created-bot-guides.json', 'save-created-bot-guides', 'save_bot_guides'],
+      ['bot-1793348060748020300-25960-2.json', 'create-blank-bot', 'create-blank-bot.ts'],
+      ['save-created-bot-guides.json', 'save-created-bot-guides', 'save-bot-guides.ts'],
     ]) {
       const shipped = JSON.parse(fs.readFileSync(path.join(root, 'meta-data/bots', file), 'utf8'))
       expect(shipped.id).toBe(id)
-      expect(shipped.rust_script).toBe(capability)
+      expect(shipped.script).toBe(capability)
       expect(shipped.task_id).toBeUndefined()
       expect(shipped.map_file).toBeUndefined()
       if (id === 'save-created-bot-guides') for (const field of ['when', 'plan_guide', 'node_guide']) expect(shipped[field]).toBe('')
@@ -53,7 +53,6 @@ test('P23 migrated creator and dedicated saver match complete public definitions
       // Group is a separate editor control, not part of the content textarea.
       const { group: _group, ...editable } = actual.content
       expect(JSON.parse(await page.getByLabel('Bot 内容 JSON', { exact: true }).inputValue())).toEqual(editable)
-      await expect(page.getByRole('combobox', { name: '固定 Rust 能力', exact: true })).toHaveValue(capability)
     }
     const maps: Record<string, unknown> = {}
     for (const file of ['create-bot-wrapper.json', 'enhance-existing-bot--bc-301b25d9f8d6.json']) {
@@ -63,6 +62,7 @@ test('P23 migrated creator and dedicated saver match complete public definitions
       const shippedMap = JSON.parse(fs.readFileSync(path.join(root, 'meta-data/workflow-maps', file), 'utf8'))
       // Public Map serialization omits the optional empty input requirements.
       if (shippedMap.input_requirements === '') delete shippedMap.input_requirements
+      for (const node of Object.values(shippedMap.nodes) as Record<string, unknown>[]) node.end_node ??= false
       expect(actual).toEqual(shippedMap)
       const references = Object.values(actual.nodes).map(node => {
         if (!node || typeof node !== 'object' || !('bot_id' in node) || typeof node.bot_id !== 'string') throw new Error('Missing actual Map Bot reference')

@@ -4,9 +4,9 @@
 
 ## 创建分支表示的交付边界
 
-固定 Rust 创建／三路合并的精确 request、baseline、handoff、saved 字段与独立字面实例见[创建分支 v1](business-materials.md#创建分支-v1可校验表示与空白创建)及[可机读 Schema](contracts/rust-script-bots.schema.json)。命名 request／materials、baseline／text／handoff、最终 saved／handoff 与原接线不变；纯正文不包装，来源索引不负责寻址。发布定义已将原 `create-blank-bot` 身份切换到真实 `create_blank_bot`，仅将 `save_bot` 改为新共享 Bot `save-created-bot-guides`（`save_bot_guides`，三指南严格为空）。两脚本节点均为 auto 报告、auto_close=false。三个共享编写者及本图优化 input 明确区分创建 v1 与原修订格式；外层 W2.handoff 同步交付严格 request JSON，最终优化者读取 saved.bot／target.configuration。
+TS 脚本创建／三路合并的精确 request、baseline、handoff、saved 字段与独立字面实例见[创建分支 v1](business-materials.md#创建分支-v1可校验表示与空白创建)及[可机读 Schema](contracts/script-bots.schema.json)。request／materials、编写与优化的 baseline／text／handoff、最终 saved／handoff 保持原身份；最终保存干净切换为仅 baseline、when_text、plan_guide_text、node_guide_text 四项，不再传三份指南 handoff 或批准凭据。纯正文不包装，字段归属由固定命名绑定确定，来源索引不负责寻址。发布定义已将原 `create-blank-bot` 身份切换到真实 `create-blank-bot.ts`，仅将 `save_bot` 改为新共享 Bot `save-created-bot-guides`（`save-bot-guides.ts`，三指南严格为空）。两脚本节点均为自动成果批准、自动报告、auto_close=false。三个共享编写者及本图优化 input 明确区分创建 v1 与原修订格式；外层 W2.handoff 同步交付严格 request JSON，最终优化者读取 saved.bot／target.configuration。
 
-删除范围仅原 Task `task-18e33fdc55177d1c-1`，不保留兼容别名，不保证该 Task 的旧来源恢复；不删除无关 Task、Chat 或 Run。原通用 replace-text Bot、Task 全部配置与修订 Map 保持原样，不按 Bot ID 全量替换消费者，也不建立 Map 私有 Bot。迁移前完整发布定义归档在 `fixtures/rust-create-migration/before.json`；这不是自动部署工具，用户服务与正式历史不受仓库更新影响。修订及独立非 v1 调用仍按原协议，无须补创建授权／digest。实际验证边界见末节。
+删除范围仅原 Task `task-18e33fdc55177d1c-1`，不保留兼容别名，不保证该 Task 的旧来源恢复；不删除无关 Task、Chat 或 Run。原通用 replace-text Bot、Task 的业务协议与修订 Map 的材料接线保持原样；发布成果批准模式按下表独立决定，不按 Bot ID 全量替换消费者，也不建立 Map 私有 Bot。迁移前完整发布定义归档在 `fixtures/rust-create-migration/before.json`；这不是自动部署工具，用户服务与正式历史不受仓库更新影响。修订及独立非 v1 调用仍按原协议，无须补创建授权／digest。实际验证边界见末节。
 
 ## 调用接口
 
@@ -14,7 +14,49 @@
 
 启动管理者时可暂不提供 request，用户可先在本次要求或管理者对话中说明委托、提供文件。管理者读取共同输入要求和已有材料，澄清语义与授权，必要时在获准范围内整理为 request 文件，以 `prepare_inputs` 全量绑定并确认后才能派发任何业务节点；确认时 request 必须齐全、可读且语义满足要求，不能以文件存在代替核实。嵌套子管理者同样先完成输入准备；父节点通过 `input_rule` 将已有 request／materials 以同名输入显式绑定，作为子 Run 的准备初值，并填写本调用的 `manager_task_id`、zone 和自包含业务 input；发起前通过公开接口核实所选 Task 真实存在且为 manager 类型、zone 真实可用，不默认继承父层配置。管理者配置不是 Bot 属性。父节点还应声明 `saved` 和 `handoff` 输出，要求子管理者在完成整个子 Run 后将 `save_bot` 的同名交付直接报告给父层；地址登记不是业务验收，父管理者仍须显式接受交接。Map 不声明不存在的全图输出接口。
 
-最终 `saved` 是 v1 JSON envelope，包含公开接口完整读回的真实 `bot`、新 `revision` 和完整 `target.configuration`，不是旧的裸 Bot JSON；`handoff` 是 v1 saved 阶段 JSON，只记真实身份、normal Task／Map 唯一绑定、确认／授权依据、三字段来源、保存和非目标保持结论及未验证项。父层必须核对真实身份和绑定，不根据“完成”文字推断新能力已验证。必要时显式要求额外交付 baseline，但不通过 handoff 隐式寻址。
+最终 `saved` 是 v1 JSON envelope，包含公开接口完整读回的真实 `bot`、新 `revision` 和完整 `target.configuration`，不是旧的裸 Bot JSON；`handoff` 是 v1 saved 阶段 JSON，只记真实身份、normal Task／Map 唯一绑定、共同 baseline 与三份正文来源、保存和非目标保持结论及未验证项，不携带批准凭据。父层必须核对真实身份和绑定，不根据“完成”文字推断新能力已验证。必要时显式要求额外交付 baseline，但不通过 handoff 隐式寻址。
+
+## 发布成果批准职责清单（P34）
+
+`auto_approved` 只决定本次普通节点成果由谁批准，不控制报告发送，也不代替业务讨论、保存权限、报告、产物或管理者显式 complete。下表逐项依据实际成果职责决定，未从旧报告开关或 `write_materials` 推导。脚本只能自动；结束节点不适用，即使配置保留 `auto_approved: true` 也不产生批准事实。人工表示须在节点 Chat 原生确认当前成果；S1 HTTP 人工提交不证明该原生确认，双宿主与配置页面消费分别由 14、15 验收。
+
+| 发布 Map | node | 本节点成果与用户把关职责 | auto_approved 与理由 |
+| --- | --- | --- | --- |
+| 创建bot（V1） | create_blank | 核实目标、空白 Bot、共同基线 | true；固定脚本校验与完整读回，无未知文案决策 |
+| 创建bot（V1） | write_when | 新能力选用正文 | false；用户确认本字段全文及业务意图 |
+| 创建bot（V1） | write_plan_guide | 新工作安排正文 | false；用户确认本字段全文及安排取舍 |
+| 创建bot（V1） | write_node_guide | 新输入责任正文 | false；用户确认本字段全文及权限边界 |
+| 创建bot（V1） | optimize_when | 已定 when 的保义表达稿 | true；沿用已确认语义，不引入新业务取舍 |
+| 创建bot（V1） | optimize_plan_guide | 已定 plan_guide 的保义表达稿 | true；只整理表达，语义失配仍须阻塞 |
+| 创建bot（V1） | optimize_node_guide | 已定 node_guide 的保义表达稿 | true；只整理表达，权限不扩大 |
+| 创建bot（V1） | save_bot | 三份显式正文一次保存与完整读回 | true；固定脚本，不从材料读取批准凭据 |
+| 创建task（V1 外层） | w1 | 新 Task 全文、执行配置与创建 | false；用户确认本节点创建成果 |
+| 创建task（V1 外层） | w2 | 已确认 Task.prompt 保义优化及 v1 request | true；保持其他配置，交付执行必需数据 |
+| 创建task（V1 外层） | wrap_bot | 完整子 Run 成果向父层交接 | true；子节点各自把关，子 finish 后独立批准整体交接 |
+| 创建task（V1 外层） | optimize_bot | Task.prompt 与 Bot 三指南联合最终候选 | false；共享影响与完整最终成果需用户把关 |
+| 创建bot-V2 | align_requirements | 目标 Bot 未来使用的已确认业务信息清单与双材料；按业务主题收齐有效结论，W2 再分配三指南；本次创建约束独立记录 | false；用户确认本阶段需求成果，不提前批准 W2 |
+| 创建bot-V2 | design_and_create | 分层完整候选、保存及读回 | false；用户确认最终文案、共享影响与创建成果 |
+| 创建task-V2 | create_task | 新 Task 及独立 V2 委托 | false；用户确认 Task 全文、配置与本阶段成果 |
+| 创建task-V2 | create_bot_v2 | V2 子流程完整成果交接 | true；内部确认保留，子 finish 后独立批准父层交接 |
+| 创建task-script type | create_script | 确认、验证并正式保存 Script 与独立 V2 委托 | false；用户把关脚本成果与当次授权 |
+| 创建task-script type | create_bot_v2 | V2 子流程完整成果交接 | true；内部确认保留，子 finish 后独立批准父层交接 |
+| GitHub 仓库拉取与探索 | W1 | 为已授权目标执行固定浅克隆并记录实际仓库 | true；固定脚本，无新增成果决策 |
+| GitHub 仓库拉取与探索 | W2 | 登记实际仓库的 zone | true；固定脚本，交付明确 zone 绑定 |
+| GitHub 仓库拉取与探索 | W3 | 把只读探索 Chat 交给用户继续 | 不适用；结束节点，定义保留 true |
+| 独立修订既有 Bot 三指南 | w1 | 只读核实与共同基线 | true；无本节点新增业务定稿 |
+| 独立修订既有 Bot 三指南 | w2 | when 修订定稿 | false；用户确认本字段完整修订成果 |
+| 独立修订既有 Bot 三指南 | w3 | plan_guide 修订定稿 | false；用户确认工作安排变化 |
+| 独立修订既有 Bot 三指南 | w4 | node_guide 修订定稿 | false；用户确认输入与权限变化 |
+| 独立修订既有 Bot 三指南 | w5 | 明确三路定稿的合法保存读回 | true；按原修订协议保存，不产生新业务选择 |
+| 创建map | outline | 新概要方案与可翻译业务取舍 | false；用户确认本节点规划成果 |
+| 创建map | generate_map | 已确认方案的忠实 Map 转换 | true；不重新决定业务，缺能力或冲突仍阻塞 |
+| 创建map | optimize_map | 整图及共享对象优化成果 | false；本 Chat 用户确定共享影响及最终边界 |
+| Tibo监测后排查C盘 | tibo-monitor | 观察时点、额度事实及不确定性 | true；客观查询，不要求用户选择成果 |
+| Tibo监测后排查C盘 | c-drive-inspection | 只读文件／worktree 来源与建议 | true；只交调查结果，不删除或执行清理，旧 manual 不是人工成果职责 |
+
+V1 八节点与 V2 两节点保留独立入口、真实定义、命名输入和 Run，互不调用替代；V2 的 `authorization`／`confirmation` 是其专用业务协议，不是通用 `approved`，本次不改写该协议。V1 request 仅含目标、需求、约束与可选命名；保存仅绑定 baseline 与三份 text。不会为历史 Run 增加适配、不改历史或旧产物、不自动部署或重跑。
+
+S1 证据选择器：`published_approval_responsibilities_round_trip_every_shipped_node` 逐项完整读回当前九张定义；`create_migration_runs_shipped_map_and_preserves_revision_and_history` 运行 V1 真实 Bun 创建／保存闭环并组合独立 V2 普通节点的批准、报告、显式完成及真实配置读回。受控宿主只记录材料消费，不证明模型遵从指引或原生批准。
 
 ## 执行与授权
 
@@ -26,21 +68,21 @@
 | `create_blank` | 「目标核实与基线生产」承接目标调查、空白创建与单份 baseline 交付 |
 | 三个 `write_*` | 「共同基线消费」「三个编写者与表达优化者」承接真实配置比较、所属全文编写确认与 text／handoff 交付 |
 | 三个 `optimize_*` | 「共同基线消费」「表达优化」承接真实配置比较、保义与有效确认，仅交付新 text／handoff |
-| `save_bot` | 「一次合法保存与失败核实」承接整批授权、精确基线比较、一次合法保存与完整读回及失败效果核实 |
+| `save_bot` | 「创建分支 v1」承接四项必需材料、精确基线比较、一次合法保存、完整读回及失败效果核实；不消费三份指南 handoff 或批准凭据 |
 
-固定创建与最终保存由两个编入后端的 Rust 能力执行，其间三个编写者和通用优化者仍是真实共享 Task；没有新增专属 Task。原通用替换 Task 继续服务修订和普通文件，不参与本图最终保存。稳定 ID 与格式边界见共同契约。通用表达优化者与保存者不默认携带 Bot 业务，故各自 node.input 必须显式提供适用章节、真实服务、字段、材料用途和权限；空白创建与三个编写者的 input 只选择本次分支、材料用途及文件交付。包装 Bot 指南供规划者选用、安排与准备业务输入，不注入执行 Chat，也不重抄执行流程或框架路由语法；父子交接由上节「调用接口」承接。
+固定创建与最终保存由两份用户可维护的 TypeScript 脚本经已有 Bun 执行，其间三个编写者和通用优化者仍是真实共享 Task；没有新增专属 Task。原通用替换 Task 继续服务修订和普通文件，不参与本图最终保存。稳定 ID 与格式边界见共同契约。通用表达优化者与保存者不默认携带 Bot 业务，故各自 node.input 必须显式提供适用章节、真实服务、字段、材料用途和权限；空白创建与三个编写者的 input 只选择本次分支、材料用途及文件交付。包装 Bot 指南供规划者选用、安排与准备业务输入，不注入执行 Chat，也不重抄执行流程或框架路由语法；父子交接由上节「调用接口」承接。
 
-材料写入、字段全文确认、最终 Bot 保存授权分别核实；报告发送依实际 report_policy 和注入角色执行，manual 时另获原生 UI 对本次 payload 的批准。业务确认与报告批准互不替代，流程到达或 can_complete 不授予保存权限。创建目标、业务试运行、安装工具或扩权均不在本能力范围；配置交付不证明工具／Skill／扩展加载、模型遵从或业务效果。
+材料写入边界和字段业务意图仍须明确；V1 脚本不再要求材料内的人类授权、全文批准 digest 或三份验权交接书。成果批准由通用执行机制持有，报告与显式 complete 分别成立；不能把批准事实或 can_complete 当作 baseline／revision／目标正确性证据。普通节点实际批准模式及依据见上节发布职责清单。创建目标、业务试运行、安装工具或扩权均不在本能力范围；配置交付不证明工具／Skill／扩展加载、模型遵从或业务效果。
 
 ## 创建 Task＋Bot 的选定外层入口
 
 `create-bot-task-workflow--bc-61ce48b80a4c.json` 现在有四个工作单元：
 
 1. `w1` → `create-task`：从本次 `Run.userInput` 和可选命名 `materials` 创建 normal Task。保留全文和执行配置确认，公开保存／完整读回；`handoff` 自包含地记录真实新 Task ID、需求、确认来源、权限及后续 Bot 创建委托。未明确的授权不得自行补齐。
-2. `w2` → `optimize-prompt`：直接消费 `w1.handoff` 中的完整 prompt、已确认语义与授权，仅整理表达并保存 prompt，保留其他配置，不重做需求访谈。W1 记录后续保义优化及保存授权；授权不足、语义变化或冲突须先解决。`saved` 单独承载完整最新 Task 配置，`handoff` 作为子流程 `request`，必须是 v1 严格 JSON：真实 Task 定位、需求及三个约束数组、明确 authorization 布尔值、confirmation.evidence／scope 和可选 Bot 命名；不加 Schema 外的核对总结，不复制配置或正文。缺创建／材料授权阻塞，不推断自然语言，保存授权未知可明确 false。报告按各节点实际 report_policy 执行，manual 时由原生 UI 单独批准发送 payload；外层管理者核实真实报告后显式 complete。
-3. `wrap_bot` → Map 型 `create-bot-wrapper`：本次明确使用 manager Task `task-18e2c2827c484128-0` 和 zone `hugosol/herdr-bot`（部署须先公开核实或显式修改本调用配置，不改 Bot 属性）。`request` 直接绑定 `w2.handoff`，`materials` 直接绑定外层同名可选输入；不依赖 `blocked_by`、父 Chat 或 handoff 的隐式地址传材料。子管理者核实并逐项 complete 子节点，完成整个子 Run 后通过真实 node report 将 `save_bot.saved`／`save_bot.handoff` 直接登记为父节点同名输出。父管理者另行核实真实 Bot ID、唯一 Task 绑定、完整保存读回与授权证据，显式 complete 本调用后交给 `optimize_bot`，此时不能 finish 外层；子 Run 完成、报告文字或 `can_complete` 都不是这个边界。
+2. `w2` → `optimize-prompt`：直接消费 `w1.handoff` 中的完整 prompt、已确认语义与授权，仅整理表达并保存 prompt，保留其他配置，不重做需求访谈。W1 记录后续保义优化及保存授权；授权不足、语义变化或冲突须先解决。`saved` 单独承载完整最新 Task 配置，`handoff` 作为子流程 `request`，必须是 v1 严格 JSON：真实 Task 定位、需求及三个约束数组和可选 Bot 命名；不加 Schema 外的核对总结，不复制配置或正文，不生产 authorization、confirmation 或任何改名批准凭据。request／共同基线／目标字段归属见共同业务材料契约；不将执行层成果批准嵌入业务材料。报告可自由发送，成果按各节点 auto_approved 独立批准；外层管理者核实最新报告与交付后显式 complete。
+3. `wrap_bot` → Map 型 `create-bot-wrapper`：本次明确使用 manager Task `task-18e2c2827c484128-0` 和 zone `hugosol/herdr-bot`（部署须先公开核实或显式修改本调用配置，不改 Bot 属性）。`request` 直接绑定 `w2.handoff`，`materials` 直接绑定外层同名可选输入；不依赖 `blocked_by`、父 Chat 或 handoff 的隐式地址传材料。子管理者核实并逐项 complete 子节点，完成整个子 Run 后通过真实 node report 将 `save_bot.saved`／`save_bot.handoff` 直接登记为父节点同名输出。父管理者另行核实真实 Bot ID、唯一 Task 绑定、完整保存读回与执行层批准事实，显式 complete 本调用后交给 `optimize_bot`，此时不能 finish 外层；子 Run 完成、报告文字或 `can_complete` 都不是这个边界。
 
-4. `optimize_bot` → `prompt优化者——Bot维度`：依赖 `wrap_bot`，显式接收其 `saved`／`handoff` 为 `bot_saved`／`bot_handoff`，并接收外层可选 `materials`。沿用有效需求与确认，查询服务最新配置，联合优化刚创建的 Task.prompt 与 Bot 三指南；展示整体方案、共享影响和完整候选，取得最终文本与保存授权。Skill／文档只读，保持业务语义、身份、绑定和执行配置，不运行目标能力。`saved` 交付完整读回的最终 Bot 与 Task 配置，`handoff` 交付修改说明、确认依据、保存核对结果及未验证项。采用 manual 报告且不自动关闭；保存确认不替代报告发送确认。父管理者验收并 complete 此节点后才可 finish 外层；阻塞或部分保存不算整体完成，保留对象，不自动删除或回滚。包装产物仅是阶段记录，最终注明“文本／定义优化完成，行为未验证”。
+4. `optimize_bot` → `prompt优化者——Bot维度`：依赖 `wrap_bot`，显式接收其 `saved`／`handoff` 为 `bot_saved`／`bot_handoff`，并接收外层可选 `materials`。沿用有效需求与确认，查询服务最新配置，联合优化刚创建的 Task.prompt 与 Bot 三指南；展示整体方案、共享影响和完整候选，取得最终文本与保存授权。Skill／文档只读，保持业务语义、身份、绑定和执行配置，不运行目标能力。`saved` 交付完整读回的最终 Bot 与 Task 配置，`handoff` 交付修改说明、确认依据、保存核对结果及未验证项。采用人工成果批准且不自动关闭；报告发送不要求批准，已批准仍须管理者显式完成交接。父管理者验收并 complete 此节点后才可 finish 外层；阻塞或部分保存不算整体完成，保留对象，不自动删除或回滚。包装产物仅是阶段记录，最终注明“文本／定义优化完成，行为未验证”。
 
 本次只更新仓库定义，不自动部署服务配置；其他创建 Bot 的入口不增加该节点。四节点定义的公开保存／读取及可选材料预检由 `workflow_dispatch::outer_create` 回归覆盖；真实外层验收入口已纳入最后的候选确认、交接及完成边界，但接线回归通过不代表新增优化节点的真实模型执行已验收。
 
@@ -48,7 +90,7 @@
 
 ### 外层提示词归属
 
-W1 负责业务定稿、执行配置确认与创建；W2 使用通用优化者的直接保存分支，只负责保义表达整理与授权保存。完整语义由 W1 确认，W2 沿用有效确认与授权；无法保持语义、确认失效或缺保存授权时才提出具体阻塞。报告发送按注入策略执行；manual 的原生 UI 确认与业务批准分开。
+W1 负责业务定稿、执行配置确认与创建；W2 使用通用优化者的直接保存分支，只负责保义表达整理与授权保存。完整语义由 W1 确认，W2 沿用有效确认与授权；无法保持语义、确认失效或缺保存授权时才提出具体阻塞。报告自由发送；人工节点在原生 UI 确认当前成果，自动节点主动批准。批准、报告及管理者完成分别成立。
 
 通用 Task 只承担保义优化、授权保存、安全写入和完整读回，不内置 Bot、三指南、baseline/text/handoff 或特定服务接口。仅修改 Task.prompt 前读取[Task 保存规则](usage.md#仅修改-taskprompt)；W2.input 只选择原文、目标、授权来源与交付用途。包装三路的目标／共同基线核实和材料分工由其已有 node.input 与共同材料契约承接；独立调用需显式提供适用的业务协议及材料。Bot 指南面向规划者，不承担执行规则注入。wrap_bot 保留子 finish → 父节点 report → 父 manager complete 的边界，不复制八节点执行手册。
 
@@ -82,9 +124,9 @@ python scripts/accept-workflow-nesting-outer.py `
 
 模型声明沿用[真实角色自动验收](agents/testing.md#文件交接真实角色自动验收)的专用 `provider/model/baseUrl/apiKeyEnv`，或同页公开 CompletionTransport；不读全局 auth，不用受控 provider 代替模型决定。`--hosts declared` 保留每个实际源 Task 的宿主（包含包装内原有 OMP/Pi 混用），逐项记录源码稳定 ID、隔离真实 ID、实际角色和 OS 身份。`--hosts omp,pi` 分别在两宿主执行完整矩阵，任一失败均非零；不能拿单宿主成功抵消另一个。隔离 Herdr terminal 使用已安装的 `powershell.exe`，避免完整 Suite 启动命令超过 `cmd.exe` 行长上限，不裁剪技能或扩展。该入口不安装、不提权、不改全局 PATH、不重试业务或模型决定。
 
-专项先由真实独立 Chat 创建、优化一个仅配置交付的隔离 normal Task，再执行发布的三节点外层和八节点包装子 Run；外层创建者／通用优化者保持实际源 prompt，只使用明确业务要求与当前公开 HTTP。独立优化场景直接提供完整原配置、实际服务和 `docs/usage.md` 的“仅修改 Task.prompt”指针。目标使用非空 Suite，以完整前后字段比较检查优化者不丢失该选择。候选全文先写入业务授权的 proposal 文件并真实读回；自动业务核对使用预先固定的 CSV 只读职责、完整配置字面预期与真实模型独立语义评价，评价输入显式标注当前候选的 Task.prompt／指南／独立完整配置角色，不能靠场景名称猜职责；成功后在原生 Chat 发送明确全文／保存确认。manual 节点保存读回后再发送另一条报告发送确认，两种授权分开留痕；评价本身不是用户批准。本专项显式要求候选全文再批准，属于本次更严格验收条件，不证明默认已有授权时无需重复澄清的行为。模型自主选择和执行真实工具，driver 不手改运行记录、不伪造 Session，也不替管理者 dispatch／complete／finish。
+专项先由真实独立 Chat 创建、优化一个仅配置交付的隔离 normal Task，再执行发布的三节点外层和八节点包装子 Run；外层创建者／通用优化者保持实际源 prompt，只使用明确业务要求与当前公开 HTTP。独立优化场景直接提供完整原配置、实际服务和 `docs/usage.md` 的“仅修改 Task.prompt”指针。目标使用非空 Suite，以完整前后字段比较检查优化者不丢失该选择。候选全文先写入业务授权的 proposal 文件并真实读回；自动业务核对使用预先固定的 CSV 只读职责、完整配置字面预期与真实模型独立语义评价，评价输入显式标注当前候选的 Task.prompt／指南／独立完整配置角色，不能靠场景名称猜职责；成功后在原生 Chat 发送明确全文／保存确认。人工节点保存读回后通过原生成果确认；报告不再另求发送许可，评价本身不是用户批准。本专项显式要求候选全文再批准，属于本次更严格验收条件，不证明默认已有授权时无需重复澄清的行为。模型自主选择和执行真实工具，driver 不手改运行记录、不伪造 Session，也不替管理者 dispatch／complete／finish。
 
-证据必须同时具有真实 Task/Bot/Run/execution/Session 关联、原生工具及请求结果、命名 request／共同 baseline／实际输出的完整消费、真实文件字节、父子 finish/report/complete 顺序、目标全配置不变和无新目标业务运行。OMP 显式初始 Skill 的原始用户输入可能保存为 `attribution: user` 的原生 `custom_message`；核对完整输入时与普通 `role: user` 消息一起检查，绝不把 agent 归属的自定义消息当作用户输入。最终 `completed` 或 wrapper 文件存在均不充分。旧两个独立入口各自另外运行隔离场景；未迁移 Map 与共享执行 Task 逐项保持不变。保存前后、自动确认、报告确认、源码／锁文件／构建产物／安装宿主身份和原始错误均在本次独占目录保存，不将旧成功证据合并进新调用。
+证据必须同时具有真实 Task/Bot/Run/execution/Session 关联、原生工具及请求结果、命名 request／共同 baseline／实际输出的完整消费、真实文件字节、父子 finish/report/complete 顺序、目标全配置不变和无新目标业务运行。OMP 显式初始 Skill 的原始用户输入可能保存为 `attribution: user` 的原生 `custom_message`；核对完整输入时与普通 `role: user` 消息一起检查，绝不把 agent 归属的自定义消息当作用户输入。最终 `completed` 或 wrapper 文件存在均不充分。旧两个独立入口各自另外运行隔离场景；未迁移 Map 与共享执行 Task 逐项保持不变。保存前后、成果批准、报告、源码／锁文件／构建产物／安装宿主身份和原始错误均在本次独占目录保存，不将旧成功证据合并进新调用。
 
 独占 HOME/APPDATA/XDG/原生存储、命名 Herdr、业务定义和运行目录；只用动态数值回环、关闭 mDNS，不执行真实关机。Suite 的真实 codebase-memory-mcp 保留，但可选 UI 关闭；已安装二进制必须支持公开 `CBM_RUNTIME_DIR`，并使用测试拥有的 owner-private runtime、cache 和 allowed-root，绝不连接用户 daemon。正常与失败均停止、等待并确认所有所属进程退出（包含脱离 stdio 客户端的所属 MCP daemon），原始验证错误和清理错误分开记录；隔离 credential-bearing models 文件会移除。回环 HTTP observer 对真实 Task `PUT` 与读取／创建请求一样原样转发方法、正文和状态，不自行代替服务返回；本地传输回归只证明透明转发，不充当优化业务通过。原生 turn 失败时另用公开 `herdr agent read` 保存所属 pane 的真实近期终端，原错误与捕获错误分别保留；不补发 prompt、Enter 或改变业务状态。缺任何宿主、授权模型、必要 Suite 能力、隔离或清理条件均保持未验证且非零。
 
@@ -114,7 +156,7 @@ paths 文件为验收专属 TOML，`[roots]` 明确声明已安装的 `herdr`、
 
 模型文件使用[测试指引](agents/testing.md#文件交接真实角色自动验收)中的专用 `provider/model/baseUrl/apiKeyEnv` 声明；可使用同处说明的公开 CompletionTransport，其职责只传输真实模型决策，不生成业务步骤或伪造工具结果。密钥仅取显式环境变量，不写请求头日志；结束时删除所有验收拥有的 credential-bearing models 文件。`--timeout 1..900` 是每阶段观察窗口，不是重试次数。
 
-独立 normal Task 案例不提供可选材料，Map workflow 案例提供明确参考材料。独立 Chat 按原非 v1 显式材料协议验证共享 Task；创建图按 v1 验证。三个分支分别展示完整全文并取得真实确认，manual 报告另行通过真实原生 UI 发送同意。三编写者和表达优化者保留独立／workflow 实际消费记录；通用替换者参与原非 v1 独立材料与文件回归；创建验收最后复用修订入口的真实 task-no-materials 场景，核对共享编写者旧格式与原通用保存，再标 P28。修订入口仍可独立复跑。删除的空白创建 Task 不再配对，也不构造假 Chat 代替 Rust 执行；创建 Map 没有额外专属 Task。保存检查比较最终唯一 text 字节、真实 Bot 完整读回及全部非目标与目标配置；不以创建成功推断业务能力已经执行或验证。表达质量另由同一明确授权服务的独立实际请求按预先固定的目标真实性、字段职责、语义保持、授权边界和正文独立性 rubric 逐项评价，保留原始输入、回答与逐项理由；任一混合／缺证结果失败，评价结果不授予业务确认或保存授权。
+独立 normal Task 案例不提供可选材料，Map workflow 案例提供明确参考材料。独立 Chat 按原非 v1 显式材料协议验证共享 Task；创建图按 v1 验证。三个分支分别展示完整全文并取得真实原生成果确认；报告独立发送，不再确认发送 payload。三编写者和表达优化者保留独立／workflow 实际消费记录；通用替换者参与原非 v1 独立材料与文件回归；创建验收最后复用修订入口的真实 task-no-materials 场景，核对共享编写者旧格式与原通用保存，再标 P28。修订入口仍可独立复跑。删除的空白创建 Task 不再配对，也不构造假 Chat 代替 Rust 执行；创建 Map 没有额外专属 Task。保存检查比较最终唯一 text 字节、真实 Bot 完整读回及全部非目标与目标配置；不以创建成功推断业务能力已经执行或验证。表达质量另由同一明确授权服务的独立实际请求按预先固定的目标真实性、字段职责、语义保持、授权边界和正文独立性 rubric 逐项评价，保留原始输入、回答与逐项理由；任一混合／缺证结果失败，评价结果不授予业务确认或保存授权。
 
 独立保存安全场景经同一保存 Task 的真实 Chat 检查未授权、基线／目标冲突、实际运行使用、真实竞争 revision，以及保存已生效／未生效／未知效果。HTTP 故障只在实际传输边界断开观察或制造真实竞争编辑，不替换宿主、模型或产品结果；保留每次实际请求、原始错误与后续核实，不盲重试或自动回滚。普通文件使用真实 BOM／CRLF／非目标字节样例与真实隔离 junction／越界请求；没有链接能力仍为未验证，不能 skip 后当通过。
 

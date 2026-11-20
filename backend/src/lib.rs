@@ -70,7 +70,7 @@ use tokio::sync::Mutex;
 use tower_http::services::ServeDir;
 
 pub use config::{
-    TasksConfig, CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, HerdrConfig,
+    TasksConfig, CommandTimeoutSeconds, Config, CountdownSeconds, GitConfig, HerdrBackend, HerdrConfig,
     MdnsConfig, OperationBinding, Operations, SessionWindowSeconds, SessionsConfig, ShutdownConfig,
     StatusCacheTtlSeconds, ZonesConfig, SchedulerConfig, CollectWaitSeconds,
 };
@@ -139,6 +139,7 @@ pub struct AppState {
     pub herdr: Arc<herdr::HerdrClient>,
     /// 已接受创建的进程内生命周期；只供提交创建的页面轮询同一次创建，不是 Chat 列表。
     pub chat_creations: Arc<chats::ChatCreations>,
+    pub(crate) launches: Arc<herdr::launch::Launches>,
     /// 同一历史 Chat 的实例内 Resume 资格；立即拒绝重复请求，不排队，与会话登记独立。
     pub(crate) resume_executions: Arc<resume::ResumeExecutions>,
     /// 新 zone 的创建父目录；未显式配置时只禁用创建，不影响登记与浏览。
@@ -219,15 +220,10 @@ pub fn app_with_state(
     let suites = Arc::new(suites::Suites::new(config.suites.definition_file.clone(), config.suites.mcp_file.clone(), config.suites.generated_directory.clone()));
     let chief = Arc::new(chief::Authority::new(config.sessions.history_file.with_extension("chief.json")));
     sessions.attach_chief(Arc::clone(&chief));
+    let (start, stop) = config.operations.selected(config.herdr.backend);
     let state = AppState {
-        start_operation: ScriptOperation::new(
-            config.operations.start.script.clone(),
-            config.operations.start.working_directory.clone(),
-        ),
-        stop_operation: ScriptOperation::new(
-            config.operations.stop.script.clone(),
-            config.operations.stop.working_directory.clone(),
-        ),
+        start_operation: ScriptOperation::new(start.script.clone(), start.working_directory.clone()),
+        stop_operation: ScriptOperation::new(stop.script.clone(), stop.working_directory.clone()),
         execution: Arc::new(Mutex::new(())),
         history: Arc::new(history::History::new(config.sessions.history_file.clone(), sessions.clock())),
         native_session_directories: ["${roots.pi_agent}/sessions", "${roots.omp_agent}/sessions"]
@@ -235,6 +231,7 @@ pub fn app_with_state(
         chief,
         delegations: Arc::new(chief_delegation::Delegations::new(config.sessions.history_file.with_extension("delegations.json"))),
         chief_reports: Arc::new(chief_reports::Reports::new(config.sessions.history_file.with_extension("chief-reports.jsonl"))),
+        launches: Arc::new(herdr::launch::Launches::new(sessions.clock())),
         sessions,
         shutdown,
         zones: Arc::new(zones::Zones::new(config.zones.registry_file.clone())),
@@ -306,9 +303,11 @@ pub fn app_with_state(
         .route("/api/scheduler/maps/{name}/runs", post(controllers::runs_controller::start_run))
         .route("/api/workflow/runs", get(controllers::runs_controller::list_runs))
         .route("/api/workflow/runs/{id}", get(controllers::runs_controller::get_run).patch(controllers::runs_controller::rename_run))
+        .route("/api/workflow/runs/{id}/locate", post(controllers::runs_controller::locate_chat))
         .route("/api/workflow/manager/status", post(controllers::runs_controller::manager_status))
         .route("/api/workflow/manager/prepare_inputs", post(controllers::runs_controller::manager_prepare_inputs))
         .route("/api/workflow/manager/collect", post(controllers::runs_controller::manager_collect))
+        .route("/api/workflow/manager/script-output", post(controllers::runs_controller::manager_script_output))
         .route("/api/workflow/manager/dispatch", post(controllers::runs_controller::manager_dispatch))
         .route("/api/workflow/manager/complete", post(controllers::runs_controller::manager_complete))
         .route("/api/workflow/manager/fail", post(controllers::runs_controller::manager_fail))
@@ -319,6 +318,7 @@ pub fn app_with_state(
         .route("/api/workflow/manager/pause", post(controllers::runs_controller::manager_pause))
         .route("/api/workflow/manager/resume", post(controllers::runs_controller::manager_resume))
         .route("/api/workflow/node/context", post(controllers::runs_controller::node_context))
+        .route("/api/workflow/node/approve", post(controllers::runs_controller::node_approve))
         .route("/api/workflow/node/report", post(controllers::runs_controller::node_report))
         .route("/api/scheduler/maps/{name}/nodes/new", get(controllers::scheduler_controller::new_node))
         .route("/api/scheduler/maps/{name}/nodes/edit", post(controllers::scheduler_controller::edit_node))

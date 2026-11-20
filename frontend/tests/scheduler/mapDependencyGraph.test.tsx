@@ -4,6 +4,24 @@ import { MapGraph } from '../../src/scheduler/maps/MapGraph'
 
 import { map } from '../support/unorderedMap'
 
+it('distinguishes manual approval from automatic defaults and leaves end-node approval inapplicable', () => {
+  const ordinary = { title: 'Automatic', bot_id: '', input: '', zone: '', blocked_by: [] }
+  render(<MapGraph map={{ title: 'Approval', description: '', nodes: {
+    automatic: ordinary,
+    manual: { ...ordinary, title: 'Manual', auto_approved: false },
+    end: { ...ordinary, title: 'End', auto_approved: false, end_node: true },
+  } }} selectedId={null} onSelect={vi.fn()} />)
+  const automatic = screen.getByRole('button', { name: 'Automatic automatic' })
+  const manual = screen.getByRole('button', { name: 'Manual manual' })
+  const end = screen.getByRole('button', { name: 'End end' })
+  expect(automatic).toHaveAttribute('data-approval-mode', 'auto')
+  expect(automatic.querySelector('.scheduler-node-shape')).toBeNull()
+  expect(manual).toHaveAttribute('data-approval-mode', 'manual')
+  expect(manual.querySelector('.scheduler-node-shape')).not.toBeNull()
+  expect(end).not.toHaveAttribute('data-approval-mode')
+  expect(end.querySelector('.scheduler-node-shape')).toBeNull()
+})
+
 it('renders dependency layers before dependents and keeps parallel definition order rather than traversal discovery order', () => {
   render(<MapGraph map={map} selectedId={null} onSelect={vi.fn()} />)
   const graph = screen.getByRole('group', { name: 'Map 依赖图' })

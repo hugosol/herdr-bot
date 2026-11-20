@@ -13,9 +13,11 @@ import { fetchZones, type ZoneRegistration } from '../controllers/zoneController
 import { GroupOptions, useGroupRefresh } from '../app/entityGroups'
 import { renderChatNameExample } from '../tasks/chatNaming'
 
-const STAGE_LABELS: Record<'starting' | 'submitting', string> = {
+const STAGE_LABELS = {
   starting: '正在启动',
+  initializing: '正在初始化输入',
   submitting: '正在提交初始指示',
+  retrying: '初始指示未提交，1 秒后重试（最多重试 5 次）',
 }
 
 const FAILURE_STAGE_LABELS: Record<string, string> = {
@@ -44,8 +46,8 @@ function failureOutcomeText(creation: ChatCreation): string {
     case 'start':
       return '现场已存在：Tab 与 Pane 已创建并保留，初始指示尚未提交；不会自动重发。'
     case 'submit':
-      return failure.code === 'herdr-command-failed'
-        ? '现场已存在：agent 已就绪，但初始指示的提交被明确拒绝；不会自动重发。'
+      return creation.inputOutcome === 'not-submitted'
+        ? '现场已存在：初始指示未提交，不会自动重发。'
         : '现场已存在：agent 已就绪；初始指示的投递结果未确认，不能断定它一定没有发送；不会自动重发。'
   }
   return '本次创建没有完成；不会自动重试。'
@@ -421,11 +423,10 @@ export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 
           </p>
         )}
 
-        {running && creation !== null && (
+        {creation !== null && creation.stage !== 'succeeded' && creation.stage !== 'failed' && (
           <p className="chat-stage" data-testid="chat-create-stage" role="status">
-            {creation.stage === 'starting'
-              ? STAGE_LABELS.starting
-              : STAGE_LABELS.submitting}
+            {STAGE_LABELS[creation.stage]}
+            {creation.stage === 'retrying' && `：${creation.retryReason}`}
           </p>
         )}
 

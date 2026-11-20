@@ -16,7 +16,9 @@ use std::time::Duration;
 use serde_json::Value;
 use tokio::process::Command;
 
-use crate::config::HerdrConfig;
+use crate::config::{HerdrBackend, HerdrConfig};
+
+use super::app::AppHost;
 
 use super::identity::{
     candidate_native_id, native_error, native_header_or_pending, read_native_id,
@@ -45,6 +47,27 @@ pub struct Workspace {
     pub label: String,
 }
 
+/// Owned wire rows, with each adapter identifying its two placement fields.
+pub(super) struct WorkspaceInventory {
+    pub records: Vec<Value>,
+    pub command: &'static str,
+    pub id_key: &'static str,
+    pub name_key: &'static str,
+}
+
+impl WorkspaceInventory {
+    fn entries(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.records.iter().filter_map(|entry| Some((
+            nonempty(entry.get(self.id_key))?,
+            nonempty(entry.get(self.name_key))?,
+        )))
+    }
+
+    fn error(&self, detail: &str) -> HerdrError {
+        HerdrError::UnexpectedResponse { command: self.command, detail: detail.into() }
+    }
+}
+
 /// 新建 Tab 后由 Herdr 返回的对象标识；两个标识都取自响应，不按名称或序号猜测。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatedTab {
@@ -53,7 +76,7 @@ pub struct CreatedTab {
 }
 
 /// Herdr 控制失败：每个类别都说明失败发生在哪个控制步骤，不把未知说成确定。
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum HerdrError {
     /// CLI 未能生成进程，确认该次命令没有外部效果。
     NotStarted(String),
@@ -65,11 +88,15 @@ pub enum HerdrError {
     WorkspaceNotFound { name: String },
     /// 配置名称匹配到多个 Workspace，不能任取一个。
     WorkspaceAmbiguous { name: String, matches: usize },
+    /// Closing the selected Tab would also close other workspaces.
+    UnsafeCloseScope,
     /// Herdr 明确返回了失败。
     CommandFailed {
         command: &'static str,
         message: String,
     },
+    /// The input operation explicitly rejected a blocked target before writing.
+    InputBlocked { command: &'static str, message: String },
     /// Herdr 成功退出但响应缺少本 adapter 需要的对象标识。
     UnexpectedResponse {
         command: &'static str,
@@ -85,7 +112,9 @@ impl HerdrError {
             Self::Timeout(_) => "herdr-timeout",
             Self::WorkspaceNotFound { .. } => "workspace-not-found",
             Self::WorkspaceAmbiguous { .. } => "workspace-ambiguous",
+            Self::UnsafeCloseScope => "close-scope-denied",
             Self::CommandFailed { .. } => "herdr-command-failed",
+            Self::InputBlocked { .. } => "herdr-input-blocked",
             Self::UnexpectedResponse { .. } => "herdr-unexpected-response",
         }
     }
@@ -110,7 +139,8 @@ impl HerdrError {
                     "名称恰好为 “{name}” 的 Herdr Workspace 有 {matches} 个；不能任取一个，本次没有继续创建。"
                 )
             }
-            Self::CommandFailed { command, message } => {
+            Self::UnsafeCloseScope => "关闭此 Tab 会扩大到 worktree group；未发送关闭命令。".into(),
+            Self::CommandFailed { command, message } | Self::InputBlocked { command, message } => {
                 format!("Herdr 的 {command} 失败：{message}")
             }
             Self::UnexpectedResponse { command, detail } => {
@@ -120,17 +150,26 @@ impl HerdrError {
     }
 }
 
-/// 生产用的 Herdr 控制 adapter。
+#[derive(Debug, Clone)]
+enum Host {
+    Tui(PathBuf),
+    App(AppHost),
+}
+
+/// 生产用的 Herdr 控制；运行期间只持有所选宿主的可执行路径。
 #[derive(Debug, Clone)]
 pub struct HerdrClient {
-    executable: PathBuf,
+    host: Host,
     workspace_name: String,
 }
 
 impl HerdrClient {
     pub fn new(config: &HerdrConfig) -> Self {
         Self {
-            executable: config.executable.clone(),
+            host: match config.backend {
+                HerdrBackend::Tui => Host::Tui(config.executable.clone()),
+                HerdrBackend::App => Host::App(AppHost::new(config.app_executable.clone(), config.core_executable.clone())),
+            },
             workspace_name: config.workspace_name.clone(),
         }
     }
@@ -140,94 +179,76 @@ impl HerdrClient {
         &self.workspace_name
     }
 
-    /// 按本次目标名称精确查找唯一 Workspace；焦点与顺序都不参与选择。
+    pub(crate) fn workspace_kind(&self) -> &'static str {
+        match self.host {
+            Host::Tui(_) => "Workspace",
+            Host::App(_) => "Space",
+        }
+    }
+
+    /// 按本次目标名称精确查找唯一容器；焦点与顺序都不参与选择。
     pub async fn workspace(&self, name: &str) -> Result<Workspace, HerdrError> {
-        let value = self
-            .run(
-                "workspace list",
-                &["workspace".into(), "list".into()],
-                QUERY_TIMEOUT,
-            )
-            .await?;
-        let entries = value
-            .pointer("/result/workspaces")
-            .and_then(Value::as_array)
-            .ok_or_else(|| HerdrError::UnexpectedResponse {
-                command: "workspace list",
-                detail: "响应缺少 result.workspaces 数组".to_string(),
-            })?;
-
-        let mut matches = Vec::new();
-        for entry in entries {
-            let label = entry.get("label").and_then(Value::as_str);
-            let id = entry.get("workspace_id").and_then(Value::as_str);
-            if let (Some(label), Some(id)) = (label, id)
-                && label == name
-            {
-                matches.push(Workspace {
-                    id: id.to_string(),
-                    label: label.to_string(),
-                });
-            }
+        let inventory = self.workspace_inventory().await?;
+        let mut matches = inventory.entries().filter(|(_, label)| *label == name);
+        let (id, label) = matches.next().ok_or_else(|| HerdrError::WorkspaceNotFound { name: name.into() })?;
+        let count = matches.count() + 1;
+        if count != 1 {
+            return Err(HerdrError::WorkspaceAmbiguous { name: name.into(), matches: count });
         }
-
-        match matches.len() {
-            0 => Err(HerdrError::WorkspaceNotFound {
-                name: name.to_string(),
-            }),
-            1 => Ok(matches.remove(0)),
-            count => Err(HerdrError::WorkspaceAmbiguous {
-                name: name.to_string(),
-                matches: count,
-            }),
-        }
+        Ok(Workspace { id: id.into(), label: label.into() })
     }
 
     /// Display-only inventory; callers must retain saved IDs when labels are unavailable.
     pub(crate) async fn workspace_labels(&self) -> Result<Vec<Workspace>, HerdrError> {
-        let value = self.run("workspace list", &["workspace".into(), "list".into()], QUERY_TIMEOUT).await?;
-        let entries = value.pointer("/result/workspaces").and_then(Value::as_array)
-            .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "响应缺少 result.workspaces 数组".into() })?;
-        Ok(entries.iter().filter_map(|entry| Some(Workspace {
-            id: nonempty(entry.get("workspace_id"))?.to_owned(),
-            label: nonempty(entry.get("label"))?.to_owned(),
-        })).collect())
+        let inventory = self.workspace_inventory().await?;
+        Ok(inventory.entries().map(|(id, label)| Workspace { id: id.into(), label: label.into() }).collect())
     }
 
-    /// Strict ID lookup: only a complete successful inventory can prove absence.
-    /// Recovery fallback policy belongs to the caller, not the CLI adapter.
+    /// Only a successful inventory with valid IDs can prove the original ID is absent.
     pub(crate) async fn workspace_by_id(&self, id: &str) -> Result<Option<Workspace>, HerdrError> {
-            let value = self.run("workspace list", &["workspace".into(), "list".into()], QUERY_TIMEOUT).await?;
-            let entries = value.pointer("/result/workspaces").and_then(Value::as_array)
-                .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "响应缺少 result.workspaces 数组".into() })?;
-            let mut original = None;
-            for entry in entries {
-                let entry_id = nonempty(entry.get("workspace_id"))
-                    .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "Workspace 缺少 ID，无法确认原位置是否已删除".into() })?;
-                if entry_id == id {
-                    let label = nonempty(entry.get("label"))
-                        .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "原 Workspace 缺少 label".into() })?;
-                    if original.is_some() { return Err(HerdrError::UnexpectedResponse { command: "workspace list", detail: "原 Workspace ID 重复".into() }); }
-                    original = Some(Workspace { id: id.to_owned(), label: label.to_owned() });
-                }
+        let inventory = self.workspace_inventory().await?;
+        let mut original = None;
+        for entry in &inventory.records {
+            let entry_id = nonempty(entry.get(inventory.id_key))
+                .ok_or_else(|| inventory.error("容器缺少 ID，无法确认原位置"))?;
+            let label = nonempty(entry.get(inventory.name_key))
+                .ok_or_else(|| inventory.error("容器缺少名称，无法确认原位置"))?;
+            if entry_id == id && original.replace(label).is_some() {
+                return Err(inventory.error("原容器 ID 重复"));
             }
-            Ok(original)
+        }
+        Ok(original.map(|label| Workspace { id: id.into(), label: label.into() }))
+    }
+
+    async fn workspace_inventory(&self) -> Result<WorkspaceInventory, HerdrError> {
+        if let Host::App(app) = &self.host {
+            return app.inventory().await;
+        }
+        let mut value = self.run("workspace list", &["workspace".into(), "list".into()], QUERY_TIMEOUT).await?;
+        let Some(Value::Array(records)) = value.pointer_mut("/result/workspaces").map(Value::take) else {
+            return Err(HerdrError::UnexpectedResponse { command: "workspace list", detail: "响应缺少 result.workspaces 数组".into() });
+        };
+        Ok(WorkspaceInventory { records, command: "workspace list", id_key: "workspace_id", name_key: "label" })
     }
 
     /// Only exact checkout metadata proves ownership; labels and path basenames do not.
     pub(crate) async fn main_worktree_for(&self, cwd: &str, timeout: Duration) -> Result<Option<String>, HerdrError> {
-        let value = self.run("workspace list", &["workspace".into(), "list".into()], QUERY_TIMEOUT).await?;
-        let entries = value.pointer("/result/workspaces").and_then(Value::as_array)
-            .ok_or_else(|| HerdrError::UnexpectedResponse { command: "workspace list", detail: "响应缺少 result.workspaces 数组".into() })?;
+        if matches!(self.host, Host::App(_)) {
+            // App does not expose the exact checkout ownership evidence needed here.
+            return Ok(None);
+        }
+        let inventory = self.workspace_inventory().await?;
         let mut roots = Vec::new();
-        for entry in entries {
+        for entry in &inventory.records {
             let Some(checkout) = nonempty(entry.pointer("/worktree/checkout_path")) else { continue; };
             if !crate::zones::same_path(&crate::zones::display_path(Path::new(checkout)), &crate::zones::display_path(Path::new(cwd))) { continue; }
             let Some(key) = nonempty(entry.pointer("/worktree/repo_key")) else { continue; };
             let key = PathBuf::from(key);
             if !key.is_absolute() || !key.is_dir() { continue; }
             let root = tokio::task::spawn_blocking(move || {
-                let output = crate::zones::git::run_git(&key, &["worktree", "list", "--porcelain", "-z"], timeout).ok()?;
+                // Bind Git to the reported metadata directory itself: ordinary
+                // discovery from a path inside a checkout is not ownership proof.
+                let output = crate::zones::git::run_git(&key, &["--git-dir=.", "worktree", "list", "--porcelain", "-z"], timeout).ok()?;
                 if !output.status.success() { return None; }
                 let text = std::str::from_utf8(&output.stdout).ok()?;
                 let mut fields = text.split('\0');
@@ -244,6 +265,47 @@ impl HerdrClient {
         Ok(if roots.len() == 1 { roots.pop() } else { None })
     }
 
+    pub(crate) fn is_app(&self) -> bool { matches!(self.host, Host::App(_)) }
+
+    /// App creates the tab and its program together. TUI creates an owned
+    /// pane first and passes the same launch correlation through its env.
+    pub(crate) async fn launch_tab(
+        &self, workspace: &str, cwd: Option<&str>, label: &str, alias: &str,
+        kind: &str, args: &[String], launch: &super::launch::Launch,
+    ) -> Result<std::sync::Arc<LaunchTarget>, HerdrError> {
+        let (launch_id, target_id) = launch.correlation();
+        let (tab, control) = match &self.host {
+            Host::Tui(_) => {
+                let env = [format!("{}={launch_id}", super::launch::LAUNCH_ID_ENV), format!("{}={target_id}", super::launch::TARGET_ID_ENV)];
+                let tab = self.create_tui_tab(workspace, cwd, label, &env).await?;
+                (tab, LaunchControl::Tui { alias: alias.into() })
+            }
+            Host::App(app) => {
+                let mut argv = Vec::with_capacity(7 + args.len());
+                argv.extend(["bun", "-e", APP_AGENT, "--", launch_id, target_id, kind].map(str::to_owned));
+                argv.extend_from_slice(args);
+                let (tab, terminal) = app.create(workspace, cwd, label, Some(&argv)).await?;
+                (tab, LaunchControl::App { terminal, correlation: Some((launch_id.into(), target_id.into())) })
+            }
+        };
+        let target = std::sync::Arc::new(LaunchTarget {
+            location: NavigationTarget { workspace_id: workspace.into(), tab_id: tab.tab_id, pane_id: tab.pane_id },
+            control,
+        });
+        launch.bind_target(target.clone());
+        Ok(target)
+    }
+
+    pub(crate) async fn launch_unreported_app(&self, workspace: &str, cwd: Option<&str>, label: &str, kind: &str, args: &[String]) -> Result<std::sync::Arc<LaunchTarget>, HerdrError> {
+        let Host::App(app) = &self.host else { return Err(native_error("launch requires selected App host")); };
+        let argv = std::iter::once(kind.to_owned()).chain(args.iter().cloned()).collect::<Vec<_>>();
+        let (tab, terminal) = app.create(workspace, cwd, label, Some(&argv)).await?;
+        Ok(std::sync::Arc::new(LaunchTarget {
+            location: NavigationTarget { workspace_id: workspace.into(), tab_id: tab.tab_id, pane_id: tab.pane_id },
+            control: LaunchControl::App { terminal, correlation: None },
+        }))
+    }
+
     /// 在指定 Workspace 中新建 Tab；未指定 cwd 时由 Herdr 选择目录。
     ///
     /// 不使用当前焦点 Workspace；`--no-focus` 避免创建动作改变用户在 Herdr 中的焦点。
@@ -253,9 +315,17 @@ impl HerdrClient {
         cwd: Option<&str>,
         label: &str,
     ) -> Result<CreatedTab, HerdrError> {
+        if let Host::App(app) = &self.host {
+            return app.create_tab(workspace_id, cwd, label).await;
+        }
+        self.create_tui_tab(workspace_id, cwd, label, &[]).await
+    }
+
+    async fn create_tui_tab(&self, workspace_id: &str, cwd: Option<&str>, label: &str, env: &[String]) -> Result<CreatedTab, HerdrError> {
         let mut args = vec!["tab".into(), "create".into(), "--workspace".into(), workspace_id.into()];
         if let Some(cwd) = cwd { args.extend(["--cwd".into(), cwd.into()]); }
         args.extend(["--label".into(), label.into(), "--no-focus".into()]);
+        for value in env { args.extend(["--env".into(), value.clone()]); }
         let value = self
             .run(
                 "tab create",
@@ -325,13 +395,10 @@ impl HerdrClient {
     ///
     /// 不使用 `--wait`：创建成功只要求提交被确认，不等待模型完成一轮任务。超时或错误都不重试。
     pub async fn prompt(&self, target: &str, text: &str) -> Result<(), HerdrError> {
-        let value = self
-            .run(
-                "agent prompt",
-                &["agent".into(), "prompt".into(), target.into(), text.into()],
-                PROMPT_TIMEOUT,
-            )
-            .await?;
+        let value = self.prompt_once(target, text).await.map_err(|error| match error {
+            HerdrError::InputBlocked { command, message } => HerdrError::CommandFailed { command, message },
+            error => error,
+        })?;
         value
             .pointer("/result/agent")
             .ok_or_else(|| HerdrError::UnexpectedResponse {
@@ -341,13 +408,17 @@ impl HerdrClient {
         Ok(())
     }
 
-    /// Query the live inventory on every attempt; names, cwd and registration
-    /// liveness are never native conversation identities.
-    pub(crate) async fn matching_targets(&self, kind: &str, selected: &crate::chats::history::HistorySelection) -> Result<Vec<NavigationTarget>, HerdrError> {
+    async fn prompt_once(&self, target: &str, text: &str) -> Result<Value, HerdrError> {
+        self.run(
+            "agent prompt",
+            &["agent".into(), "prompt".into(), target.into(), text.into()],
+            PROMPT_TIMEOUT,
+        ).await
+    }
+
+    /// Verify the selected historical identity without querying either host.
+    pub(crate) async fn selected_native_id<'a>(&self, kind: &str, selected: &'a crate::chats::history::HistorySelection) -> Result<std::borrow::Cow<'a, str>, HerdrError> {
         let session_id = selected.session_id.as_str();
-        let value = self.run("agent list", &["agent".into(), "list".into()], QUERY_TIMEOUT).await?;
-        let entries = value.pointer("/result/agents").and_then(Value::as_array)
-            .ok_or_else(|| native_error("agent list response has no result.agents array"))?;
         if matches!(kind, "omp" | "pi") && let Some(path) = selected.startup_identity_path.as_ref() {
             let path = PathBuf::from(path);
             let pending = saved_pending_native_session(selected);
@@ -359,9 +430,18 @@ impl HerdrClient {
                 return Err(native_error("saved startup path belongs to another native session"));
             }
         }
-        let id = if std::path::Path::new(session_id).is_absolute() {
-            std::borrow::Cow::Owned(read_native_id(session_id, kind).await?)
-        } else { std::borrow::Cow::Borrowed(session_id) };
+        if Path::new(session_id).is_absolute() {
+            Ok(std::borrow::Cow::Owned(read_native_id(session_id, kind).await?))
+        } else { Ok(std::borrow::Cow::Borrowed(session_id)) }
+    }
+
+    /// Query the live TUI inventory on every attempt; names, cwd and
+    /// registration liveness are never native conversation identities.
+    pub(crate) async fn matching_targets(&self, kind: &str, selected: &crate::chats::history::HistorySelection) -> Result<Vec<NavigationTarget>, HerdrError> {
+        let value = self.run("agent list", &["agent".into(), "list".into()], QUERY_TIMEOUT).await?;
+        let entries = value.pointer("/result/agents").and_then(Value::as_array)
+            .ok_or_else(|| native_error("agent list response has no result.agents array"))?;
+        let id = self.selected_native_id(kind, selected).await?;
         let mut targets = Vec::new();
         for entry in entries {
             if entry.get("agent").and_then(Value::as_str) != Some(kind) { continue; }
@@ -389,8 +469,38 @@ impl HerdrClient {
         Ok(())
     }
 
-    /// Close only the saved execution Tab; no discovery, confirmation override or retry.
-    pub(crate) async fn close_tab(&self, tab_id: &str) -> Result<(), HerdrError> {
+    pub(crate) async fn focus_app_target(&self, target: &LaunchTarget) -> Result<Value, HerdrError> {
+        match (&self.host, &target.control) {
+            (Host::App(app), LaunchControl::App { terminal, .. }) => app.focus_bound_pane(&target.location, terminal).await,
+            _ => Err(HerdrError::UnexpectedResponse { command: "App navigation", detail: "目标没有当前 App/core 的终端关联".into() }),
+        }
+    }
+
+    pub(crate) async fn close_app_target(&self, target: &LaunchTarget) -> Result<(), HerdrError> {
+        match (&self.host, &target.control) {
+            (Host::App(app), LaunchControl::App { .. }) => app.close_tab(&target.location.tab_id).await,
+            _ => Err(HerdrError::UnexpectedResponse { command: "App close", detail: "目标没有当前 App/core 的终端关联".into() }),
+        }
+    }
+
+    /// TUI handles an empty Workspace. Never ask it to close a known worktree
+    /// group, even on installations with the native confirmation disabled.
+    pub(crate) async fn close_tui_tab(&self, workspace_id: &str, tab_id: &str) -> Result<(), HerdrError> {
+        let inventory = self.workspace_inventory().await?;
+        let mut owners = inventory.records.iter().filter(|row| row["workspace_id"].as_str() == Some(workspace_id));
+        let owner = owners.next().filter(|_| owners.next().is_none())
+            .ok_or_else(|| inventory.error("无法确认目标 Tab 保存的 Workspace"))?;
+        if let Some(worktree) = owner.get("worktree").filter(|value| !value.is_null()) {
+            let linked = worktree["is_linked_worktree"].as_bool().ok_or_else(|| inventory.error("缺少 worktree 类型"))?;
+            if !linked && owner["tab_count"].as_u64().is_none_or(|count| count <= 1) {
+                let repo = nonempty(worktree.get("repo_key")).ok_or_else(|| inventory.error("缺少 worktree 组身份"))?;
+                if inventory.records.iter().any(|row| row["workspace_id"] != workspace_id
+                    && nonempty(row.pointer("/worktree/repo_key")) == Some(repo))
+                {
+                    return Err(HerdrError::UnsafeCloseScope);
+                }
+            }
+        }
         let value = self.run("tab close", &["tab".into(), "close".into(), tab_id.into()], QUERY_TIMEOUT).await?;
         if value.pointer("/result/type").and_then(Value::as_str) != Some("ok") {
             return Err(HerdrError::UnexpectedResponse { command: "tab close", detail: "missing ok confirmation".into() });
@@ -405,7 +515,24 @@ impl HerdrClient {
         args: &[String],
         timeout: Duration,
     ) -> Result<Value, HerdrError> {
-        let mut command = Command::new(&self.executable);
+        let Host::Tui(executable) = &self.host else {
+            return Err(HerdrError::CommandFailed {
+                command: command_name,
+                message: "此操作需要 TUI 控制协议；不会回退到 TUI。".into(),
+            });
+        };
+        run_cli(executable, command_name, args, timeout).await
+    }
+}
+
+/// Run one selected executable and decode its JSON response without a shell.
+pub(super) async fn run_cli(
+    executable: &Path,
+    command_name: &'static str,
+    args: &[impl AsRef<std::ffi::OsStr>],
+    timeout: Duration,
+) -> Result<Value, HerdrError> {
+        let mut command = Command::new(executable);
         command
             .args(args)
             .stdin(Stdio::null())
@@ -418,7 +545,7 @@ impl HerdrClient {
         let child = command.spawn().map_err(|error| {
             HerdrError::NotStarted(format!(
                 "无法启动 {}（{}）：{error}",
-                self.executable.display(),
+                executable.display(),
                 command_name
             ))
         })?;
@@ -436,10 +563,15 @@ impl HerdrClient {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         if !output.status.success() {
-            if let Some(error) = serde_json::from_str::<Value>(stderr.trim()).ok()
-                .and_then(|value| value.get("error").map(|error| response_error(command_name, error)))
-            {
-                return Err(error);
+            for stream in [stderr.trim(), stdout.trim()] {
+                if let Ok(value) = serde_json::from_str::<Value>(stream) {
+                    if let Some(error) = value.get("error") {
+                        return Err(response_error(command_name, error));
+                    }
+                    if value.get("code").is_some() {
+                        return Err(response_error(command_name, &value));
+                    }
+                }
             }
             let detail = stderr.trim().to_string();
             let detail = if detail.is_empty() {
@@ -468,7 +600,6 @@ impl HerdrClient {
             return Err(response_error(command_name, error));
         }
         Ok(value)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
@@ -479,10 +610,143 @@ pub struct NavigationTarget {
     pub pane_id: String,
 }
 impl NavigationTarget {
-    fn from_agent(agent: &Value) -> Result<Self, HerdrError> {
+    pub(super) fn from_agent(agent: &Value) -> Result<Self, HerdrError> {
         let field = |name| nonempty(agent.get(name)).map(str::to_owned)
             .ok_or_else(|| native_error("matched agent has incomplete navigation location"));
         Ok(Self { workspace_id: field("workspace_id")?, tab_id: field("tab_id")?, pane_id: field("pane_id")? })
+    }
+}
+
+// App has a structured argv but no per-Tab env setting. Set only the launch
+// correlation; keep the agent on the core PTY for native input and OSC 7501.
+// All Task args stay argv data.
+const APP_AGENT: &str = concat!(
+    "const [launchId, targetId, agent, ...args] = process.argv.slice(1); ",
+    "const child = Bun.spawn([agent, ...args], {env: {...process.env, HERDR_BOT_LAUNCH_ID: launchId, HERDR_BOT_LAUNCH_TARGET_ID: targetId}, stdin: 'inherit', stdout: 'inherit', stderr: 'inherit'}); ",
+    "process.exit(await child.exited);",
+);
+
+#[derive(Debug)]
+enum LaunchControl {
+    Tui { alias: String },
+    App { terminal: super::app::AppTerminal, correlation: Option<(String, String)> },
+}
+
+#[derive(Debug)]
+pub(crate) struct LaunchTarget {
+    pub(crate) location: NavigationTarget,
+    control: LaunchControl,
+}
+
+pub(super) enum LaunchVerificationError {
+    Unproven(HerdrError),
+    OfficialIdentity(HerdrError),
+    ReportedIdentity(HerdrError),
+}
+
+impl From<HerdrError> for LaunchVerificationError {
+    fn from(error: HerdrError) -> Self { Self::Unproven(error) }
+}
+
+impl From<LaunchVerificationError> for HerdrError {
+    fn from(error: LaunchVerificationError) -> Self {
+        match error {
+            LaunchVerificationError::Unproven(error) | LaunchVerificationError::OfficialIdentity(error)
+            | LaunchVerificationError::ReportedIdentity(error) => error,
+        }
+    }
+}
+
+impl LaunchTarget {
+    pub(crate) fn app_coordinates(&self) -> Option<(&str, &str)> {
+        match &self.control {
+            LaunchControl::App { terminal, .. } => Some(terminal.coordinates()),
+            LaunchControl::Tui { .. } => None,
+        }
+    }
+
+    pub(crate) async fn start_agent(&self, herdr: &HerdrClient, kind: &str, args: &[String]) -> Result<(), HerdrError> {
+        if let LaunchControl::Tui { alias } = &self.control {
+            herdr.start_agent(alias, kind, &self.location.pane_id, args).await?;
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn submit(&self, herdr: &HerdrClient, text: &str) -> Result<(), HerdrError> {
+        match (&self.control, &herdr.host) {
+            (LaunchControl::Tui { alias }, Host::Tui(_)) => {
+                let value = herdr.prompt_once(alias, text).await?;
+                if value.pointer("/result/type").and_then(Value::as_str) != Some("agent_prompted")
+                    || value.pointer("/result/agent/name").and_then(Value::as_str) != Some(alias)
+                {
+                    return Err(HerdrError::UnexpectedResponse {
+                        command: "agent prompt",
+                        detail: "响应没有确认 result.agent 对应本次启动目标".into(),
+                    });
+                }
+                Ok(())
+            }
+            (LaunchControl::App { terminal, .. }, Host::App(app)) => app.submit(terminal, text).await,
+            _ => Err(native_error("launch target host changed")),
+        }
+    }
+
+    pub(super) async fn verify(&self, herdr: &HerdrClient, kind: &str, cwd: &str, pid: u32, id: &str, file: Option<&str>) -> Result<super::NativeSession, LaunchVerificationError> {
+        let valid_cwd = |path: &str| crate::zones::same_path(path, cwd);
+        match (&self.control, &herdr.host) {
+            (LaunchControl::Tui { alias }, Host::Tui(_)) => {
+                let observation = herdr.run("agent get", &["agent".into(), "get".into(), alias.clone()], QUERY_TIMEOUT).await?;
+                let agent = observation.pointer("/result/agent").ok_or_else(|| native_error("missing launched agent"))?;
+                if NavigationTarget::from_agent(agent)? != self.location || nonempty(agent.get("agent")) != Some(kind) {
+                    return Err(native_error("TUI launch has another target or agent").into());
+                }
+                let process = herdr.run("pane process-info", &["pane".into(), "process-info".into(), "--pane".into(), self.location.pane_id.clone()], QUERY_TIMEOUT).await?;
+                let pane = process.pointer("/result/process_info").ok_or_else(|| native_error("missing pane process information"))?;
+                if nonempty(pane.get("pane_id")) != Some(self.location.pane_id.as_str())
+                    || !pane.get("foreground_processes").and_then(Value::as_array).is_some_and(|processes| processes.iter().any(|p| {
+                        p.get("pid").and_then(Value::as_u64) == Some(u64::from(pid))
+                            && nonempty(p.get("cwd")).or_else(|| nonempty(agent.get("foreground_cwd"))).is_some_and(valid_cwd)
+                    }))
+                {
+                    return Err(native_error("reported owner is not the current TUI pane process").into());
+                }
+                if agent.get("agent_session").is_some_and(|value| !value.is_null()) {
+                    // The pane/process is independently matched. A bad official
+                    // reference is a host failure, not just an unusable report.
+                    let official = super::identity::native_from_agent(agent, kind, tokio::time::Instant::now() + QUERY_TIMEOUT, true, true)
+                        .await.map_err(LaunchVerificationError::OfficialIdentity)?;
+                    if !valid_cwd(&official.cwd) {
+                        return Err(LaunchVerificationError::OfficialIdentity(native_error("official TUI identity cwd conflicts with launch directory")));
+                    }
+                    if official.session_id != id
+                        || matches!((official.session_file.as_deref(), file), (Some(a), Some(b)) if !crate::zones::same_path(a,b))
+                    {
+                        return Err(native_error("official TUI identity conflicts with launch report").into());
+                    }
+                    if official.session_file.is_some() || file.is_none() { return Ok(official); }
+                }
+            }
+            (LaunchControl::App { terminal, correlation: Some((launch_id, target_id)) }, Host::App(app)) => {
+                let record = app.observe_launch(&self.location, terminal).await?;
+                let actual_argv = record.get("argv").and_then(Value::as_array);
+                let root_pid = record.get("pid").and_then(Value::as_u64).and_then(|n| u32::try_from(n).ok());
+                let has_argument = |value: &str| actual_argv.is_some_and(|argv| argv.iter().filter_map(Value::as_str).any(|arg| {
+                    arg == value || arg.split([' ', '\'', '"']).any(|part| part == value)
+                }));
+                if nonempty(record.get("state")) != Some("live")
+                    || !has_argument(launch_id) || !has_argument(target_id)
+                    || !nonempty(record.get("cwd")).is_some_and(valid_cwd)
+                {
+                    return Err(native_error("core terminal no longer runs this launch program").into());
+                }
+                let root_pid = root_pid.ok_or_else(|| native_error("core terminal is missing its live process"))?;
+                if root_pid != pid && !tokio::task::spawn_blocking(move || super::launch::process_is_descendant(root_pid, pid)).await.unwrap_or(false) {
+                    return Err(native_error("reported owner is not the current App terminal process").into());
+                }
+            }
+            _ => return Err(native_error("launch target host changed").into()),
+        }
+        super::launch::reported_native_session(kind, cwd, id, file).await.map_err(LaunchVerificationError::ReportedIdentity)
     }
 }
 
@@ -497,15 +761,19 @@ fn response_error(command: &'static str, error: &Value) -> HerdrError {
         return HerdrError::Timeout(command);
     }
     let code = error.get("code").and_then(Value::as_str);
-    let message = error.get("message").and_then(Value::as_str);
-    HerdrError::CommandFailed {
-        command,
-        // The human message need not mention confirmation_required (or any
-        // other machine category). Keep both so backend diagnostics stay true.
-        message: match (code, message) {
-            (Some(code), Some(message)) => format!("{code}: {message}"),
-            (Some(detail), None) | (None, Some(detail)) => detail.to_owned(),
-            (None, None) => "Herdr returned an error response".to_owned(),
-        },
+    let kind = error.get("kind").and_then(Value::as_str);
+    let detail = error.as_str().or_else(|| error.get("message").and_then(Value::as_str));
+    let message = match (code.or(kind), detail) {
+        (Some(category), Some(detail)) => format!("{category}: {detail}"),
+        (Some(detail), None) | (None, Some(detail)) => detail.to_owned(),
+        (None, None) => "Herdr returned an error response".to_owned(),
+    };
+    // Only these documented host errors guarantee a pre-write block. In
+    // particular, agent_prompt_failed can follow partial terminal input.
+    match (command, code, kind) {
+        ("agent prompt", Some("agent_blocked"), None) | ("hc send", None, Some("blocked")) => {
+            HerdrError::InputBlocked { command, message }
+        }
+        _ => HerdrError::CommandFailed { command, message },
     }
 }

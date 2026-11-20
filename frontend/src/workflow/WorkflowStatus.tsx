@@ -6,6 +6,7 @@ const statuses: Record<string, { label: string; icon: string }> = {
   running: { label: '运行中', icon: '' },
   paused: { label: '已暂停', icon: 'Ⅱ' },
   completed: { label: '已完成', icon: '' },
+  'handed-to-user': { label: '已交给用户', icon: '↗' },
   failed: { label: '失败', icon: '!' },
 }
 

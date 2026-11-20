@@ -170,6 +170,7 @@ pub(crate) async fn create_chat(state: AppState, input: CreateChatRequest) -> Re
         Ok(args) => args,
         Err(error) => return Err(Error::Task(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。")),
     };
+    preset.env.select_host(&state.herdr);
     if let Err(message) = preset.env.check_entrypoints() {
         return Err(Error::Internal(
             "extension-entrypoint-invalid",
@@ -193,6 +194,7 @@ pub(crate) async fn create_chat(state: AppState, input: CreateChatRequest) -> Re
         };
         run_creation(
             herdr,
+            Arc::clone(&state.launches),
             history,
             prompts,
             Arc::clone(&job),
@@ -243,10 +245,14 @@ pub const CHAT_ID_LEN: usize = 6;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Stage {
-    /// 正在查找 Workspace、新建 Tab 并等待 agent 就绪。
+    /// 正在查找容器并启动目标。
     Starting,
+    /// 已获得目标位置，等待本次会话完成输入初始化。
+    Initializing,
     /// 目标 agent 已就绪，正在提交初始指示。
     Submitting,
+    /// 宿主确认未写入，正在等待唯一一次重试。
+    Retrying,
     /// 就绪与提交都已确认。
     Succeeded,
     /// 任一步失败或超时；已取得的现场标识仍保留在结果里。
@@ -278,6 +284,14 @@ pub struct Failure {
     pub message: String,
 }
 
+/// Distinguish a proved non-submission from an unconfirmed external effect.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UnconfirmedInput {
+    NotSubmitted,
+    Unknown,
+}
+
 /// 公开的创建状态；也是创建被接受时的回执与页面轮询读取的同一形状。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -302,6 +316,10 @@ pub struct ChatCreationView {
     pub agent_name: Option<String>,
     /// 只有初始指示提交被确认后才为 true；失败时不把未知说成已提交。
     pub input_submitted: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_outcome: Option<UnconfirmedInput>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_reason: Option<String>,
     /// 失败阶段与说明；成功时不出现。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<Failure>,
@@ -319,6 +337,8 @@ impl ChatCreationView {
             pane_id: None,
             agent_name: None,
             input_submitted: false,
+            input_outcome: None,
+            retry_reason: None,
             failure: None,
         }
     }
@@ -480,11 +500,11 @@ pub fn agent_launch_args(
 
 /// 执行一次已接受的创建；调用方已经固定了 Task 与 zone 的当时取值。
 ///
-/// 阶段推进只发生在真实控制结果之后：`agent start` 成功（Herdr 确认可交互）才提交输入，
-/// 有初始指示时须等 `agent prompt` 被确认后才进入成功；无指示时就绪即成功，保留未提交事实。
-/// 不等待模型轮次、Skill 执行或 connect-bot 接入。
+/// 两种宿主都要求本次目标与原生会话的 ready 上报；仅宿主的启动回执不能授权输入。
+/// 成功不等待模型轮次、Skill 执行或独立的 connect-bot 登记。
 pub(crate) async fn run_creation(
     herdr: Arc<HerdrClient>,
+    launches: Arc<herdr::launch::Launches>,
     history: Arc<crate::chats::history::History>,
     prompts: crate::prompts::PromptDictionary,
     job: Arc<Mutex<ChatCreationView>>,
@@ -530,8 +550,12 @@ pub(crate) async fn run_creation(
 
     let zone = mapping.directory.as_deref().expect("Chat launch always specifies an execution directory");
     let name = job.lock().await.name.clone();
-    let created = match herdr.create_tab(&workspace.id, Some(zone), &name).await {
-        Ok(created) => created,
+    let agent_name = new_agent_name();
+    let args = agent_launch_args(&preset.env, Some(&preset.trigger));
+    let kind = task.agent.label();
+    let launch = launches.begin(kind, Some(zone));
+    let target = match herdr.launch_tab(&workspace.id, Some(zone), &name, &agent_name, kind, &args, &launch).await {
+        Ok(target) => target,
         Err(error) => {
             fail(&job, FailureStage::Tab, &error, authority).await;
             return;
@@ -539,44 +563,25 @@ pub(crate) async fn run_creation(
     };
     {
         let mut view = job.lock().await;
-        view.tab_id = Some(created.tab_id);
-        view.pane_id = Some(created.pane_id);
+        view.tab_id = Some(target.location.tab_id.clone());
+        view.pane_id = Some(target.location.pane_id.clone());
+        if !herdr.is_app() { view.agent_name = Some(agent_name); }
     }
-
-    let agent_name = new_agent_name();
-    {
-        let mut view = job.lock().await;
-        view.agent_name = Some(agent_name.clone());
-    }
-    let args = agent_launch_args(&preset.env, Some(&preset.trigger));
-    let kind = task.agent.label();
-    let pane_id = job.lock().await.pane_id.clone().unwrap_or_default();
-    if let Err(error) = herdr.start_agent(&agent_name, kind, &pane_id, &args).await {
+    if let Err(error) = target.start_agent(&herdr, kind, &args).await {
         fail(&job, FailureStage::Start, &error, authority).await;
         return;
     }
+    job.lock().await.stage = Stage::Initializing;
+    let identity = match launch.ready(&herdr).await {
+        Ok(identity) => identity,
+        Err(error) => {
+            fail(&job, FailureStage::Start, &error, authority).await;
+            return;
+        }
+    };
 
     if chief.is_some() || delegation.is_some() {
         let creation_id = job.lock().await.id.clone();
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
-        let identity = loop {
-            let identity = async {
-                if delegation.is_some() { herdr.started_session_with_live_cwd(&agent_name,kind,deadline).await }
-                else { herdr.started_session(&agent_name,kind,deadline).await }
-            };
-            match tokio::time::timeout_at(deadline,identity).await {
-                Ok(Ok(identity)) if tokio::time::Instant::now() < deadline => break identity,
-                Ok(Err(error)) if delegation.is_some() => {
-                    fail(&job,FailureStage::Submit,&error,authority).await;
-                    return;
-                }
-                _ if tokio::time::Instant::now() >= deadline => {
-                    fail(&job,FailureStage::Submit,&HerdrError::Timeout(if delegation.is_some() {"delegated Chat native identity"} else {"chief native identity"}),authority).await;
-                    return;
-                }
-                _ => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
-            }
-        };
         let saved = history.record_zone(&identity.session_id,&name,kind,&identity.cwd,identity.session_file.as_deref(),Some(&workspace.id),&task.id,identity.startup_identity_path.as_deref()).await;
         let bound = if let Some((chief,sessions)) = &chief {
             let _membership = chief.membership.lock().await;
@@ -596,6 +601,7 @@ pub(crate) async fn run_creation(
                 if let Err(error) = chief.creation_failed(&creation_id,false) { eprintln!("chief binding failure persistence failed: {error:?}"); }
             }
             view.stage=Stage::Failed;
+            view.input_outcome = Some(UnconfirmedInput::NotSubmitted);
             view.failure=Some(Failure { stage:FailureStage::Submit,code:if delegation.is_some() {"delegation-binding-failed"} else {"chief-binding-failed"}.into(),message:format!("身份保存或绑定失败：history={saved:?}, authority={bound:?}, delegation={delegated:?}；agent 已启动，未提交初始输入，保留现场。") });
             return;
         }
@@ -616,6 +622,7 @@ pub(crate) async fn run_creation(
                 if let Err(error) = chief.creation_failed(&view.id,false) { eprintln!("chief prompt failure persistence failed: {error:?}"); }
             }
             view.stage = Stage::Failed;
+            view.input_outcome = Some(UnconfirmedInput::NotSubmitted);
             view.failure = Some(Failure {
                 stage: FailureStage::Submit,
                 code: "prompt-dictionary-invalid".into(),
@@ -627,96 +634,99 @@ pub(crate) async fn run_creation(
     // An empty trigger starts an interactive Chat without inventing a user
     // turn. Herdr rejects empty prompts; readiness already confirms startup.
     if !text.is_empty() {
-        if let Err(error) = herdr.prompt(&agent_name, text).await {
-            fail(&job, FailureStage::Submit, &error, authority).await;
-            return;
+        use herdr::launch::{InitialInputError, InitialInputProgress};
+        let progress = |event: InitialInputProgress<'_>| {
+            let retry_reason = match event {
+                InitialInputProgress::WaitingToRetry(error) => Some(error.message()),
+                InitialInputProgress::RetrySubmitting => None,
+            };
+            let job = job.as_ref();
+            async move {
+                let mut view = job.lock().await;
+                view.stage = if retry_reason.is_some() { Stage::Retrying } else { Stage::Submitting };
+                view.input_outcome = retry_reason.as_ref().map(|_| UnconfirmedInput::NotSubmitted);
+                view.retry_reason = retry_reason;
+            }
+        };
+        match launch.submit_initial(&herdr, &target, text, progress).await {
+            Ok(()) => {}
+            Err(InitialInputError::BeforeSend(error)) => {
+                fail(&job, FailureStage::Start, &error, authority).await;
+                return;
+            }
+            Err(InitialInputError::Send(error)) => {
+                fail(&job, FailureStage::Submit, &error, authority).await;
+                return;
+            }
+            Err(InitialInputError::RetryCancelled { blocked, reason }) => {
+                record_failure(&job, authority, false, Some(UnconfirmedInput::NotSubmitted), Failure {
+                    stage: FailureStage::Submit,
+                    code: "initial-input-retry-cancelled".into(),
+                    message: format!("{} 初始指示未提交；原启动目标不再有效或无法确认，已取消重试。{}", blocked.message(), reason.message()),
+                }).await;
+                return;
+            }
         }
     }
 
+    if herdr.is_app() { launch.retain_app_target(); }
     let creation_id = {
         let mut view = job.lock().await;
         view.input_submitted = !text.is_empty();
         view.stage = Stage::Succeeded;
         view.id.clone()
     };
-    // The page and the creation result do not own this task. Never hold a creation,
-    // current-registration or history lock while waiting for external identity.
+    // History persistence remains independent of the ordinary creation result.
     if chief.is_none() && delegation.is_none() {
         tokio::spawn(async move {
-            collect_native_history(herdr, history, creation_id, agent_name, kind, name, workspace.id, task.id).await;
+            if let Err(error) = history.record_zone(
+                &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(), Some(&workspace.id), &task.id, identity.startup_identity_path.as_deref(),
+            ).await {
+                eprintln!("warning: zone-history creation={creation_id} kind={kind} session={} save-failed: {error}", identity.session_id);
+            }
         });
-    }
-}
-
-async fn collect_native_history(
-    herdr: Arc<HerdrClient>,
-    history: Arc<crate::chats::history::History>,
-    creation_id: String,
-    agent_name: String,
-    kind: &'static str,
-    name: String,
-    original_workspace_id: String,
-    source_task_id: String,
-) {
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
-    let mut last_reason = String::from("native identity unavailable");
-    let identity = loop {
-        match tokio::time::timeout_at(deadline, herdr.started_session(&agent_name, kind, deadline)).await {
-            Ok(Ok(identity)) if tokio::time::Instant::now() < deadline => break identity,
-            Ok(Ok(_)) => {
-                eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: native identity arrived after deadline");
-                return;
-            }
-            Ok(Err(error)) => {
-                // A reader noticing the shared deadline must not overwrite the
-                // useful underlying cause (for example an unavailable header).
-                if tokio::time::Instant::now() < deadline { last_reason = error.message(); }
-            }
-            Err(_) => {
-                eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: {last_reason}");
-                return;
-            }
-        }
-        if tokio::time::timeout_at(deadline, tokio::time::sleep(std::time::Duration::from_millis(100))).await.is_err() {
-            eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} identity-timeout: {last_reason}");
-            return;
-        }
-    };
-    // Exactly one persistence attempt after identity; no background write retries.
-    if let Err(error) = history.record_zone(
-        &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(), Some(&original_workspace_id), &source_task_id, identity.startup_identity_path.as_deref(),
-    ).await {
-        eprintln!("warning: zone-history creation={creation_id} agent={agent_name} kind={kind} session={} save-failed: {error}", identity.session_id);
     }
 }
 
 /// 记录失败：阶段固定为 `failed`，失败位置、类别与说明保留；已取得的标识不动。
 async fn fail(job: &Arc<Mutex<ChatCreationView>>, stage: FailureStage, error: &HerdrError, chief: Option<&crate::chief::Authority>) {
+    let definite = matches!(stage,FailureStage::Workspace)
+        || (matches!(stage,FailureStage::Tab | FailureStage::Start)
+            && matches!(error,HerdrError::CommandFailed {..} | HerdrError::NotStarted(_)));
+    let outcome = (stage == FailureStage::Submit).then(|| match error {
+        HerdrError::InputBlocked { .. } | HerdrError::NotStarted(_) => UnconfirmedInput::NotSubmitted,
+        _ => UnconfirmedInput::Unknown,
+    });
+    record_failure(job, chief, definite, outcome, Failure {
+        stage,
+        code: error.code().to_string(),
+        message: stage_message(stage, error, outcome),
+    }).await;
+}
+
+async fn record_failure(
+    job: &Mutex<ChatCreationView>, chief: Option<&crate::chief::Authority>, definite: bool,
+    outcome: Option<UnconfirmedInput>, failure: Failure,
+) {
     let mut view = job.lock().await;
     if let Some(chief) = chief {
-        let definite = matches!(stage,FailureStage::Workspace)
-            || (matches!(stage,FailureStage::Tab | FailureStage::Start)
-                && matches!(error,HerdrError::CommandFailed {..} | HerdrError::NotStarted(_)));
-        if let Err(error) = chief.creation_failed(&view.id,definite) {
+        if let Err(error) = chief.creation_failed(&view.id, definite) {
             eprintln!("chief failure persistence failed: {error:?}");
         }
     }
-    if view.stage.is_terminal() {
-        return;
+    if !view.stage.is_terminal() {
+        view.stage = Stage::Failed;
+        view.failure = Some(failure);
+        view.input_outcome = outcome;
+        view.retry_reason = None;
     }
-    view.stage = Stage::Failed;
-    view.failure = Some(Failure {
-        stage,
-        code: error.code().to_string(),
-        message: stage_message(stage, error),
-    });
 }
 
 /// 在 Herdr 的原始说明之外补上现场状态；不把未知的提交结果说成确定。
 ///
 /// 同一阶段里，“明确被拒绝”和“超时/响应不可理解”是两种不同事实：前者可以说提交失败，
 /// 后者只能说明结果未确认，不能把它表述成确定未发送。已经取得的对象标识不会被撤销。
-fn stage_message(stage: FailureStage, error: &HerdrError) -> String {
+fn stage_message(stage: FailureStage, error: &HerdrError, input: Option<UnconfirmedInput>) -> String {
     let base = error.message();
     let outcome_unknown = matches!(
         error,
@@ -734,11 +744,11 @@ fn stage_message(stage: FailureStage, error: &HerdrError) -> String {
         FailureStage::Start => {
             format!("{base} Tab 与 Pane 已创建并保留；agent 启动被拒绝，因此没有提交初始指示。")
         }
-        FailureStage::Submit if outcome_unknown => format!(
+        FailureStage::Submit if matches!(input, Some(UnconfirmedInput::Unknown)) => format!(
             "{base} agent 已就绪；初始指示的投递结果未确认，不能据此断定未发送。Tab、Pane 与 agent 已保留。"
         ),
         FailureStage::Submit => {
-            format!("{base} agent 已就绪，但初始指示的提交被明确拒绝。Tab、Pane 与 agent 已保留。")
+            format!("{base} agent 已就绪；初始指示未提交，不会自动重发。Tab、Pane 与 agent 已保留。")
         }
     }
 }

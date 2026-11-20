@@ -6,7 +6,7 @@ import { map } from '../support/unorderedMap'
 it('shows full Task names and keeps running arrows separate from selection, with animation opt-in', () => {
   const task = 'A complete Task name that remains readable even when its visual label wraps or truncates'
   const props = {
-    map, selectedId: 'beta', onSelect: vi.fn(), nodeTargets: { beta: { label: 'Task', name: task } }, nodeBots: { beta: 'Shared Bot' }, nodeReportPolicies: {}, animateRunning: false,
+    map, selectedId: 'beta', onSelect: vi.fn(), nodeTargets: { beta: { label: 'Task', name: task } }, nodeBots: { beta: 'Shared Bot' }, nodeApprovalModes: {}, animateRunning: false,
     nodeStates: { beta: { status: 'running', label: '运行中' }, alpha: { status: 'completed', label: '已完成' } },
   }
   const { rerender } = render(<WorkflowRunGraph {...props} />)

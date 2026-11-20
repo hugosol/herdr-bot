@@ -21,7 +21,8 @@ def configure_model(self):
             'baseUrl must be an HTTP(S) service URL without inline credentials or query')
     credential = os.environ.get(config['apiKeyEnv'])
     require(credential, f"Missing actual model credential environment variable {config['apiKeyEnv']}")
-    self.model_wire = WireProxy(config['baseUrl'], self.root / 'model-wire')
+    self.model_wire = WireProxy(config['baseUrl'], self.root / 'model-wire',
+                                serialize_completions=getattr(self, 'serialize_model_completions', False))
     self.provider_model = config['provider'] + '/' + config['model']
     self.evidence['model'] = {key: config[key] for key in ['provider', 'model', 'baseUrl']}
     self.evidence['model']['credentialEnvironmentName'] = config['apiKeyEnv']

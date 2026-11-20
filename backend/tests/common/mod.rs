@@ -25,6 +25,19 @@ use tower::ServiceExt;
 /// 记录文件相对夹具根目录的位置。
 pub const RECORD_FILE: &str = "runtime/calls.tsv";
 
+/// Install the shipped script modules beside an isolated Bot directory.
+pub fn install_bot_scripts(bot_directory: &Path) {
+    let target = bot_directory.parent().unwrap().join("scripts");
+    fs::create_dir_all(&target).unwrap();
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("meta-data/scripts");
+    for entry in fs::read_dir(source).unwrap() {
+        let entry = entry.unwrap();
+        if entry.path().extension().is_some_and(|extension| extension == "ts") {
+            fs::copy(entry.path(), target.join(entry.file_name())).unwrap();
+        }
+    }
+}
+
 /// 独立临时目录；路径中带空格，覆盖 Windows 命令行引号处理的真实情况。
 pub struct TempDir(PathBuf);
 
@@ -386,6 +399,7 @@ pub fn config_with_countdown(
         operations: herdr_bot::Operations {
             start: binding(),
             stop: binding(),
+            app: None,
         },
         mdns: herdr_bot::MdnsConfig::default(),
         shutdown: herdr_bot::ShutdownConfig {
@@ -444,6 +458,25 @@ pub async fn post_operation(
     )
 }
 
+/// Release a fixture launch using its actual terminal correlation and an
+/// independently specified native session. This does not register the session.
+pub async fn report_ready(server: &TestServer, herdr: &HerdrFixture, agent: &str, cwd: &str, id: &str, file: Option<&Path>) {
+    for kind in ["launch_identity", "launch_ready"] {
+        let response = report_launch(server, herdr, agent, cwd, id, file, kind).await;
+        assert_eq!(response.status, 200, "{kind}: {}", response.body);
+    }
+}
+
+pub async fn report_launch(server: &TestServer, herdr: &HerdrFixture, agent: &str, cwd: &str, id: &str, file: Option<&Path>, kind: &str) -> HttpResponse {
+    let records = std::fs::read_to_string(herdr.path().join("tab-launches.jsonl")).unwrap();
+    let launch: serde_json::Value = serde_json::from_str(records.lines().last().unwrap()).unwrap();
+    let body = serde_json::json!({"kind":kind,"sessionId":id,"data":{
+        "launchId":launch["launch"],"targetId":launch["target"],"agentType":agent,
+        "cwd":cwd,"pid":43127,"sessionFile":file,
+    }}).to_string();
+    post_json_over_tcp(server.addr(), "/api/sessions/events", &body).await
+}
+
 /// 经 HTTP interface 请求“启动”操作。
 pub async fn post_start(app: axum::Router) -> (axum::http::StatusCode, serde_json::Value) {
     post_operation(app, "start").await
@@ -462,7 +495,12 @@ pub struct TestServer {
 impl TestServer {
     /// 在 `127.0.0.1` 的临时端口上启动应用。
     pub async fn start(config: &herdr_bot::Config) -> Self {
-        Self::start_app(herdr_bot::app(config)).await
+        let server = Self::start_app(herdr_bot::app(config)).await;
+        let executable = &config.herdr.executable;
+        if executable.file_stem().and_then(|stem| stem.to_str()) == Some("herdr-fixture") {
+            std::fs::write(executable.with_file_name("launch_endpoint.txt"), server.addr.to_string()).unwrap();
+        }
+        server
     }
 
     /// 在 `127.0.0.1` 的临时端口上启动**给定的应用**（例如注入了记录型关机动作的应用）。
