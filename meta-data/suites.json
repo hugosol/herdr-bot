@@ -226,6 +226,27 @@
       ]
     },
     {
+      "id": "pstack",
+      "name": "pstack",
+      "agents": [
+        "omp"
+      ],
+      "skills": {
+        "omp": [
+          "${roots.toolkit}/pstack-suite/generated/skills"
+        ]
+      },
+      "extensions": {
+        "omp": [
+          "${roots.toolkit}/pstack-suite/omp.ts",
+          "${roots.toolkit}/pstack-suite/generated"
+        ]
+      },
+      "prompts": [],
+      "lsp": {},
+      "mcp": []
+    },
+    {
       "id": "pi-codemode",
       "name": "codemode",
       "agents": [
