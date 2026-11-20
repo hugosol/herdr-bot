@@ -76,10 +76,15 @@ def remove_owned_root(root):
 
 
 class Scenario(Acceptance):
+    _prefix = 'hb15-'
+    _promise = 'P43–P45/P47–P48/P54–P55'
+    _zone_id = 'hb15/zone'
+    _retain_native_root = False
+
     def __init__(self, args, host, agent, case, archive):
         # Keep native Unix/Windows socket names short, independently of the archive path.
         super().__init__(SimpleNamespace(**dict(vars(args), evidence_dir=None)),
-            prefix='hb15-', promise='P43–P45/P47–P48/P54–P55', session_prefix='hb15-')
+            prefix=self._prefix, promise=self._promise, session_prefix=self._prefix)
         self.args = args
         self.host, self.agent, self.case = host, agent, case
         self.archive = archive
@@ -95,7 +100,7 @@ class Scenario(Acceptance):
         for name in ('a', 'tmp', 'cache', 'runtime'):
             (self.root / name).mkdir()
         self.env.update(HERDR_APP_HOME=str(self.root / 'a'), HERDR_CORE_DIRS=str(args.core.parent),
-            HC_SESSION='hb15-' + uuid.uuid4().hex[:12], OMP_CODING_AGENT_DIR=str(self.root / 'agent'),
+            HC_SESSION=self._prefix + uuid.uuid4().hex[:12], OMP_CODING_AGENT_DIR=str(self.root / 'agent'),
             XDG_DATA_HOME=str(self.root / 'state'), XDG_CACHE_HOME=str(self.root / 'cache'),
             XDG_RUNTIME_DIR=str(self.root / 'runtime'), TEMP=str(self.root / 'tmp'), TMP=str(self.root / 'tmp'))
         self.evidence.update(host=host, agent=agent, case=case, timeline=[], processExits=[],
@@ -108,13 +113,24 @@ class Scenario(Acceptance):
         self.evidence['timeline'].append(value)
         return value
 
+    def _uses_sound(self):
+        return self.case not in CLOSE_CASES
+
+    def _exercise(self):
+        if self._uses_sound():
+            self.exercise_reminders()
+        else:
+            self.exercise_close()
+
+    def _archive_ignored(self, path, names):
+        core_state = self.root / 'state/herdr-core' / self.env['HC_SESSION']
+        return [name for name in names if name.endswith('.sock') or (path == self.root and name == 'toolkit')
+                or (path == core_state and name == 'core.lock')]
+
     def run(self):
         try:
             self.prepare()
-            if self.case in ('extra-tab', 'last-tab', 'group-refused'):
-                self.exercise_close()
-            else:
-                self.exercise_reminders()
+            self._exercise()
             self.evidence['passed'] = True
         except Exception:
             self.evidence['verificationError'] = traceback.format_exc()
@@ -124,12 +140,14 @@ class Scenario(Acceptance):
             self.evidence['passed'] = self.evidence['passed'] and not errors
             self.evidence['nativeRoot'] = str(self.root)
             self.evidence['archive'] = str(self.archive)
+            core_state = self.root / 'state/herdr-core' / self.env['HC_SESSION']
+            self.evidence['transientCoreLockPresent'] = (core_state / 'core.lock').exists()
             save(self.root / 'evidence.json', self.evidence)
             try:
-                # Copy original observations (not the installed dependency deployment).
-                shutil.copytree(self.root, self.archive, ignore=lambda path, names: [name for name in names
-                    if name.endswith('.sock') or (Path(path) == self.root and name == 'toolkit')])
-                if not errors:
+                # Transient locks and dependency deployments are not native
+                # observations. Held-process exit checks apply independently.
+                shutil.copytree(self.root, self.archive, ignore=lambda path, names: self._archive_ignored(Path(path), names))
+                if not errors and not self._retain_native_root:
                     remove_owned_root(self.root)
             except (OSError, shutil.Error):
                 errors.append(traceback.format_exc())
@@ -169,25 +187,25 @@ class Scenario(Acceptance):
         self.recorders[name] = directory
         return executable
 
-    def configure_provider(self):
-        def decision(request):
-            labels = [m for message in request.get('messages', []) if message.get('role') == 'user'
-                for m in re.findall(r'HB15-([a-f0-9]{12})', json.dumps(message.get('content', '')))]
-            label = labels[-1] if labels else None
-            if label in self.gates and label not in self.called:
-                self.called.add(label)
-                entered, release, blocked = self.gates[label]
-                self.note('provider-entered', marker=label)
-                entered.set()
-                require(release.wait(self.args.timeout), ('controlled provider gate was never released', label))
-                self.note('provider-released', marker=label)
-                if blocked:
-                    require(any(t.get('function', {}).get('name') == 'approve' for t in request.get('tools', [])),
-                        'native workflow approval tool unavailable')
-                    return {'content': '', 'tool_calls': [{'name': 'approve', 'arguments': {}}]}
-            return {'content': 'HB15-ACK' + (f'-{label}' if label else ''), 'tool_calls': []}
+    def _model_decision(self, request):
+        labels = [m for message in request.get('messages', []) if message.get('role') == 'user'
+            for m in re.findall(r'HB15-([a-f0-9]{12})', json.dumps(message.get('content', '')))]
+        label = labels[-1] if labels else None
+        if label in self.gates and label not in self.called:
+            self.called.add(label)
+            entered, release, blocked = self.gates[label]
+            self.note('provider-entered', marker=label)
+            entered.set()
+            require(release.wait(self.args.timeout), ('controlled provider gate was never released', label))
+            self.note('provider-released', marker=label)
+            if blocked:
+                require(any(t.get('function', {}).get('name') == 'approve' for t in request.get('tools', [])),
+                    'native workflow approval tool unavailable')
+                return {'content': '', 'tool_calls': [{'name': 'approve', 'arguments': {}}]}
+        return {'content': 'HB15-ACK' + (f'-{label}' if label else ''), 'tool_calls': []}
 
-        self.provider = self.stack.enter_context(NativeCompletionTransport(decision, self.root / 'provider'))
+    def configure_provider(self):
+        self.provider = self.stack.enter_context(NativeCompletionTransport(self._model_decision, self.root / 'provider'))
         agent = self.root / 'agent'
         model = {'providers': {'owned': {'baseUrl': self.provider.base, 'api': 'openai-completions',
             'apiKey': 'owned-noncredential', 'models': [{'id': 'mechanical', 'name': 'Owned mechanical fixture',
@@ -214,6 +232,9 @@ class Scenario(Acceptance):
             shutil.copytree(self.args.toolkit / 'node_modules' / dependency, toolkit / 'node_modules' / dependency)
         return toolkit
 
+    def _fixed_roles(self):
+        return ('manager-chat', 'node-chat', 'connect-bot')
+
     def prepare(self):
         require(sys.platform == 'win32', self.windows_requirement)
         self.configure_provider()
@@ -223,10 +244,10 @@ class Scenario(Acceptance):
         catalog += '[[models]]\nid = "default"\nlabel = "Default"\n[[models]]\nid = "probe"\nlabel = "Local fixture"\n'
         catalog += f'provider_model = "owned/mechanical"\nthinking = {{ {self.agent} = ["off"] }}\n'
         extensions = {role: toolkit / f'entrypoints/{self.agent}-auto/{role}.ts'
-                      for role in ('manager-chat', 'node-chat', 'connect-bot')}
+                      for role in self._fixed_roles()}
         if self.host == 'tui':
             extensions['herdr-agent-state'] = getattr(self.args, self.agent + '_state_extension')
-        if self.case not in CLOSE_CASES:
+        if self._uses_sound():
             self.confirmations = self.root / 'confirmations'
             self.env['CHIEF_MAP_CONFIRMATION_EVIDENCE_DIR'] = str(self.confirmations)
             observer = self.root / 'native-dialog-observer.mjs'
@@ -239,13 +260,13 @@ class Scenario(Acceptance):
         self.evidence['extensions'] = {key: {'path': str(path), 'sha256': digest(path)} for key, path in extensions.items()}
         self.prepare_host()
         self.start_backend_owned(toolkit)
-        self.http('/api/zones', {'id': 'hb15/zone', 'path': str(self.root / 'zone')})
+        self.http('/api/zones', {'id': self._zone_id, 'path': str(self.root / 'zone')})
 
     def prepare_host(self):
         enabled = self.case in ('custom', 'default')
         tui_sound = f'[ui.sound]\nenabled = {str(enabled).lower()}\n'
         app_sound = {'enabled': enabled}
-        if self.case not in CLOSE_CASES:
+        if self._uses_sound():
             require(self.args.sound, 'isolated custom and bundled sound references are required')
             refs = self.root / 'sound-references'
             refs.mkdir()

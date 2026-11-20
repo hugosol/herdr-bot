@@ -25,16 +25,13 @@ sys.exit(subprocess.call([sys.argv[1], "session", "attach", sys.argv[2]]))
         cwd=root, env=environment, creationflags=subprocess.CREATE_NEW_CONSOLE)
 
 
-def foreground_window(*, pid=None, title=None, anchor=None):
+def owned_window(*, pid=None, title=None, anchor=None):
     require(sum(selector is not None for selector in (pid, title, anchor)) == 1,
         'identify the owned window by exactly one selector')
     user = ctypes.WinDLL('user32', use_last_error=True)
-    user.GetForegroundWindow.restype = wintypes.HWND
     user.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
     user.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
     user.IsWindowVisible.argtypes = [wintypes.HWND]
-    user.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
-    user.SetForegroundWindow.argtypes = [wintypes.HWND]
     callback = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     user.EnumWindows.argtypes = [callback, wintypes.LPARAM]
 
@@ -62,7 +59,15 @@ def foreground_window(*, pid=None, title=None, anchor=None):
         require(len(windows) <= 1, ('ambiguous owned desktop window', windows))
         return windows[0] if windows else None
 
-    window = until('owned interactive desktop window', find, seconds=15)
+    return until('owned interactive desktop window', find, seconds=15)
+
+
+def foreground_window(*, pid=None, title=None, anchor=None):
+    window = owned_window(pid=pid, title=title, anchor=anchor)
+    user = ctypes.WinDLL('user32', use_last_error=True)
+    user.GetForegroundWindow.restype = wintypes.HWND
+    user.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user.SetForegroundWindow.argtypes = [wintypes.HWND]
     hwnd = window['hwnd']
     if user.GetForegroundWindow() != hwnd:
         user.ShowWindow(hwnd, 5)
