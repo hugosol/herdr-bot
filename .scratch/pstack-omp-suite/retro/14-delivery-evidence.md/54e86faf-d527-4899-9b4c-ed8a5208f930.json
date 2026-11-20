@@ -1,0 +1,66 @@
+{
+  "feature": "pstack-omp-suite",
+  "ticket": "14-delivery-evidence.md",
+  "run_id": "54e86faf-d527-4899-9b4c-ed8a5208f930",
+  "parent_session_id": "01a1f9f9-f3f1-759c-b838-4edef32aa92d",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-20T17-21-10-129Z_01a1f9f9-f3f1-759c-b838-4edef32aa92d.jsonl",
+  "workspace": "E:\\Developer\\myhub\\herdr-bot",
+  "tool_call_id": "1e019796-621f-4208-8789-cc5b795402af",
+  "started_at": "2026-11-20T20:15:49.783Z",
+  "tdd_status": "completed",
+  "retro_status": "failed",
+  "tdd_finished_at": "2026-11-20T20:50:43.949Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "14-delivery-evidencemd-1e019796-621f-4208-8789-c",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\pstack-omp-suite\\implementation\\14-delivery-evidence.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"herdr-bot\",\n    \"branch\": \"hyper/pstack-omp-suite/14-delivery-evidence-8bbee6-762bdd6961bb\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-bgeXYb\"\n  },\n  {\n    \"repository\": \"toolkit\",\n    \"branch\": \"hyper/pstack-omp-suite/14-delivery-evidence-8bbee6-d89dc7e92c66\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-i3Xj7u\"\n  }\n]\n协调仓集成分支：dev\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\pstack-omp-suite\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\pstack-omp-suite\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\pstack-omp-suite\\implementation\\14-delivery-evidence.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"herdr-bot\",\n    \"branch\": \"hyper/pstack-omp-suite/14-delivery-evidence-8bbee6-762bdd6961bb\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-bgeXYb\"\n  },\n  {\n    \"repository\": \"toolkit\",\n    \"branch\": \"hyper/pstack-omp-suite/14-delivery-evidence-8bbee6-d89dc7e92c66\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-i3Xj7u\"\n  }\n]\n协调仓集成分支：dev\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\pstack-omp-suite\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\pstack-omp-suite\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement ticket 14 delivery evidence in worktrees",
+    "lastIntent": "Checking final layered evidence coverage",
+    "exitCode": 0,
+    "output": "票据 14 已实现并提交，交由独立集成。分支头：herdr-bot `253fd40f0d`，toolkit `e182b1d468`。\n\n- **P4/P11**：新增只读 `check-pstack-delivery.py`。实际核对了 124 项交付资产和 340 条引用，并逐字节比对了 123 份固定上游快照。缺失、未声明、来源漂移及 Windows 上存在但不可读的文件均被拒绝。\n- **P45**：`evidence-index.json` 将 P1–P46 连接到各自的测试、内容审查和原始证据。两仓最终检查均退出 0；herdr-bot 浏览器为 385 通过、1 个既有人工符号链接用例跳过；toolkit 全量 2006 通过、0 失败。当前两仓的 13 原生专项 **6/6 通过**。首次 Bun 隔离链接布局的失败日志也已保留。\n- **未验证**：H1（P16/P17）和 H2（P38）仍待用户确认。未将模型自主效果列为已验证。\n\n证据目录：`C:/Users/hugos/AppData/Local/Temp/ps14-l60qaD/.scratch/pstack-omp-suite/evidence/14-delivery/`",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 2093890,
+    "tokens": 322542,
+    "requests": 99,
+    "contextTokens": 230909,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.2-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.2-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.2-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 266784,
+      "output": 55758,
+      "cacheRead": 16355840,
+      "cacheWrite": 0,
+      "totalTokens": 16678382,
+      "reasoningTokens": 13776,
+      "cost": {
+        "input": 0.5335679999999998,
+        "output": 0.5575800000000002,
+        "cacheRead": 1.6355840000000006,
+        "cacheWrite": 0,
+        "total": 2.726732000000001
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-20T17-21-10-129Z_01a1f9f9-f3f1-759c-b838-4edef32aa92d\\14-delivery-evidencemd-1e019796-621f-4208-8789-c.md",
+    "outputMeta": {
+      "lineCount": 7,
+      "charCount": 533
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "14-delivery-evidencemd-1e019796-621f-4208-8789-c",
+  "session_id": "01a1fa99-dc53-769b-a7e6-39a5049e0b6d",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-20T17-21-10-129Z_01a1f9f9-f3f1-759c-b838-4edef32aa92d\\14-delivery-evidencemd-1e019796-621f-4208-8789-c.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-bgeXYb",
+  "retro_error": "schema_violation: retro_markdown: expected string, received object",
+  "retro_finished_at": "2026-11-20T20:50:47.905Z"
+}
