@@ -401,7 +401,7 @@ class Launch(Recovery):
         self.assert_rejection(first)
         self.no_native_business(native)
         require(self.modal_screen(target), 'initial instruction dismissed or answered real modal')
-        self.browser('retrying', '初始指示未提交，5 秒后重试一次')
+        self.browser('retrying', '初始指示未提交，1 秒后重试（最多重试 5 次）')
         ending = self.label.rsplit('-', 1)[1]
         if ending == 'release':
             self.dismiss(native, target)
@@ -414,7 +414,7 @@ class Launch(Recovery):
             require(failed['inputOutcome'] == 'not-submitted' and failed['failure']['message'], failed)
             self.browser('failed', '初始指示未提交，不会自动重发')
             self.no_native_business(native)
-            require(self.modal_screen(target), 'second attempt answered native modal')
+            require(self.modal_screen(target), 'exhausted attempts answered native modal')
         elif ending == 'exit':
             if self.host_kind == 'tui':
                 self.herdr('tab', 'close', target['tabId'])
@@ -434,14 +434,23 @@ class Launch(Recovery):
             failed = self.status('failed', seconds=18)
             require(failed['inputOutcome'] == 'not-submitted' and failed['failure']['code'] == 'initial-input-retry-cancelled', failed)
             require(not self.model.requests, self.model.requests)
-            self.quiet(1)
+
+        receipts = self.inputs()
+        if ending == 'twice':
+            require(len(receipts) == 6, ('persistent blocking did not exhaust six attempts', receipts))
+        elif ending == 'release':
+            require(2 <= len(receipts) <= 6 and receipts[-1]['exit'] == 0,
+                    ('unblocking did not permit submission within the retry budget', receipts))
         else:
-            later = self.inputs()
-            require(len(later) == 2 and later[0]['argv'] == later[1]['argv'] and later[1]['beganMs'] - first['finishedMs'] >= 5000,
-                    ('retry was not exactly once on original target at least 5 seconds after rejection', later))
-            if ending == 'twice':
-                self.assert_rejection(later[1])
-            self.quiet(2)
+            require(1 <= len(receipts) <= 5, ('target loss did not cancel the remaining retries', receipts))
+
+        rejected = receipts[:-1] if ending == 'release' else receipts
+        for receipt in rejected:
+            self.assert_rejection(receipt)
+        for previous, current in zip(receipts, receipts[1:]):
+            require(current['argv'] == first['argv'] and current['beganMs'] - previous['finishedMs'] >= 1000,
+                    ('retry changed the original submission or began less than one second after rejection', previous, current))
+        self.quiet(len(receipts))
 
     def unknown(self, native):
         state = self.status('failed', seconds=85)

@@ -104,7 +104,7 @@ impl LaunchFixture {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn initial_retry_runs_once_at_five_seconds_from_the_rejection_not_from_ready() {
+async fn initial_retry_runs_five_times_one_second_after_each_rejection() {
     // P20/P24–P26/P50/P52: advancing time while the first send awaits its
     // rejection and publishing duplicate/out-of-order ready events must not
     // make the second attempt early, reset its deadline, or start another job.
@@ -123,28 +123,38 @@ async fn initial_retry_runs_once_at_five_seconds_from_the_rejection_not_from_rea
     assert_eq!(waiting["inputSubmitted"], false);
     assert!(waiting["retryReason"].as_str().unwrap().contains("controlled modal"));
     assert!(f.external_input().is_empty(), "blocked input must not reach the terminal");
-    f.clock.advance(Duration::from_millis(4999));
+    f.clock.advance(Duration::from_millis(999));
     for kind in ["launch_ready", "launch_identity", "launch_ready"] {
         assert_eq!(f.event(kind).await, 200);
     }
     assert_eq!(creation(&f.server, &f.id).await, waiting);
     assert!(!wait_until(Duration::from_millis(250), || f.attempts().len() > 1).await);
 
-    f.host.set_behavior(json!({"manual_launch_events": true, "block_prompt": true, "block_reason": "second modal"}));
-    f.clock.advance(Duration::from_millis(1));
+    for attempt in 2..=6 {
+        let reason = format!("modal attempt {attempt}");
+        f.host.set_behavior(json!({"manual_launch_events": true, "block_prompt": true, "block_reason": reason}));
+        f.clock.advance(Duration::from_millis(1));
+        assert!(wait_until(Duration::from_secs(5), || f.attempts().len() == attempt).await);
+        if attempt < 6 {
+            let next = f.stage("retrying").await;
+            assert!(next["retryReason"].as_str().unwrap().contains(&reason));
+            f.clock.advance(Duration::from_millis(999));
+            assert!(!wait_until(Duration::from_millis(100), || f.attempts().len() > attempt).await);
+        }
+    }
     let failed = f.stage("failed").await;
     assert_eq!(failed["inputOutcome"], "not-submitted");
-    assert!(failed["failure"]["message"].as_str().unwrap().contains("second modal"));
+    assert!(failed["failure"]["message"].as_str().unwrap().contains("modal attempt 6"));
     assert_eq!(failed["tabId"], waiting["tabId"]);
     let attempts = f.attempts();
-    assert_eq!(attempts.len(), 2);
-    assert_eq!(attempts[0]["target"], attempts[1]["target"]);
+    assert_eq!(attempts.len(), 6);
+    assert!(attempts.iter().all(|attempt| attempt["target"] == attempts[0]["target"]));
     for attempt in attempts {
         assert_eq!(attempt["text"], INPUT);
         assert_eq!(attempt["argv"].as_array().unwrap().len(), 4, "no force or extra input flags");
     }
     f.clock.advance(Duration::from_secs(6));
-    assert!(!wait_until(Duration::from_millis(250), || f.attempts().len() > 2).await);
+    assert!(!wait_until(Duration::from_millis(250), || f.attempts().len() > 6).await);
     assert_eq!(creation(&f.server, &f.id).await, failed);
     assert!(f.external_input().is_empty());
     f.assert_one_creation();
@@ -160,14 +170,23 @@ async fn initial_retry_in_app_uses_the_same_core_terminal_and_writes_only_once()
     assert_eq!(waiting["inputOutcome"], "not-submitted");
     assert!(waiting["retryReason"].as_str().unwrap().contains("controlled core modal"));
     assert!(f.external_input().is_empty());
+    for attempt in 2..=5 {
+        f.clock.advance(Duration::from_secs(1));
+        assert!(wait_until(Duration::from_secs(5), || f.attempts().len() == attempt).await);
+        f.stage("retrying").await;
+        assert!(f.external_input().is_empty());
+    }
     f.host.set_behavior(json!({}));
-    f.clock.advance(Duration::from_secs(5));
+    f.clock.advance(Duration::from_secs(1));
     let sent = f.stage("succeeded").await;
     assert_eq!(sent["inputSubmitted"], true);
     assert!(sent.get("inputOutcome").is_none());
     assert_eq!(sent["tabId"], waiting["tabId"]);
-    assert_eq!(f.attempts().len(), 2);
-    assert_eq!(f.attempts()[0], f.attempts()[1]);
+    let attempts = f.attempts();
+    assert_eq!(attempts.len(), 6);
+    assert!(attempts.iter().all(|attempt| attempt == &attempts[0]));
+    f.clock.advance(Duration::from_secs(6));
+    assert!(!wait_until(Duration::from_millis(250), || f.attempts().len() > 6).await);
     assert_eq!(f.external_input(), vec![json!({"terminal":"t1","text":INPUT})]);
     f.assert_one_creation();
 }
@@ -185,7 +204,7 @@ async fn initial_retry_cancels_for_ended_replaced_session_or_replaced_owner() {
         let f = LaunchFixture::start(app, agent, behavior).await;
         f.ready().await;
         let waiting = f.stage("retrying").await;
-        f.clock.advance(Duration::from_secs(2));
+        f.clock.advance(Duration::from_millis(500));
         match change {
             "ended" => assert_eq!(f.event("launch_ended").await, 200),
             "session" => {
@@ -199,13 +218,13 @@ async fn initial_retry_cancels_for_ended_replaced_session_or_replaced_owner() {
             }
             "owner" => {
                 f.host.set_behavior(json!({"block_prompt":true,"launch_pid":43128}));
-                f.clock.advance(Duration::from_secs(3));
+                f.clock.advance(Duration::from_millis(500));
             }
             "official-session" => {
                 f.host.set_behavior(json!({"block_prompt":true,"native_session":{
                     "source":"herdr:omp","agent":"omp","kind":"id","value":"replacement-native-session"
                 }}));
-                f.clock.advance(Duration::from_secs(3));
+                f.clock.advance(Duration::from_millis(500));
             }
             _ => unreachable!(),
         }

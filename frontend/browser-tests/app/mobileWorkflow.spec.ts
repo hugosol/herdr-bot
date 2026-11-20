@@ -394,13 +394,13 @@ test.describe('移动尺寸失败结果', () => {
     await dialog.getByTestId('chat-input').fill('会被拒绝的指示')
     await dialog.getByTestId('chat-create-submit').tap()
 
-    // 在最终失败前能看到启动、首次提交和唯一一次重试等待。
+    // 在最终失败前能看到启动、首次提交和重试等待。
     const stage = dialog.getByTestId('chat-create-stage')
     await expect(stage).toHaveText('正在启动')
     await expect(stage).toHaveText('正在提交初始指示', { timeout: 10_000 })
-    await expect(stage).toContainText('初始指示未提交，5 秒后重试一次')
+    await expect(stage).toContainText('初始指示未提交，1 秒后重试（最多重试 5 次）')
     const failure = dialog.getByTestId('chat-create-failure')
-    await expect(failure).toBeVisible({ timeout: 10_000 })
+    await expect(failure).toBeVisible({ timeout: 20_000 })
     await expect(dialog.getByTestId('chat-create-success')).toHaveCount(0)
     await failure.scrollIntoViewIfNeeded()
     await expect(failure).toContainText('提交初始指示')
@@ -418,14 +418,20 @@ test.describe('移动尺寸失败结果', () => {
     await expect(page.getByTestId('chat-creation-dialog')).toHaveCount(0)
     await expect(page.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
 
-    // 两次明确阻塞均未写入原终端，也没有重建或向其他目标发送。
+    // 六次明确阻塞均未写入原终端，也没有重建或向其他目标发送。
     await page.waitForTimeout(300)
     expect(server.herdrTabs()).toHaveLength(1)
     expect(server.herdrTabs()[0].cwd).toBe(cwd)
-    const prompts = server.herdrCalls().filter((call) => call.kind === 'agent_prompt')
-    expect(prompts).toHaveLength(2)
-    expect(prompts[1].target).toBe(prompts[0].target)
-    expect(prompts[1].text).toBe(prompts[0].text)
+    const calls = server.herdrCalls()
+    expect(calls.filter((call) => call.kind === 'agent_start')).toHaveLength(1)
+    const prompts = calls.filter((call) => call.kind === 'agent_prompt')
+    expect(prompts).toHaveLength(6)
+    for (const [index, prompt] of prompts.slice(1).entries()) {
+      expect(prompt.target).toBe(prompts[0].target)
+      expect(prompt.text).toBe(prompts[0].text)
+      // 夹具在记录尝试 1.2 秒后才拒绝；重试至少再等 1 秒。
+      expect(Number(prompt.at) - Number(prompts[index].at)).toBeGreaterThanOrEqual(2_200)
+    }
     expect(fs.existsSync(path.join(path.dirname(server.configPath), 'herdr', 'submitted.jsonl'))).toBe(false)
   })
 })

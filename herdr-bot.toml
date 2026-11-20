@@ -51,7 +51,7 @@ history_file = "${roots.data}/session-history.json"
 # workspace_name 必须显式配置；缺失、空字符串或纯空白会让服务启动失败。
 # 三个可执行路径均可长期保留；省略时分别按 PATH 查找 herdr、herdr-app、hc。
 [herdr]
-backend = 'tui' # tui（省略时的默认）或 app；不接受其他值。
+backend = 'app' # tui（省略时的默认）或 app；不接受其他值。
 workspace_name = 'bot-playground'
 # executable = '${roots.herdr}/herdr.exe'
 # app_executable = '${roots.herdr_app}/herdr-app.exe'

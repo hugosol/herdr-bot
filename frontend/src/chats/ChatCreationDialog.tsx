@@ -17,7 +17,7 @@ const STAGE_LABELS = {
   starting: '正在启动',
   initializing: '正在初始化输入',
   submitting: '正在提交初始指示',
-  retrying: '初始指示未提交，5 秒后重试一次',
+  retrying: '初始指示未提交，1 秒后重试（最多重试 5 次）',
 }
 
 const FAILURE_STAGE_LABELS: Record<string, string> = {

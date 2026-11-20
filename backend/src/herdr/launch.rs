@@ -11,7 +11,8 @@ use super::{HerdrClient, HerdrError, NativeSession, client::{LaunchTarget, Launc
 pub(crate) const LAUNCH_ID_ENV: &str = "HERDR_BOT_LAUNCH_ID";
 pub(crate) const TARGET_ID_ENV: &str = "HERDR_BOT_LAUNCH_TARGET_ID";
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
-const INITIAL_RETRY_DELAY: Duration = Duration::from_secs(5);
+const INITIAL_RETRY_DELAY: Duration = Duration::from_secs(1);
+const MAX_INITIAL_RETRIES: usize = 5;
 
 pub(crate) enum InitialInputProgress<'a> {
     WaitingToRetry(&'a HerdrError),
@@ -305,24 +306,32 @@ impl Launch {
         mut progress: impl FnMut(InitialInputProgress<'_>) -> F,
     ) -> Result<(), InitialInputError> {
         self.current(herdr, target).await.map_err(InitialInputError::BeforeSend)?;
-        let blocked = match target.submit(herdr, text).await {
-            Err(blocked @ HerdrError::InputBlocked { .. }) => blocked,
-            result => return result.map_err(InitialInputError::Send),
-        };
-        let deadline = self.launches.clock.now() + INITIAL_RETRY_DELAY;
-        self.pending.state.send_modify(|state| state.retry = Retry::Waiting);
-        progress(InitialInputProgress::WaitingToRetry(&blocked)).await;
-        if let Err(reason) = self.wait_for_retry(deadline, herdr, target).await {
-            return Err(InitialInputError::RetryCancelled { blocked, reason });
-        }
-        progress(InitialInputProgress::RetrySubmitting).await;
-        {
-            let state = self.pending.state.borrow();
-            if state.cannot_retry() {
-                return Err(InitialInputError::RetryCancelled { blocked, reason: state.retry_invalidation() });
+        let mut result = target.submit(herdr, text).await;
+        for _ in 0..MAX_INITIAL_RETRIES {
+            let blocked = match result {
+                Err(blocked @ HerdrError::InputBlocked { .. }) => blocked,
+                result => return result.map_err(InitialInputError::Send),
+            };
+            let deadline = self.launches.clock.now() + INITIAL_RETRY_DELAY;
+            self.pending.state.send_if_modified(|state| {
+                if state.retry != Retry::Inactive { return false; }
+                state.retry = Retry::Waiting;
+                true
+            });
+            progress(InitialInputProgress::WaitingToRetry(&blocked)).await;
+            if let Err(reason) = self.wait_for_retry(deadline, herdr, target).await {
+                return Err(InitialInputError::RetryCancelled { blocked, reason });
             }
+            progress(InitialInputProgress::RetrySubmitting).await;
+            {
+                let state = self.pending.state.borrow();
+                if state.cannot_retry() {
+                    return Err(InitialInputError::RetryCancelled { blocked, reason: state.retry_invalidation() });
+                }
+            }
+            result = target.submit(herdr, text).await;
+            if !matches!(result, Err(HerdrError::InputBlocked { .. })) { break; }
         }
-        let result = target.submit(herdr, text).await;
         self.pending.state.send_if_modified(|state| {
             if state.retry != Retry::Waiting { return false; }
             state.retry = Retry::Inactive;
