@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { ompAdapter } from './adapters/omp/index.ts'
 import { piAdapter } from './adapters/pi/index.ts'
 import { defineExtension, defineImplementation } from './framework/interface/index.ts'
+import { toolConfirmation } from './framework/runtime/tool-confirmation.ts'
 
 const env = process.env
 const isOmp = env.PAIRED_AGENT === 'omp'
@@ -69,11 +70,23 @@ export default function probe(api) {
     session_ready: (_state, { session, owner }) => {
       const sessionId = session.sessionId
       record('session_ready', { sessionId, owner: owner.key })
-      if (env.PAIRED_MODAL !== '1' || sessionId !== startupSession) return
+      if (!env.PAIRED_MODAL || sessionId !== startupSession) return
       setTimeout(async () => {
         try {
+          const deadline = Date.now() + 30_000
+          while (!existsSync(env.PAIRED_MODAL_RELEASE)) {
+            if (Date.now() > deadline) throw new Error('Paired Task acceptance did not reach input initialization')
+            await delay(20)
+          }
           if (!context?.hasUI || idOf(context) !== sessionId) throw new Error('No matching interactive native owner')
-          const pending = context.ui.confirm(title, question)
+          const pending = env.PAIRED_MODAL === 'tui' ? toolConfirmation((title, message, options) => {
+            // Like the shipped Pi tool adapter, announce only after the native selector is installed.
+            const answer = context.ui.confirm(title, message, options)
+            options.onTimeoutStart()
+            return answer
+          }, undefined, (active, label) => api.events.emit('herdr:blocked', { active, label }))({
+            title, message: question, timeoutMs: 60_000, notifyOnWait: true,
+          }) : context.ui.confirm(title, question)
           record('native-confirmation-opened', { sessionId, title, question })
           record('native-confirmation-result', { sessionId, result: await pending })
         } catch (error) {

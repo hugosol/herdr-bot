@@ -82,7 +82,8 @@ class Launch(Recovery):
         self.wire = None
         self.allow_ready = threading.Event()
         self.env.update(PAIRED_AGENT=agent, PAIRED_TRACE=str(self.trace), PAIRED_HOLD=str(int(self.hold)),
-                        PAIRED_RELEASE=str(self.root / 'startup-release'), PAIRED_MODAL=str(int(self.modal)),
+                        PAIRED_RELEASE=str(self.root / 'startup-release'), PAIRED_MODAL=host if self.modal else '',
+                        PAIRED_MODAL_RELEASE=str(self.root / 'modal-release'),
                         PAIRED_HISTORY_HOLD=str(int(label == 'app-ambiguous-start')),
                         PAIRED_HISTORY_RELEASE=str(self.root / 'history-release'))
         self.evidence.update(label=label, scope='S1 product HTTP and built page; S2 public subscription; S3 installed host',
@@ -222,7 +223,7 @@ class Launch(Recovery):
 
     def operator_key(self, target, key):
         if self.host_kind == 'tui':
-            self.herdr('pane', 'send-keys', target['paneId'], key)
+            self.command([self.args.herdr, 'pane', 'send-keys', target['paneId'], key])
         else:
             self.native(self.args.core, 'keys', '--json', self.terminal(target), key)
 
@@ -280,16 +281,28 @@ class Launch(Recovery):
         require(not state['inputSubmitted'] and not self.attempt_count(), state)
         self.browser('initializing', '正在初始化输入')
         if self.modal:
+            # Initializing is published after the native start command returns.
+            # Block initial input, not the host's separate startup admission.
+            Path(self.env['PAIRED_MODAL_RELEASE']).touch(exist_ok=False)
             opened = until('native modal opened after the ready event', lambda: self.one_probe('native-confirmation-opened', session), seconds=10)
             screen = until('native confirmation visibly pending', lambda: self.modal_screen(target), seconds=10)
             require(opened['unixMs'] >= semantic['unixMs'], (opened, semantic))
             self.note('modal-visible', native=opened, screen=screen)
+            if self.host_kind == 'tui':
+                blocked = until('TUI recognizes the visible confirmation as blocked',
+                                lambda: self.blocked_tui_agent(target), seconds=10)
+                require(self.modal_screen(target) and not self.probe_rows('native-confirmation-result', session), blocked)
+                self.note('native-tui-blocked', agent=blocked)
         if self.hold and self.agent == 'pi':
             self.assert_negative_identity(native, good)
         self.allow_ready.set()
         until('production accepted ready over HTTP', lambda: 'ended' in row, seconds=20)
         require(row.get('status') == 200, row)
         return good
+
+    def blocked_tui_agent(self, target):
+        agent = self.herdr('agent', 'get', target['paneId'])['agent']
+        return agent if agent['pane_id'] == target['paneId'] and agent['agent_status'] == 'blocked' else None
 
     def modal_screen(self, target):
         screen = self.screen(target)

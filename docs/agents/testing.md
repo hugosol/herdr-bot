@@ -82,7 +82,7 @@ python scripts/accept-paired-task-launch.py `
 
 - 专项保留 frozen 依赖、页面和安全后端构建以及各仓独立原始日志。Toolkit 全量与受影响 lifecycle/connect-bot docks 只接本轮 `safe_shutdown_shell.exe`；`HARNESS_ACCEPTANCE_EVIDENCE_DIR` 将安装版本证据留在本轮目录。生产后端仅接自有实例上的产品 HTTP／页面，不触发系统关机。
 - 默认名 `bot-playground`、另一个名字、zone 名称对应“当前”、旧配置省略 backend、仅切换 backend、core-local 地址碰撞却属于另一个实例分别取证。独立观察真实 Tab／Pane、core ID 与终端标签、实际 agent 进程和 cwd、模型/thinking、Suite 及固定扩展运行、命名模板、Skill 展开和原生文件，再与公开状态核对。
-- 公开 framework 订阅和真实启动钩子记录 OMP composer 闸门与 Pi 初始化。原生确认在 ready 后打开；只延迟转发生产 ready 上报来确定测试时序，不更换 editor/handler，不改原生状态或强制输入。保留实际拒绝进程的完成时间和同一目标下一次调用时间；仅显式 Escape 关闭自有确认。第二次拒绝、关闭／换原生目标、原页面刷新分别核查外部提交次数与原生记录。必要的断线、部分写入、超时及模糊回执由命名控制边界覆盖；`started:false` 另用真实发送后的受控回执，分别保留原始 core 响应与业务历史，不以没有即时历史推断未提交。
+- 公开 framework 订阅和真实启动钩子记录 OMP composer 闸门与 Pi 初始化。原生确认在 framework ready 且宿主启动命令返回后打开；只延迟转发生产 ready 上报来确定提交时序，不更换 editor/handler，不改原生状态或强制输入。TUI 的 Pi 确认使用与生产工具相同的等待通报（`herdr:blocked`），由已安装官方扩展处理；确认可见且 `herdr agent get` 在目标 Pane 上报告 `blocked` 后才放行 ready。任意第三方裸 Pi 确认不一定会上报：Herdr 0.9.5 在官方扩展接管状态时会跳过屏幕检测，未识别的确认不受 `agent prompt` 的原生 blocked 防护；该场景不能冒充可识别的发送前拒绝。App 保留不借助 TUI 状态扩展的原生路径。保留实际拒绝进程的完成时间和同一目标下一次调用时间；仅显式 Escape 关闭自有确认。第二次拒绝、关闭／换原生目标、原页面刷新分别核查外部提交次数与原生记录。必要的断线、部分写入、超时及模糊回执由命名控制边界覆盖；`started:false` 另用真实发送后的受控回执，分别保留原始 core 响应与业务历史，不以没有即时历史推断未提交。
 - `--native-only` 使用已经构建的同一 worktree 产物；`--checks-only` 仅跑独立回归；用 `--combinations pi-app --cases app-modal-release` 选择诊断格。所有子集均保留缺格、非零退出，不能替代整票。`summary.json` 区分失败和未验证；每格另有原生记录、HTTP、运行日志、可取得的页面截图和所属进程退出证据。保留独占状态根供复核；确认对应进程实际退出后才可删除，不用目录可删除或旧实验代替退出或当前验证证据。
 
 ### 同一历史 Chat 的双端恢复（S1／S3）
