@@ -70,6 +70,8 @@ bun run check:integrations
 bun run test
 ```
 
+离线[交付包与分层证据](pstack-delivery-evidence.md)与本专项分开运行：包检查不会启动宿主，本专项不重复检查整个资源闭包。
+
 Toolkit 只对 dock 使用 safe shell，绝不将生产后端设为 `HERDR_BOT_BINARY`。`OMP_BASELINE_RECORD_ROOT` 仅用于解析历史 sibling 依赖；不会以旧工作区替代当前 worktree。依照 Toolkit worktree 的 `docs/agents/testing.md` 和 `pstack-suite/README.md` 选已安装的 OMP／Pi、可支持的 Node 及显式 Java、TLC 等配套工具。仓库检查失败、过滤和未运行项都必须保留；这两个检查组与专项互不替代。
 
 ## 场景和证据
