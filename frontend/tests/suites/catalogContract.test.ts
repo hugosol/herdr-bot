@@ -1,24 +1,26 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { suiteRequest, type Suite } from '../../src/controllers/suiteController'
 
-const suite: Suite = {
-  id: 'source-tools', name: '源入口工具', agents: ['omp', 'pi'], skills: { omp: ['../skill collections'], pi: ['../skills/review'] },
-  extensions: { omp: ['../omp native package', '../omp/entry.ts'], pi: ['../pi/entry.ts', '${roots.toolkit}/pi/extra.ts'] },
-  prompts: [], lsp: {}, mcp: [], pi: { codemode: 'on' },
-}
+const omp = {
+  id: 'source-tools-omp', name: '源入口工具 · OMP', harness: 'omp', skills: ['../skill collections'],
+  extensions: ['../omp native package', '../omp/entry.ts'], lsp: {}, mcp: ['search'],
+} satisfies Suite
+const pi = {
+  id: 'source-tools-pi', name: '源入口工具 · Pi', harness: 'pi', skills: ['../skills/review'],
+  extensions: ['../pi/entry.ts', '${roots.toolkit}/pi/extra.ts'], prompts: ['../prompts/review.md'], codemode: 'only', mcp: [],
+} satisfies Suite
 const catalog = {
-  suites: [suite], mcp: ['search'],
+  suites: [omp, pi], mcp: ['search'],
   fixedExtensions: [{ id: 'pi-connect-bot', label: '连接 Bot', agent: 'pi', kind: 'fixed', entrypoint: '/fixed/connect.ts', roles: ['standalone', 'manager', 'node', 'chief', 'chief-delegated'] }],
 }
 
 afterEach(() => vi.unstubAllGlobals())
 
-describe('Suite direct-source API contract', () => {
-  it.each([{}, { omp: ['../skill collections'] }, { pi: ['../skills/review'] }, suite.skills])('preserves host-specific skill paths and accepts omitted hosts: %j', async skills => {
-    const saved = { ...suite, skills }
-    const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ...catalog, suites: [saved] }) }))
+describe('Single-harness Suite API contract', () => {
+  it.each([omp, pi])('preserves the valid fields and direct source paths of $harness', async saved => {
+    const fetch = vi.fn(async () => ({ ok: true, json: async () => catalog }))
     vi.stubGlobal('fetch', fetch)
-    expect((await suiteRequest('PUT', saved.id, saved)).suites).toEqual([saved])
+    expect((await suiteRequest('PUT', saved.id, saved)).suites).toEqual([omp, pi])
     expect(fetch).toHaveBeenCalledWith(`/api/suites/${saved.id}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(saved),
     })
@@ -26,7 +28,13 @@ describe('Suite direct-source API contract', () => {
   it.each([
     { suites: [], mcp: [] },
     { ...catalog, extensions: [] },
-    ...[[], ['../legacy'], null, { other: [] }, { omp: 'directory' }, { pi: [false] }].map(skills => ({ ...catalog, suites: [{ ...suite, skills }] })),
+    ...[
+      { ...omp, skills: { omp: ['../legacy'] } }, { ...pi, skills: [false] },
+      { ...omp, extensions: { omp: [] } }, { ...omp, agents: ['omp'] },
+      { ...omp, prompts: [] }, { ...omp, codemode: 'on' }, { ...pi, lsp: {} },
+      { ...pi, codemode: undefined }, { ...pi, codemode: 'off' }, { ...pi, pi: { codemode: 'on' } },
+      { ...omp, id: 'source-tools-pi' }, { ...pi, name: '源入口工具 · OMP' },
+    ].map(suite => ({ ...catalog, suites: [suite] })),
     { ...catalog, fixedExtensions: [{ ...catalog.fixedExtensions[0], kind: 'optional' }] },
     { ...catalog, fixedExtensions: [{ ...catalog.fixedExtensions[0], roles: ['unknown'] }] },
   ])('rejects incomplete or obsolete catalog responses: %j', async response => {

@@ -192,8 +192,9 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
         let mut suites = Vec::new();
         for (id, entry) in [("first-suite", &old_suite_entry), ("current-suite", &current_suite_entry)] {
             fs::write(entry, "export default function () {}\n").unwrap();
-            let mut declaration = json!({"id":id,"name":id,"agents":[agent],"extensions":{(agent):[entry]}});
-            if agent == "pi" { declaration["pi"] = json!({"codemode":"on"}); }
+            let label = if agent == "pi" { "Pi" } else { "OMP" };
+            let mut declaration = json!({"id":format!("{id}-{agent}"),"name":format!("{id} · {label}"),"harness":agent,"extensions":[entry]});
+            if agent == "pi" { declaration["codemode"] = json!("on"); }
             suites.push(declaration);
         }
         fs::write(root.path().join("suites.json"), json!({"suites":suites}).to_string()).unwrap();
@@ -202,7 +203,7 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
         let zones = post(&panel,"/api/zones",json!({"id": root.path(), "path":root.path()})).await;
         let zone = zones["zones"][0]["id"].as_str().unwrap();
         let mut preset = task(agent, "Source A");
-        preset["suite"] = json!("first-suite");
+        preset["suite"] = json!(format!("first-suite-{agent}"));
         let saved = post(&panel,"/api/tasks",preset.clone()).await;
         let id = saved["tasks"][0]["id"].as_str().unwrap();
         create(&panel,zone,id).await;
@@ -213,7 +214,7 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
         assert_suite_args(agent, &initial_args[4..], &old_suite_entry, root.path(), "old");
         assert_eq!(common::prompt_body(initial.iter().find(|c| c["kind"] == "agent_prompt").unwrap()),"/skill:start-only INITIAL ONLY\n\nUSER INPUT");
         preset["name"] = json!("Source A renamed");
-        preset["suite"] = json!("current-suite");
+        preset["suite"] = json!(format!("current-suite-{agent}"));
         let edited = request_json_over_tcp(panel.addr,"PUT",&format!("/api/tasks/{id}"),Some(&preset.to_string())).await;
         assert_eq!(edited.status,200,"{}",edited.body);
         drop(panel);
@@ -639,7 +640,7 @@ async fn resume_rejects_unavailable_declared_suite_resources_before_starting() {
     let entry = root.path().join("declared-available.ts");
     fs::write(&entry, "export default function () {}\n").unwrap();
     fs::write(root.path().join("suites.json"), json!({"suites":[{
-        "id":"selected", "name":"Selected", "agents":["omp"], "extensions":{"omp":[entry]}
+        "id":"selected-omp", "name":"Selected · OMP", "harness":"omp", "extensions":[entry]
     }]}).to_string()).unwrap();
     let session = "native-declared-resource-001";
     native(root.path(), &herdr, "omp", session);
@@ -647,7 +648,7 @@ async fn resume_rejects_unavailable_declared_suite_resources_before_starting() {
     let zones = post(&panel, "/api/zones", json!({"id":"owned-pstack-zone", "path":root.path()})).await;
     let zone = zones["zones"][0]["id"].as_str().unwrap();
     let mut preset = task("omp", "Known source");
-    preset["suite"] = json!("selected");
+    preset["suite"] = json!("selected-omp");
     let saved = post(&panel, "/api/tasks", preset).await;
     create(&panel, zone, saved["tasks"][0]["id"].as_str().unwrap()).await;
     history(&panel, 1).await;
@@ -683,11 +684,12 @@ async fn resume_uses_default_discovery_for_unreadable_environment_or_invalid_sui
             let zones = post(&panel, "/api/zones", json!({"id": root.path(), "path":root.path()})).await;
             let zone = zones["zones"][0]["id"].as_str().unwrap();
             let mut preset = task(agent, "Source");
-            let mut suite = json!({"id":"chosen","name":"Chosen Suite","agents":[agent]});
-            if agent == "pi" { suite["pi"] = json!({"codemode":"on"}); }
+            let label = if agent == "pi" { "Pi" } else { "OMP" };
+            let mut suite = json!({"id":format!("chosen-{agent}"),"name":format!("Chosen Suite · {label}"),"harness":agent});
+            if agent == "pi" { suite["codemode"] = json!("on"); }
             if mechanism == "suite-invalid" {
                 fs::write(root.path().join("suites.json"), json!({"suites":[suite]}).to_string()).unwrap();
-                preset["suite"] = json!("chosen");
+                preset["suite"] = json!(format!("chosen-{agent}"));
             }
             let saved = post(&panel, "/api/tasks", preset).await;
             let source = saved["tasks"][0]["id"].as_str().unwrap();

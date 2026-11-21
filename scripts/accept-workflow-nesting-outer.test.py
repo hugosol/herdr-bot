@@ -41,7 +41,7 @@ class NativeTaskUpdateTransport(unittest.TestCase):
                 try:
                     self.assertEqual(proxy.server.server_address[0], '127.0.0.1')
                     self.assertTrue(49152 <= proxy.server.server_port <= 65535)
-                    payload = b'{"prompt":"literal revised prompt","suite":"preserved-suite"}'
+                    payload = b'{"prompt":"literal revised prompt","suite":"preserved-suite-pi"}'
                     request = urllib.request.Request(proxy.base + '/api/tasks/owned-task', data=payload, method='PUT')
                     with urllib.request.urlopen(request) as response:
                         self.assertEqual(response.status, 200)

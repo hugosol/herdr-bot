@@ -82,8 +82,9 @@ class Acceptance(skills.Acceptance):
         # Roots are resolved on startup; restart our backend only, never Herdr or user processes.
         backend = self.processes[-1]
         backend.stop()
-        (self.authority / 'suites.json').write_text(json.dumps({'suites':[{'id':'selected', 'name':'Selected', 'agents':['omp'],
-            'skills':{'omp': [], 'pi': []}, 'extensions':{'omp':['relative existing package/extension/entry.ts', '${roots.owned_extensions}/extension/entry.ts']}}]}))
+        (self.authority / 'suites.json').write_text(json.dumps({'suites':[{'id':'selected-omp', 'name':'Selected · OMP', 'harness':'omp',
+            'skills':[], 'extensions':['relative existing package/extension/entry.ts', '${roots.owned_extensions}/extension/entry.ts'],
+            'mcp':[], 'lsp':{}}]}))
         for zone in self.zones:
             # Wrong-cwd resource must not be selected; literal wrong result is distinguishable.
             wrong = zone / 'relative existing package/extension'
@@ -127,7 +128,7 @@ export default function(pi) {
     def exercise(self):
         saved = self.http('/api/tasks', {'name':'Suite extension packages', 'chatName':'{task.name}-{chat.id}',
             'agent':'omp', 'taskType':'normal', 'model':'probe', 'thinking':'off', 'skill':None,
-            'prompt':'Use the selected extension tools.', 'suite':'selected'})
+            'prompt':'Use the selected extension tools.', 'suite':'selected-omp'})
         task_id = saved['tasks'][0]['id']
         for index, zone in enumerate(self.zones):
             case = {'cwd':str(zone), 'requests':[], 'passed':False}

@@ -23,11 +23,12 @@ pub(super) struct Selection {
 }
 
 impl Suites {
-    pub(super) fn select_skills(&self, suite: &Suite, agent: Agent, roots: &Roots) -> Result<Selection, TaskError> {
-        let id = &suite.id;
+    pub(super) fn select_skills(&self, suite: &Suite, roots: &Roots) -> Result<Selection, TaskError> {
+        let id = suite.id();
+        let agent = suite.harness();
         let fail = |error: String| TaskError::InvalidSuite(format!("Suite「{id}」技能装配失败：{error}；没有回退为空环境。"));
         let base = self.definition_file.parent().unwrap_or(Path::new("."));
-        let declarations = suite.skills.get(agent.label()).map(Vec::as_slice).unwrap_or(&[]);
+        let declarations = suite.skills();
         let mut directories = Vec::with_capacity(declarations.len());
         let mut seen_directories = HashSet::new();
         let mut seen_skills = HashSet::new();
@@ -75,14 +76,14 @@ impl Suites {
     }
 }
 
-pub(super) fn assemble(access: &FileAccess, assembly: &Path, suite: &Suite, agent: Agent, skills: &Selection) -> Result<Vec<String>, String> {
-    if agent == Agent::Pi {
+pub(super) fn assemble(access: &FileAccess, assembly: &Path, suite: &Suite, skills: &Selection) -> Result<Vec<String>, String> {
+    let Suite::Omp { lsp, .. } = suite else {
         let mut args = vec!["--no-skills".into()];
         for directory in &skills.directories {
             args.extend(["--skill".into(), directory.to_string_lossy().into_owned()]);
         }
         return Ok(args);
-    }
+    };
     let manifest = assembly.join("omp-skills.json");
     let config = serde_json::json!({"skills": {
         "enabled": !skills.names.is_empty(),
@@ -100,10 +101,10 @@ pub(super) fn assemble(access: &FileAccess, assembly: &Path, suite: &Suite, agen
     access.create(&manifest, &serde_json::to_vec_pretty(&config).map_err(|error| error.to_string())?)
         .map_err(|error| error.to_string())?;
     let mut args = vec!["--config".into(), manifest.to_string_lossy().into_owned()];
-    if !suite.lsp.is_empty() {
+    if !lsp.is_empty() {
         // Native plugin discovery merges below user/project LSP files and
         // keeps bundled defaults, unlike a native settings override.
-        let lsp = serde_json::json!({"servers": &suite.lsp});
+        let lsp = serde_json::json!({"servers": lsp});
         access.create(assembly.join("lsp.json"), &serde_json::to_vec_pretty(&lsp).map_err(|error| error.to_string())?)
             .map_err(|error| error.to_string())?;
         args.extend(["--plugin-dir".into(), assembly.to_string_lossy().into_owned()]);

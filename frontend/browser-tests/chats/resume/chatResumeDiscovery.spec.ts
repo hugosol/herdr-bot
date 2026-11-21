@@ -80,14 +80,17 @@ for (const agent of ['pi', 'omp']) {
       server = await startServer({ herdr: {} })
       const root = path.dirname(server.configPath)
       const suiteFile = path.join(root, 'meta-data', 'suites.json')
-      const suite = { id: 'original-suite', name: 'Original Suite', agents: [agent], ...(agent === 'pi' ? { pi: { codemode: 'on' } } : {}) }
       const invalidSuite = mechanism === 'suite-invalid'
       const hasSuite = invalidSuite || unavailable
       const entry = path.join(path.dirname(suiteFile), 'declared-suite-extension.ts')
+      const suite = {
+        id: `original-suite-${agent}`, name: `Original Suite · ${agent === 'omp' ? 'OMP' : 'Pi'}`, harness: agent,
+        skills: [], extensions: [entry], mcp: [], ...(agent === 'pi' ? { prompts: [], codemode: 'on' } : { lsp: {} }),
+      }
       if (hasSuite) {
         fs.mkdirSync(path.dirname(suiteFile), { recursive: true })
         fs.writeFileSync(entry, 'export default function () {}\n')
-        fs.writeFileSync(suiteFile, JSON.stringify({ suites: [{ ...suite, extensions: { [agent]: [entry] } }] }))
+        fs.writeFileSync(suiteFile, JSON.stringify({ suites: [suite] }))
       }
       const source = (await post('/api/tasks', { ...preset(agent), ...(hasSuite ? { suite: suite.id } : {}) })).tasks[0].id
       const id = `${agent}-error-independent-001`

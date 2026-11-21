@@ -58,19 +58,25 @@ async fn suite_paths_save_without_resources_and_fixed_catalog_preserves_roles() 
     assert_eq!(std::path::Path::new(connect["entrypoint"].as_str().unwrap()), root.path().join("unavailable dependencies/connect-bot.ts"));
     // No source dependency exists; listing and saving do not inspect resources.
     assert!(!root.path().join("unavailable dependencies").exists());
-    let mut suite = json!({"id":"shared","name":"Shared choices","agents":["pi","omp"],"pi":{"codemode":"on"},
-        "extensions":{"pi":["${roots.pi_extensions}/pi-web-access/index.ts","packages with spaces/entry.ts"],"omp":["custom-omp.ts"]}
-    });
-    for (method, url) in [("POST", "/api/suites"), ("PUT", "/api/suites/shared")] {
-        let response = request_json_over_tcp(server.addr(), method, url, Some(&suite.to_string())).await;
-        assert_eq!(response.status, 200, "{}", response.body);
-        let body: Value = serde_json::from_str(&response.body).unwrap();
-        assert_eq!(body["suites"][0]["extensions"], suite["extensions"]);
-        assert_eq!(body["fixedExtensions"], listing["fixedExtensions"]);
-        suite["name"] = json!("Edited choices");
+    let mut choices = [
+        json!({"id":"shared-pi","name":"Shared choices · Pi","harness":"pi","codemode":"on","skills":[],"mcp":[],"prompts":[],
+            "extensions":["${roots.pi_extensions}/pi-web-access/index.ts","packages with spaces/entry.ts"]}),
+        json!({"id":"shared-omp","name":"Shared choices · OMP","harness":"omp","skills":[],"mcp":[],"lsp":{},
+            "extensions":["custom-omp.ts"]}),
+    ];
+    for (suite, label) in choices.iter_mut().zip(["Pi", "OMP"]) {
+        let detail = format!("/api/suites/{}", suite["id"].as_str().unwrap());
+        for (method, url) in [("POST", "/api/suites"), ("PUT", detail.as_str())] {
+            if method == "PUT" { suite["name"] = json!(format!("Edited choices · {label}")); }
+            let response = request_json_over_tcp(server.addr(), method, url, Some(&suite.to_string())).await;
+            assert_eq!(response.status, 200, "{}", response.body);
+            let body: Value = serde_json::from_str(&response.body).unwrap();
+            assert!(body["suites"].as_array().unwrap().contains(suite));
+            assert_eq!(body["fixedExtensions"], listing["fixedExtensions"]);
+        }
     }
     let stored: Value = serde_json::from_slice(&fs::read(&config.suites.definition_file).unwrap()).unwrap();
-    assert_eq!(stored["suites"][0]["extensions"], suite["extensions"]);
+    assert_eq!(stored["suites"], json!(choices));
     // A catalog edit never rewrites an existing Suite declaration into its new path.
     let raw = fs::read_to_string(&config.tasks.metadata_file).unwrap().replace("connect-bot.ts", "replacement.ts");
     fs::write(&config.tasks.metadata_file, raw).unwrap();
@@ -78,16 +84,22 @@ async fn suite_paths_save_without_resources_and_fixed_catalog_preserves_roles() 
     assert_eq!(response.status, 200, "{}", response.body);
     let body: Value = serde_json::from_str(&response.body).unwrap();
     assert!(body.get("extensions").is_none());
-    assert_eq!(body["suites"][0]["extensions"], suite["extensions"]);
-    let response = get_over_tcp(server.addr(), "/api/suites/shared").await;
-    assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap(), json!({"suite":stored["suites"][0]}));
+    assert_eq!(body["suites"], stored["suites"]);
+    for suite in &choices {
+        let detail = format!("/api/suites/{}", suite["id"].as_str().unwrap());
+        let response = get_over_tcp(server.addr(), &detail).await;
+        assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap(), json!({"suite":suite}));
+    }
     let response = get_over_tcp(server.addr(), "/api/tasks").await;
     assert_eq!(response.status, 200, "{}", response.body);
     let tasks: Value = serde_json::from_str(&response.body).unwrap();
     let fixed = tasks["options"]["extensions"].as_array().unwrap();
     assert!(!fixed.is_empty());
     assert!(fixed.iter().all(|extension| extension["kind"] == "fixed"));
-    let response = request_json_over_tcp(server.addr(), "DELETE", "/api/suites/shared", None).await;
+    let response = request_json_over_tcp(server.addr(), "DELETE", "/api/suites/shared-pi", None).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["suites"], json!([choices[1]]));
+    let response = request_json_over_tcp(server.addr(), "DELETE", "/api/suites/shared-omp", None).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let body: Value = serde_json::from_str(&response.body).unwrap();
     assert_eq!(body["suites"], json!([]));
@@ -101,13 +113,13 @@ async fn invalid_response_catalogs_reject_all_suite_writes_before_persistence() 
     let mut config = config(&root);
     let metadata = shared_metadata(&root, &mut config);
     let server = TestServer::start(&config).await;
-    let existing = json!({"id":"existing","name":"Preserved","agents":["omp"]});
+    let existing = json!({"id":"existing-omp","name":"Preserved · OMP","harness":"omp"});
     let response = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&existing.to_string())).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let persisted = fs::read(&config.suites.definition_file).unwrap();
-    let new = json!({"id":"new","name":"Never saved","agents":["omp"]});
+    let new = json!({"id":"new-omp","name":"Never saved · OMP","harness":"omp"});
     let mut edited = existing.clone();
-    edited["name"] = json!("Never updated");
+    edited["name"] = json!("Never updated · OMP");
     for damage in [
         "invalid TOML [".to_owned(),
         metadata.replace("${roots.pi_extensions}", "${roots.unknown}"),
@@ -119,8 +131,8 @@ async fn invalid_response_catalogs_reject_all_suite_writes_before_persistence() 
         assert!(response.body.contains("metadata-invalid"), "{}", response.body);
         for (method, url, body) in [
             ("POST", "/api/suites", Some(new.to_string())),
-            ("PUT", "/api/suites/existing", Some(edited.to_string())),
-            ("DELETE", "/api/suites/existing", None),
+            ("PUT", "/api/suites/existing-omp", Some(edited.to_string())),
+            ("DELETE", "/api/suites/existing-omp", None),
         ] {
             let response = request_json_over_tcp(server.addr(), method, url, body.as_deref()).await;
             assert_eq!(response.status, 500, "{}", response.body);
@@ -128,14 +140,14 @@ async fn invalid_response_catalogs_reject_all_suite_writes_before_persistence() 
             assert_eq!(fs::read(&config.suites.definition_file).unwrap(), persisted);
         }
         // Single-definition reads remain independent of fixed extension metadata.
-        assert_eq!(get_over_tcp(server.addr(), "/api/suites/existing").await.status, 200);
+        assert_eq!(get_over_tcp(server.addr(), "/api/suites/existing-omp").await.status, 200);
     }
     fs::write(&config.tasks.metadata_file, metadata).unwrap();
     fs::write(&config.suites.mcp_file, "{broken central catalog").unwrap();
     for (method, url, body) in [
         ("POST", "/api/suites", Some(new.to_string())),
-        ("PUT", "/api/suites/existing", Some(edited.to_string())),
-        ("DELETE", "/api/suites/existing", None),
+        ("PUT", "/api/suites/existing-omp", Some(edited.to_string())),
+        ("DELETE", "/api/suites/existing-omp", None),
     ] {
         let response = request_json_over_tcp(server.addr(), method, url, body.as_deref()).await;
         assert_eq!(response.status, 500, "{}", response.body);
@@ -146,75 +158,126 @@ async fn invalid_response_catalogs_reject_all_suite_writes_before_persistence() 
 // P25: mode is a closed explicit choice, not a nullable/inherited global value.
 // Saving invalid modes through HTTP must not replace the last valid authority.
 #[tokio::test]
-async fn pi_mode_is_explicit_and_applicable_through_public_http() {
+async fn pi_mode_is_explicit_through_public_http() {
     let root = TempDir::new("suite explicit pi mode");
     let config = config(&root);
     let server = TestServer::start(&config).await;
-    let literal = json!({"id":"pi-tools","name":"Pi tools","agents":["pi"],"skills":{"omp":[],"pi":[]},"extensions":{},"prompts":[],"lsp":{},"mcp":[],"pi":{"codemode":"only"}});
+    let literal = json!({"id":"tools-pi","name":"Tools · Pi","harness":"pi","skills":[],"extensions":[],"prompts":[],"mcp":[],"codemode":"only"});
     let response = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&literal.to_string())).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let persisted = fs::read(&config.suites.definition_file).unwrap();
     assert_eq!(serde_json::from_slice::<Value>(&persisted).unwrap(), json!({"suites":[literal]}));
-    let invalid = [
-        json!(null), json!({}), json!({"codemode":"off"}),
-        json!({"codemode":"inherit"}), json!({"codemode":false}),
-        json!({"codemode":"on","only":false}),
-    ];
-    for pi in invalid {
+    for codemode in [json!(null), json!({}), json!("off"), json!("inherit"), json!(false)] {
         let mut input = literal.clone();
-        input["pi"] = pi;
-        let response = request_json_over_tcp(server.addr(), "PUT", "/api/suites/pi-tools", Some(&input.to_string())).await;
+        input["codemode"] = codemode;
+        let response = request_json_over_tcp(server.addr(), "PUT", "/api/suites/tools-pi", Some(&input.to_string())).await;
         assert_eq!(response.status, 400, "{}", response.body);
         assert_eq!(fs::read(&config.suites.definition_file).unwrap(), persisted);
     }
     let mut missing = literal.clone();
-    missing.as_object_mut().unwrap().remove("pi");
-    let response = request_json_over_tcp(server.addr(), "PUT", "/api/suites/pi-tools", Some(&missing.to_string())).await;
-    assert_eq!(response.status, 400, "{}", response.body);
-    let mut wrong_host = literal.clone();
-    wrong_host["agents"] = json!(["omp"]);
-    let response = request_json_over_tcp(server.addr(), "PUT", "/api/suites/pi-tools", Some(&wrong_host.to_string())).await;
+    missing.as_object_mut().unwrap().remove("codemode");
+    let response = request_json_over_tcp(server.addr(), "PUT", "/api/suites/tools-pi", Some(&missing.to_string())).await;
     assert_eq!(response.status, 400, "{}", response.body);
     assert_eq!(fs::read(&config.suites.definition_file).unwrap(), persisted);
     let mut on = literal.clone();
-    on["pi"] = json!({"codemode":"on"});
-    let response = request_json_over_tcp(server.addr(), "PUT", "/api/suites/pi-tools", Some(&on.to_string())).await;
+    on["codemode"] = json!("on");
+    let response = request_json_over_tcp(server.addr(), "PUT", "/api/suites/tools-pi", Some(&on.to_string())).await;
     assert_eq!(response.status, 200, "{}", response.body);
-    let response = get_over_tcp(server.addr(), "/api/suites/pi-tools").await;
-    assert_eq!(response.status, 200, "{}", response.body);
+    let response = get_over_tcp(server.addr(), "/api/suites/tools-pi").await;
     assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap(), json!({"suite":on}));
     assert_eq!(serde_json::from_slice::<Value>(&fs::read(&config.suites.definition_file).unwrap()).unwrap(), json!({"suites":[on]}));
 }
 
+// The path retains the saved ID, so a changed harness must be rejected as
+// immutable, not treated as a rename, conversion, or cleared environment.
 #[tokio::test]
-async fn skills_accept_only_host_paths_and_reject_invalid_writes_without_persistence() {
-    let root = TempDir::new("host keyed skill paths");
+async fn suite_harness_cannot_change_after_save() {
+    let root = TempDir::new("immutable suite harness");
     let config = config(&root);
     let server = TestServer::start(&config).await;
-    let valid = json!({"id":"selected","name":"Selected","agents":["omp"],
-        "skills":{"omp":["parents with spaces"],"pi":["individual skill"]}});
-    let saved = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&valid.to_string())).await;
+    let omp = json!({"id":"tools-omp","name":"Tools · OMP","harness":"omp","skills":[],"extensions":["keep.ts"],"mcp":[],"lsp":{}});
+    let saved = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&omp.to_string())).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
-    let persisted = fs::read(&config.suites.definition_file).unwrap();
-    for skills in [json!([]), json!(["legacy root"]), json!({"other":[]}),
-        json!({"omp":[""]}), json!({"pi":[" \t "]})] {
-        let mut invalid = valid.clone();
-        invalid["skills"] = skills;
-        for (method, path) in [("POST", "/api/suites"), ("PUT", "/api/suites/selected")] {
-            let reply = request_json_over_tcp(server.addr(), method, path, Some(&invalid.to_string())).await;
-            assert_eq!(reply.status, 400, "{}", reply.body);
-            assert_eq!(fs::read(&config.suites.definition_file).unwrap(), persisted);
+    let before = fs::read(&config.suites.definition_file).unwrap();
+    let reassigned = json!({"id":"tools-omp","name":"Tools · Pi","harness":"pi","codemode":"on"});
+    let response = request_json_over_tcp(server.addr(), "PUT", "/api/suites/tools-omp", Some(&reassigned.to_string())).await;
+    assert_eq!(response.status, 400, "{}", response.body);
+    assert!(response.body.contains("不能更改 Suite 宿主"), "{}", response.body);
+    assert_eq!(fs::read(&config.suites.definition_file).unwrap(), before);
+    let read = get_over_tcp(server.addr(), "/api/suites/tools-omp").await;
+    assert_eq!(serde_json::from_str::<Value>(&read.body).unwrap(), json!({"suite":omp}));
+}
+
+// Wrong-harness fields (even empty) and old fields are errors, not resources
+// to discard. Both public mutation routes must leave the stored file intact.
+#[tokio::test]
+async fn suite_rejects_wrong_harness_fields_and_legacy_wire_shape() {
+    let root = TempDir::new("strict suite wire shape");
+    let config = config(&root);
+    let server = TestServer::start(&config).await;
+    let omp = json!({"id":"strict-omp","name":"Strict · OMP","harness":"omp"});
+    let pi = json!({"id":"strict-pi","name":"Strict · Pi","harness":"pi","codemode":"on"});
+    for suite in [&omp, &pi] {
+        let response = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&suite.to_string())).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+    }
+    let before = fs::read(&config.suites.definition_file).unwrap();
+    for (suite, key, value) in [
+        (&omp, "prompts", json!([])), (&omp, "codemode", json!("on")),
+        (&pi, "lsp", json!({})), (&pi, "lsp", json!(null)),
+        (&omp, "agents", json!(["omp"])), (&pi, "pi", json!({"codemode":"on"})),
+        (&pi, "extensions", json!({"pi":[]})),
+        (&omp, "harness", json!(["omp"])),
+        (&omp, "id", json!("strict-pi")), (&pi, "name", json!("Strict · OMP")),
+    ] {
+        let original = suite["id"].as_str().unwrap();
+        let detail = format!("/api/suites/{original}");
+        let mut invalid = suite.clone();
+        invalid[key] = value;
+        for (method, path) in [("POST", "/api/suites"), ("PUT", detail.as_str())] {
+            let response = request_json_over_tcp(server.addr(), method, path, Some(&invalid.to_string())).await;
+            assert_eq!(response.status, 400, "{invalid}: {}", response.body);
+            assert_eq!(fs::read(&config.suites.definition_file).unwrap(), before);
         }
     }
-    for skills in [json!({}), json!({"omp":["parent"]}), json!({"pi":["root"]})] {
-        let mut input = valid.clone();
-        input["skills"] = skills.clone();
-        let reply = request_json_over_tcp(server.addr(), "PUT", "/api/suites/selected", Some(&input.to_string())).await;
-        assert_eq!(reply.status, 200, "{}", reply.body);
-        let reply = get_over_tcp(server.addr(), "/api/suites/selected").await;
-        let actual: Value = serde_json::from_str(&reply.body).unwrap();
-        assert_eq!(actual["suite"]["skills"]["omp"], skills.get("omp").cloned().unwrap_or(json!([])));
-        assert_eq!(actual["suite"]["skills"]["pi"], skills.get("pi").cloned().unwrap_or(json!([])));
+    let malformed_file = json!({"suites":[{"id":"strict-omp","name":"Strict · OMP","harness":"omp","prompts":[]}]}).to_string();
+    fs::write(&config.suites.definition_file, &malformed_file).unwrap();
+    let response = get_over_tcp(server.addr(), "/api/suites").await;
+    assert_eq!(response.status, 500, "{}", response.body);
+    assert!(response.body.contains("suite-storage-failed"));
+    assert_eq!(fs::read_to_string(&config.suites.definition_file).unwrap(), malformed_file);
+}
+
+#[tokio::test]
+async fn skills_accept_single_harness_paths_and_reject_invalid_writes_without_persistence() {
+    let root = TempDir::new("flat harness skill paths");
+    let config = config(&root);
+    let server = TestServer::start(&config).await;
+    for (valid, detail) in [
+        (json!({"id":"selected-omp","name":"Selected · OMP","harness":"omp","skills":["parents with spaces"]}), "/api/suites/selected-omp"),
+        (json!({"id":"selected-pi","name":"Selected · Pi","harness":"pi","skills":["individual skill"],"codemode":"on"}), "/api/suites/selected-pi"),
+    ] {
+        let saved = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&valid.to_string())).await;
+        assert_eq!(saved.status, 200, "{}", saved.body);
+        let persisted = fs::read(&config.suites.definition_file).unwrap();
+        for skills in [json!({}), json!({"omp":[]}), json!({"pi":["legacy root"]}), json!([""]), json!([" \t "])] {
+            let mut invalid = valid.clone();
+            invalid["skills"] = skills;
+            for (method, path) in [("POST", "/api/suites"), ("PUT", detail)] {
+                let reply = request_json_over_tcp(server.addr(), method, path, Some(&invalid.to_string())).await;
+                assert_eq!(reply.status, 400, "{}", reply.body);
+                assert_eq!(fs::read(&config.suites.definition_file).unwrap(), persisted);
+            }
+        }
+        for skills in [valid["skills"].clone(), json!([])] {
+            let mut input = valid.clone();
+            input["skills"] = skills.clone();
+            let reply = request_json_over_tcp(server.addr(), "PUT", detail, Some(&input.to_string())).await;
+            assert_eq!(reply.status, 200, "{}", reply.body);
+            let reply = get_over_tcp(server.addr(), detail).await;
+            let actual: Value = serde_json::from_str(&reply.body).unwrap();
+            assert_eq!(actual["suite"]["skills"], skills);
+        }
     }
 }
 
@@ -225,24 +288,24 @@ async fn external_authority_damage_is_not_hidden_or_overwritten() {
     let root = TempDir::new("suite external authority damage");
     let config = config(&root);
     fs::create_dir_all(config.suites.definition_file.parent().unwrap()).unwrap();
-    let literal = "{\"suites\":[{\"id\":\"external\",\"name\":\"Independent definition\",\"agents\":[\"omp\"],\"skills\":{\"omp\":[],\"pi\":[]},\"extensions\":{},\"prompts\":[],\"lsp\":{},\"mcp\":[]}]}";
+    let literal = r#"{"suites":[{"id":"external-omp","name":"Independent definition · OMP","harness":"omp","skills":[],"extensions":[],"lsp":{},"mcp":[]}]}"#;
     fs::write(&config.suites.definition_file, literal).unwrap();
     let server = TestServer::start(&config).await;
-    assert_eq!(get_over_tcp(server.addr(), "/api/suites/external").await.status, 200);
+    assert_eq!(get_over_tcp(server.addr(), "/api/suites/external-omp").await.status, 200);
     let damaged = "{\"suites\":[BROKEN external edit";
     fs::write(&config.suites.definition_file, damaged).unwrap();
     let response = get_over_tcp(server.addr(), "/api/suites").await;
     assert_eq!(response.status, 500, "{}", response.body);
     assert!(response.body.contains("suite-storage-failed"));
-    let valid = json!({"id":"external","name":"Must not overwrite","agents":["omp"]});
-    for (method, url, body) in [("PUT", "/api/suites/external", Some(valid.to_string())), ("DELETE", "/api/suites/external", None)] {
+    let valid = json!({"id":"external-omp","name":"Must not overwrite · OMP","harness":"omp"});
+    for (method, url, body) in [("PUT", "/api/suites/external-omp", Some(valid.to_string())), ("DELETE", "/api/suites/external-omp", None)] {
         let response = request_json_over_tcp(server.addr(), method, url, body.as_deref()).await;
         assert_eq!(response.status, 500, "{}", response.body);
         assert_eq!(fs::read_to_string(&config.suites.definition_file).unwrap(), damaged);
     }
     fs::write(&config.suites.definition_file, literal).unwrap();
-    let response = get_over_tcp(server.addr(), "/api/suites/external").await;
+    let response = get_over_tcp(server.addr(), "/api/suites/external-omp").await;
     assert_eq!(response.status, 200, "{}", response.body);
-    assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["suite"]["name"], "Independent definition");
+    assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["suite"]["name"], "Independent definition · OMP");
     assert_eq!(fs::read_to_string(&config.suites.definition_file).unwrap(), literal);
 }

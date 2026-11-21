@@ -213,13 +213,14 @@ export default function(pi) {
 }
 ''')
         selected = self.scenario == 'selected'
-        negative = self.scenario in ['unreadable-skill', 'unreadable-extension', 'generation-failure', 'incompatible']
-        self.suite = {'id': 'shared', 'name': 'Shared declaration', 'agents': ['omp', 'pi'],
-                      'skills': {'omp': ['${roots.resources}', '.'] if selected or self.scenario == 'unreadable-skill' else [],
-                                 'pi': ['${roots.resources}/root skill', 'relative skill'] if selected or self.scenario == 'unreadable-skill' else []},
-                      'pi': {'codemode': 'on'}, 'mcp': []}
-        if selected or self.scenario == 'unreadable-extension':
-            self.suite['extensions'] = {'omp': ['relative package/extension/probe.ts'], 'pi': ['relative package/extension/probe.ts']}
+        has_skills = selected or self.scenario == 'unreadable-skill'
+        extensions = ['relative package/extension/probe.ts'] if selected or self.scenario == 'unreadable-extension' else []
+        omp_suite = {'id': 'resources-omp', 'name': 'Resource probes · OMP', 'harness': 'omp',
+                     'skills': ['${roots.resources}', '.'] if has_skills else [],
+                     'extensions': extensions, 'lsp': {}}
+        pi_suite = {'id': 'resources-pi', 'name': 'Resource probes · Pi', 'harness': 'pi',
+                    'skills': ['${roots.resources}/root skill', 'relative skill'] if has_skills else [],
+                    'extensions': extensions, 'prompts': [], 'codemode': 'on'}
         native = {'native_file': self.server_config('native')}
         central = {}
         if selected or self.scenario == 'append':
@@ -237,12 +238,12 @@ export default function(pi) {
             self.unreachable = socket.socket()
             self.unreachable.bind(('127.0.0.1', 0))
             central['unreachable'] = {'url': f'http://127.0.0.1:{self.unreachable.getsockname()[1]}/mcp', 'exposure': 'direct'}
-        self.suite['mcp'] = list(central)
+        self.suites = {'omp': dict(omp_suite, mcp=list(central)), 'pi': dict(pi_suite, mcp=list(central))}
         (agent / 'mcp.json').write_text(json.dumps({'mcpServers': native}))
         self.native_path = agent / 'mcp.json'
         self.native_bytes = self.native_path.read_bytes()
         (authority / 'mcp.json').write_text(json.dumps({'mcpServers': central}))
-        self.publish()
+        (self.authority / 'suites.json').write_text(json.dumps({'suites': list(self.suites.values())}))
         (self.root / 'paths.toml').write_text('[roots]\nresources = ' + json.dumps(str(root)) + '\n')
         self.original = {str(p): digest(p) for directory in [root, authority] for p in directory.rglob('*') if p.is_file()}
         q = lambda value: json.dumps(str(value))
@@ -284,9 +285,6 @@ export default function(pi) {
     def server_config(self, route):
         return {'url': f'http://127.0.0.1:{self.mcp.server_port}/{route}', 'exposure': 'direct'}
 
-    def publish(self):
-        (self.authority / 'suites.json').write_text(json.dumps({'suites': [self.suite]}))
-
     def exercise(self):
         selected = self.scenario == 'selected'
         count = 3 if selected else 1
@@ -309,7 +307,7 @@ export default function(pi) {
             self.http('/api/zones', {'id': f'owned-{index}', 'path': str(zone)})
             saved = self.http('/api/tasks', {'name': f'{self.scenario}-{index}', 'chatName': '{task.name}-{chat.id}',
                 'agent': agent, 'taskType': 'normal', 'model': 'probe', 'thinking': 'off', 'skill': None,
-                'prompt': 'Consume the owned acceptance resources.', 'suite': 'shared'})['tasks']
+                'prompt': 'Consume the owned acceptance resources.', 'suite': self.suites[agent]['id']})['tasks']
             task = next(task for task in saved if task['name'] == f'{self.scenario}-{index}')
             preview = self.http('/api/chats/preview', {'zone': f'owned-{index}', 'taskId': task['id']})
             before_tabs = self.herdr('tab', 'list')
@@ -325,10 +323,14 @@ export default function(pi) {
             elif self.scenario == 'generation-failure':
                 (self.root / 'generated resources').write_text('OWNED-OUTPUT-BLOCKER')
             elif self.scenario == 'incompatible':
-                self.suite['agents'] = ['omp']
-                self.suite.pop('pi')
-                self.publish()
-                self.http('/api/suites')  # Still a valid declaration; only Task compatibility changed.
+                # An out-of-band Task mismatch after preview must still fail at launch.
+                # Both Suite definitions remain valid and immutable.
+                task_file = self.root / 'data/tasks.json'
+                document = json.loads(task_file.read_text(encoding='utf-8'))
+                stored = next(item for item in document['tasks'] if item['id'] == task['id'])
+                stored['suite'] = self.suites['omp']['id']
+                task_file.write_text(json.dumps(document), encoding='utf-8')
+                self.http('/api/suites')
             case = {'agent': agent, 'scenario': self.scenario, 'selected': selected, 'requests': [],
                     'expected': [], 'mcpTools': [], 'consumed': False, 'cwd': str(zone),
                     'expectedSkillFiles': [str((self.skill / 'SKILL.md').resolve()),
@@ -354,7 +356,7 @@ export default function(pi) {
                     case['rejection'] = self.http('/api/chats', payload, status=400)
                     rejected = json.dumps(case['rejection'], ensure_ascii=False)
                     expected_cause = {'unreadable-skill': 'root skill', 'unreadable-extension': 'relative package',
-                                      'generation-failure': 'shared', 'incompatible': 'shared'}[self.scenario]
+                                      'generation-failure': 'resources-pi', 'incompatible': 'resources-omp'}[self.scenario]
                     require(expected_cause in rejected, ('Wrong launch rejection cause', expected_cause, rejected))
                     require(case['requests'] == [], 'Rejected launch reached the model')
                     require(self.herdr('tab', 'list') == before_tabs, 'Rejected launch created a Herdr tab')
@@ -430,8 +432,6 @@ export default function(pi) {
             require(dict(calls) == expected, ('Independent MCP call counts', expected, dict(calls)))
             self.evidence.update(expectedConnections=expected, actualConnections=dict(init), actualCalls=dict(calls))
         for path, sha in self.original.items():
-            if self.scenario == 'incompatible' and path.endswith('suites.json'):
-                continue
             require(digest(Path(path)) == sha, ('Source changed during assembly', path))
         self.evidence['passed'] = True
 

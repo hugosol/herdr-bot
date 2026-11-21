@@ -6,6 +6,7 @@ The observation extension uses documented native events/read-only APIs; it does
 not replace a product extension, modify host methods, or create a product API.
 """
 from concurrent.futures import ThreadPoolExecutor
+from copy import copy
 import html
 import http.server
 import json
@@ -129,7 +130,7 @@ class Model(http.server.BaseHTTPRequestHandler):
                                     ('Incomplete or mixed advertised native Skills', advertised))
                             skill = advertised['lifecycle-' + letter]
                             expected = (owner.authority / ('skills-' + letter) / ('skill-' + letter) / 'SKILL.md').resolve()
-                            require(Path(skill).resolve() == expected, ('Native Skill must use its original source', skill, str(expected)))
+                            require(Path(skill).samefile(expected), ('Native Skill must use its original source', skill, str(expected)))
                             case['resourcePaths'] = advertised
                         else:
                             tables = re.findall(r'<skills>\s*(.*?)</skills>', system, re.S)
@@ -187,7 +188,9 @@ class Model(http.server.BaseHTTPRequestHandler):
 
 class Acceptance(CloseAcceptance):
     def __init__(self, args, agent, scenario):
-        super().__init__(args, prefix=str(args.evidence_dir / (agent + '-' + scenario + '-')))
+        owned_args = copy(args)
+        owned_args.evidence_dir = args.evidence_dir / (agent + '-' + scenario + '-' + uuid.uuid4().hex[:8])
+        super().__init__(owned_args, prefix=agent + '-' + scenario + '-')
         self.agent, self.scenario = agent, scenario
         self.state_extension = getattr(args, agent + '_state_extension')
         self.cases, self.handles = {}, {}
@@ -250,6 +253,7 @@ class Acceptance(CloseAcceptance):
         initial.mkdir(parents=True)
         (initial / 'SKILL.md').write_text('---\nname: lifecycle-initial\ndescription: Owned initial instruction\n---\n' + INITIAL + '\n', encoding='utf-8')
         self.suites = {}
+        other_suites = {}
         for letter in SENTINELS:
             skill = self.authority / ('skills-' + letter) / ('skill-' + letter)
             skill.mkdir(parents=True)
@@ -262,10 +266,17 @@ class Acceptance(CloseAcceptance):
 export default function(pi) { pi.registerTool({name:"lifecycle_asset",label:"Lifecycle asset",description:"Read complete native package asset",
  parameters:pi.zod ? pi.zod.object({}) : {type:"object",properties:{}},async execute(){return {content:[{type:"text",text:readFileSync(new URL("asset.txt",import.meta.url),"utf8")}],details:{}};}}); }
 ''', encoding='utf-8')
-            self.suites[letter] = {'id': letter, 'name': 'Lifecycle ' + letter, 'agents': ['pi', 'omp'],
-                'skills': {'omp': [str(initial.parent), 'skills-' + letter], 'pi': [str(initial), 'skills-' + letter + '/skill-' + letter]}, 'extensions': {'pi': ['package-' + letter + '/entry.ts'], 'omp': ['package-' + letter + '/entry.ts']},
-                'prompts': [], 'lsp': {}, 'mcp': [], 'pi': {'codemode': 'on'}}
-        (self.authority / 'suites.json').write_text(json.dumps({'suites': list(self.suites.values())}), encoding='utf-8')
+            omp_suite = {'id': f'{letter}-omp', 'name': f'Lifecycle {letter} · OMP', 'harness': 'omp',
+                'skills': [str(initial.parent), f'skills-{letter}'], 'extensions': [f'package-{letter}/entry.ts'],
+                'mcp': [], 'lsp': {}}
+            pi_suite = {'id': f'{letter}-pi', 'name': f'Lifecycle {letter} · Pi', 'harness': 'pi',
+                'skills': [str(initial), f'skills-{letter}/skill-{letter}'], 'extensions': [f'package-{letter}/entry.ts'],
+                'mcp': [], 'prompts': [], 'codemode': 'on'}
+            self.suites[letter], other_suites[letter] = ((omp_suite, pi_suite) if self.agent == 'omp'
+                                                        else (pi_suite, omp_suite))
+        self.other_suite_a_route = '/api/suites/' + other_suites['a']['id']
+        (self.authority / 'suites.json').write_text(
+            json.dumps({'suites': [*self.suites.values(), *other_suites.values()]}), encoding='utf-8')
         (self.authority / 'mcp.json').write_text('{"mcpServers":{}}', encoding='utf-8')
         # A byte-identical deployment of the supplied worktree, except its explicit
         # test-owned endpoint configuration. Never copy runtime access records/auth.
@@ -356,6 +367,7 @@ export default function(pi) {
         entries = [('acceptance-observer', self.observer),
                    (self.agent + '-herdr-agent-state', self.state_extension),
                    (self.agent + '-model-cost', self.deployment / f'entrypoints/{self.agent}/model-cost.ts'),
+                   (self.agent + '-connect-bot', self.deployment / f'entrypoints/{self.agent}-auto/connect-bot.ts'),
                    (self.agent + '-manager-chat', self.deployment / f'entrypoints/{self.agent}-auto/manager-chat.ts'),
                    (self.agent + '-node-chat', self.deployment / f'entrypoints/{self.agent}-auto/node-chat.ts')]
         if self.agent == 'pi':
@@ -375,9 +387,11 @@ export default function(pi) {
         self.base = until('backend dynamic loopback', address)
         (self.deployment / 'extensions/workflow-chat/config.yaml').write_text(
             f'endpoint: {self.base}\nrequestTimeoutMs: 30000\nreportConfirmationTimeoutMs: 20000\napproveConfirmationTimeoutMs: 60000\ncollectTimeoutMs: 5460000\n', encoding='utf-8')
-        config = self.deployment / 'extensions/workflow-chat/config.yaml'
-        self.evidence.setdefault('deploymentOverrides', []).append({'path': str(config), 'sha256': digest(config),
-            'content': config.read_text(encoding='utf-8')})
+        connect_config = self.deployment / 'extensions/connect-bot/config.yaml'
+        connect_config.write_text(f'endpoint: {self.base}\nrequestTimeoutMs: 30000\n', encoding='utf-8')
+        for config in [self.deployment / 'extensions/workflow-chat/config.yaml', connect_config]:
+            self.evidence.setdefault('deploymentOverrides', []).append({'path': str(config), 'sha256': digest(config),
+                'content': config.read_text(encoding='utf-8')})
 
     def new_case(self, name, suite=None, role='normal', trigger=False, hold=False, cwd=None):
         key = uuid.uuid4().hex
@@ -400,7 +414,7 @@ export default function(pi) {
     def save_task(self, case):
         body = {'name': case['name'], 'agent': self.agent, 'taskType': 'manager' if case['role'] == 'manager' else 'normal',
             'chatName': 'Lifecycle {chat.id}', 'model': 'probe', 'thinking': 'high',
-            'skill': 'initial' if case['trigger'] else None, 'prompt': FIXED if case['trigger'] else '', 'suite': case['suite']}
+            'skill': 'initial' if case['trigger'] else None, 'prompt': FIXED if case['trigger'] else '', 'suite': self.suites[case['suite']]['id'] if case['suite'] else None}
         saved = self.http('/api/tasks', body)
         case['task'] = next(t for t in saved['tasks'] if t['name'] == case['name'])
         return case['task']
@@ -535,8 +549,12 @@ export default function(pi) {
         before_events = self.events(selected)
         before_requests = len(selected['requests'])
         changed = dict(self.suites['a'], skills=self.suites['b']['skills'], extensions=self.suites['b']['extensions'])
-        self.request('PUT', '/api/suites/a', changed)
-        saved = self.http('/api/suites/a')['suite']
+        suite_a_route = '/api/suites/' + changed['id']
+        other_a_before = self.http(self.other_suite_a_route)['suite']
+        self.request('PUT', suite_a_route, changed)
+        saved = self.http(suite_a_route)['suite']
+        other_a_after = self.http(self.other_suite_a_route)['suite']
+        require(other_a_after == other_a_before, 'Suite save modified the other harness selection')
         require(saved['skills'] == self.suites['b']['skills'], 'Suite save did not persist')
         # Read barriers and a bounded quiet interval bracket product save;
         # native host reload is not disabled and resource bytes are not frozen.
@@ -555,7 +573,7 @@ export default function(pi) {
         require(live['observation']['pid'] == selected['observation']['pid'], 'Save actively replaced existing process')
         later = self.new_case('after-suite-save', 'b')
         self.save_task(later)
-        body = dict(later['task'], suite='a')
+        body = dict(later['task'], suite=self.suites['a']['id'])
         body.pop('id', None)
         self.request('PUT', '/api/tasks/' + later['task']['id'], body)
         # Explicit Suite a now references the independent B sentinels.
@@ -564,14 +582,15 @@ export default function(pi) {
         self.wait_case(later)
         self.evidence['saveObservation'] = {'before': before_events, 'after': after_events, 'saved': saved,
                                            'oldPid': selected['observation']['pid'], 'laterCase': later['case'],
-                                           'quietObservedSeconds': quiet_seconds}
+                                           'quietObservedSeconds': quiet_seconds, 'otherSuiteBefore': other_a_before,
+                                           'otherSuiteAfter': other_a_after}
         # Change both the source Task and Suite. Trigger changes are deliberately
         # incompatible with original history and must not affect resume.
-        edited = dict(selected['task'], suite='b', prompt='MUST-NOT-REPLAY-TRIGGER-955', skill=None, model='default', thinking='default', chatName='MUST-NOT-RENAME')
+        edited = dict(selected['task'], suite=self.suites['b']['id'], prompt='MUST-NOT-REPLAY-TRIGGER-955', skill=None, model='default', thinking='default', chatName='MUST-NOT-RENAME')
         edited.pop('id', None)
         self.request('PUT', '/api/tasks/' + selected['task']['id'], edited)
         latest_b = dict(self.suites['b'], skills=self.suites['c']['skills'], extensions=self.suites['c']['extensions'])
-        self.request('PUT', '/api/suites/b', latest_b)
+        self.request('PUT', '/api/suites/' + latest_b['id'], latest_b)
         self.close_case(selected)
         self.backend.stop()
         self.start_backend()
@@ -582,7 +601,7 @@ export default function(pi) {
         normal = self.wait_case(self.launch(self.new_case('legacy-source', trigger=True)))
         # A same-name Task now selects Suite A; source-less recovery must not
         # infer it from name/cwd/current selection.
-        decoy_source = dict(normal['task'], suite='a')
+        decoy_source = dict(normal['task'], suite=self.suites['a']['id'])
         decoy_source.pop('id', None)
         self.request('PUT', '/api/tasks/' + normal['task']['id'], decoy_source)
         # No source legacy catalog: retain genuine native history, remove only its

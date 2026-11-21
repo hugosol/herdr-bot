@@ -155,7 +155,7 @@ def read_only(run, roots):
 def assembly(run):
     # First show that the undeclared set and its same-named file are real and
     # discoverable in an actual native session when selected by its own Suite.
-    other = run.task('Alternate source positive control', 'owned-other')
+    other = run.task('Alternate source positive control', 'owned-other-omp')
     marker = 'PSTACK-AMBIENT-POSITIVE-094'
     one_read(run, marker, 'skill://setup-pstack')
     baseline = run.launch(other, marker)
@@ -353,7 +353,7 @@ def role_lifecycle(run):
     settings = run.suite / 'models.local.json'
     index = run.generated / 'roles.local.json'
     require(not settings.exists() and not index.exists(), 'Initial fixture must have no model bindings')
-    other = run.task('Other Suite uses native default', 'owned-other')
+    other = run.task('Other Suite uses native default', 'owned-other-omp')
     source = run.task('Published pstack role consumer')
 
     def control(stage):

@@ -20,38 +20,33 @@ use crate::{AppState, files::{FileAccess, FileStore}, tasks::Agent};
 pub enum Codemode { On, Only }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PiConfig { pub codemode: Codemode }
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Suite {
-    pub id: String,
-    pub name: String,
-    pub agents: Vec<Agent>,
-    #[serde(default = "empty_skills", deserialize_with = "deserialize_skills")]
-    pub skills: BTreeMap<String, Vec<String>>,
-    #[serde(default)]
-    pub extensions: BTreeMap<String, Vec<String>>,
-    #[serde(default)]
-    pub prompts: Vec<String>,
-    #[serde(default)]
-    pub lsp: BTreeMap<String, Value>,
-    #[serde(default)]
-    pub mcp: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pi: Option<PiConfig>,
-}
-
-fn empty_skills() -> BTreeMap<String, Vec<String>> {
-    BTreeMap::from([("omp".into(), Vec::new()), ("pi".into(), Vec::new())])
-}
-
-fn deserialize_skills<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<BTreeMap<String, Vec<String>>, D::Error> {
-    let mut skills = BTreeMap::<String, Vec<String>>::deserialize(deserializer)?;
-    skills.entry("omp".into()).or_default();
-    skills.entry("pi".into()).or_default();
-    Ok(skills)
+#[serde(tag = "harness", rename_all = "lowercase", deny_unknown_fields)]
+pub enum Suite {
+    Omp {
+        id: String,
+        name: String,
+        #[serde(default)]
+        skills: Vec<String>,
+        #[serde(default)]
+        extensions: Vec<String>,
+        #[serde(default)]
+        mcp: Vec<String>,
+        #[serde(default)]
+        lsp: BTreeMap<String, Value>,
+    },
+    Pi {
+        id: String,
+        name: String,
+        #[serde(default)]
+        skills: Vec<String>,
+        #[serde(default)]
+        extensions: Vec<String>,
+        #[serde(default)]
+        mcp: Vec<String>,
+        #[serde(default)]
+        prompts: Vec<String>,
+        codemode: Codemode,
+    },
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -94,45 +89,75 @@ impl SuiteError {
 }
 
 impl Suite {
-    fn validate(&self) -> Result<(), SuiteError> {
-        if self.id.is_empty() || !self.id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_') {
-            return Err(SuiteError::invalid("Suite ID 只能包含英文字母、数字、连字符和下划线，且不能为空。"));
-        }
-        if self.name.trim().is_empty() { return Err(SuiteError::invalid("Suite 名称不能为空。")); }
-        if self.agents.is_empty() || self.agents.iter().enumerate().any(|(i, agent)| self.agents[..i].contains(agent)) {
-            return Err(SuiteError::invalid("请选择至少一个宿主，不能重复。"));
-        }
-        if self.agents.contains(&Agent::Pi) != self.pi.is_some() {
-            return Err(SuiteError::invalid("Pi 适用 Suite 必须明确设置 codemode 为 on 或 only；OMP-only Suite 不接受 Pi 配置。"));
-        }
-        for (host, paths) in &self.extensions {
-            if !self.agents.iter().any(|agent| agent.label() == host) {
-                return Err(SuiteError::invalid(format!("扩展宿主 {host} 必须是 Suite 支持的宿主。")));
-            }
-            let mut seen = HashSet::new();
-            if paths.iter().any(|path| path.trim().is_empty() || !seen.insert(path)) {
-                return Err(SuiteError::invalid(format!("{host} 扩展路径不能包含空值或重复项。")));
-            }
-        }
-        for (host, paths) in &self.skills {
-            if !matches!(host.as_str(), "omp" | "pi") {
-                return Err(SuiteError::invalid(format!("未知技能宿主 {host}；只接受 omp 或 pi。")));
-            }
-            if paths.iter().any(|path| path.trim().is_empty()) {
-                return Err(SuiteError::invalid(format!("{host} 技能路径不能包含空值。")));
-            }
-        }
-        for (name, values) in [("prompts", &self.prompts), ("mcp", &self.mcp)] {
-            let mut seen = HashSet::new();
-            if values.iter().any(|value| value.trim().is_empty() || !seen.insert(value)) {
-                return Err(SuiteError::invalid(format!("{name} 声明不能包含空值或重复项。")));
-            }
-        }
-        if self.lsp.iter().any(|(id, config)| id.trim().is_empty() || !config.is_object()) {
-            return Err(SuiteError::invalid("LSP 声明必须是服务名到原生配置对象的 JSON 对象。"));
+    fn id(&self) -> &str {
+        match self { Self::Omp { id, .. } | Self::Pi { id, .. } => id }
+    }
+
+    fn name(&self) -> &str {
+        match self { Self::Omp { name, .. } | Self::Pi { name, .. } => name }
+    }
+
+    fn harness(&self) -> Agent {
+        match self { Self::Omp { .. } => Agent::Omp, Self::Pi { .. } => Agent::Pi }
+    }
+
+    fn require_harness(&self, agent: Agent) -> Result<(), crate::tasks::TaskError> {
+        if self.harness() != agent {
+            return Err(crate::tasks::TaskError::InvalidSuite(format!(
+                "Suite「{}」不适用于 {}；没有改选或回退为空环境。", self.id(), agent.label())));
         }
         Ok(())
     }
+
+    fn skills(&self) -> &[String] {
+        match self { Self::Omp { skills, .. } | Self::Pi { skills, .. } => skills }
+    }
+
+    fn extensions(&self) -> &[String] {
+        match self { Self::Omp { extensions, .. } | Self::Pi { extensions, .. } => extensions }
+    }
+
+    fn mcp(&self) -> &[String] {
+        match self { Self::Omp { mcp, .. } | Self::Pi { mcp, .. } => mcp }
+    }
+
+    fn validate(&self) -> Result<(), SuiteError> {
+        let (id_suffix, name_suffix) = match self.harness() {
+            Agent::Omp => ("-omp", " · OMP"),
+            Agent::Pi => ("-pi", " · Pi"),
+        };
+        let id = self.id();
+        if !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+            || !id.strip_suffix(id_suffix).is_some_and(|base| !base.is_empty())
+        {
+            return Err(SuiteError::invalid(format!("Suite ID 只能包含英文字母、数字、连字符和下划线，且必须以 {id_suffix} 结尾。")));
+        }
+        if !self.name().strip_suffix(name_suffix).is_some_and(|base| !base.trim().is_empty()) {
+            return Err(SuiteError::invalid(format!("Suite 名称必须非空且以{name_suffix} 结尾。")));
+        }
+        if self.skills().iter().any(|path| path.trim().is_empty()) {
+            return Err(SuiteError::invalid("技能路径不能包含空值。"));
+        }
+        validate_entries("extensions", self.extensions())?;
+        validate_entries("mcp", self.mcp())?;
+        match self {
+            Self::Pi { prompts, .. } => validate_entries("prompts", prompts)?,
+            Self::Omp { lsp, .. } => {
+                if lsp.iter().any(|(id, config)| id.trim().is_empty() || !config.is_object()) {
+                    return Err(SuiteError::invalid("LSP 声明必须是服务名到原生配置对象的 JSON 对象。"));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn validate_entries(name: &str, entries: &[String]) -> Result<(), SuiteError> {
+    let mut seen = HashSet::new();
+    if entries.iter().any(|value| value.trim().is_empty() || !seen.insert(value)) {
+        return Err(SuiteError::invalid(format!("{name} 声明不能包含空值或重复项。")));
+    }
+    Ok(())
 }
 
 impl Suites {
@@ -148,7 +173,7 @@ impl Suites {
         let mut seen = HashSet::new();
         for suite in &document.suites {
             suite.validate().map_err(|error| SuiteError::storage(error.message))?;
-            if !seen.insert(&suite.id) { return Err(SuiteError::storage("Suite ID 重复")); }
+            if !seen.insert(suite.id()) { return Err(SuiteError::storage("Suite ID 重复")); }
         }
         Ok(document)
     }
@@ -157,7 +182,7 @@ impl Suites {
             .map_err(SuiteError::storage)?
     }
     pub fn get(&self, id: &str) -> Result<Suite, SuiteError> {
-        self.list()?.into_iter().find(|suite| suite.id == id).ok_or_else(SuiteError::not_found)
+        self.list()?.into_iter().find(|suite| suite.id() == id).ok_or_else(SuiteError::not_found)
     }
     /// Read-only central native MCP definitions; never copy connection settings into Suites.
     pub fn mcp_catalog(&self) -> Result<BTreeMap<String, Value>, SuiteError> {
@@ -179,13 +204,11 @@ impl Suites {
         use crate::tasks::TaskError;
         let Some(id) = id else { return Ok(None) };
         let document = self.read(access).map_err(|error| TaskError::InvalidSuite(error.message))?;
-        let suite = document.suites.into_iter().find(|suite| suite.id == id)
+        let suite = document.suites.into_iter().find(|suite| suite.id() == id)
             .ok_or_else(|| TaskError::InvalidSuite(format!("Suite「{id}」不存在；请明确修正引用，没有改选或回退为空环境。")))?;
-        if !suite.agents.contains(&agent) {
-            return Err(TaskError::InvalidSuite(format!("Suite「{id}」不适用于 {}；没有改选或回退为空环境。", agent.label())));
-        }
+        suite.require_harness(agent)?;
         let catalog = self.read_mcp(access).map_err(|error| TaskError::InvalidSuite(error.message))?;
-        let missing: Vec<_> = suite.mcp.iter().filter(|id| !catalog.contains_key(*id)).map(String::as_str).collect();
+        let missing: Vec<_> = suite.mcp().iter().filter(|id| !catalog.contains_key(*id)).map(String::as_str).collect();
         if !missing.is_empty() {
             return Err(TaskError::InvalidSuite(format!("Suite「{id}」的集中 MCP 引用失效：{}；没有删除引用或回退为空环境。", missing.join("、"))));
         }
@@ -206,19 +229,28 @@ impl Suites {
         }).map_err(SuiteError::storage)?
     }
     pub fn save(&self, id: Option<&str>, suite: Suite) -> Result<Vec<Suite>, SuiteError> {
-        suite.validate()?;
-        if id.is_some_and(|id| id != suite.id) { return Err(SuiteError::invalid("编辑不能更改 Suite ID。")); }
+        if id.is_some_and(|id| id != suite.id()) { return Err(SuiteError::invalid("编辑不能更改 Suite ID。")); }
         self.change(&[self.definition_file.clone(), self.mcp_file.clone()], |access, suites| {
+            let current = if let Some(id) = id {
+                let current = suites.iter_mut().find(|suite| suite.id() == id).ok_or_else(SuiteError::not_found)?;
+                if current.harness() != suite.harness() {
+                    return Err(SuiteError::invalid("编辑不能更改 Suite 宿主；请为另一宿主新建 Suite。"));
+                }
+                Some(current)
+            } else {
+                None
+            };
+            suite.validate()?;
             let catalog = self.read_mcp(access)?;
-            for reference in &suite.mcp {
+            for reference in suite.mcp() {
                 if !catalog.contains_key(reference) {
-                    return Err(SuiteError::invalid(format!("Suite「{}」的集中 MCP 引用失效：{reference}；请显式修正引用。", suite.id)));
+                    return Err(SuiteError::invalid(format!("Suite「{}」的集中 MCP 引用失效：{reference}；请显式修正引用。", suite.id())));
                 }
             }
-            if let Some(id) = id {
-                *suites.iter_mut().find(|suite| suite.id == id).ok_or_else(SuiteError::not_found)? = suite;
+            if let Some(current) = current {
+                *current = suite;
             } else {
-                if suites.iter().any(|current| current.id == suite.id) {
+                if suites.iter().any(|current| current.id() == suite.id()) {
                     return Err(SuiteError { kind: SuiteErrorKind::Conflict, code: "suite-exists", message: "Suite ID 已存在。".into() });
                 }
                 suites.push(suite);
@@ -228,7 +260,7 @@ impl Suites {
     }
     pub fn delete(&self, id: &str, tasks: &crate::tasks::Tasks) -> Result<Vec<Suite>, SuiteError> {
         self.change(&[self.definition_file.clone(), tasks.storage_file().to_path_buf()], |access, suites| {
-            let index = suites.iter().position(|suite| suite.id == id).ok_or_else(SuiteError::not_found)?;
+            let index = suites.iter().position(|suite| suite.id() == id).ok_or_else(SuiteError::not_found)?;
             let tasks = tasks.read(access).map_err(|error| SuiteError::storage(error.message()))?;
             let references: Vec<_> = tasks.iter().filter(|task| task.env.suite.as_deref() == Some(id))
                 .map(|task| format!("{}（{}）", task.name, task.id)).collect();

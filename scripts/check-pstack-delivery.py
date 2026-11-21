@@ -320,11 +320,12 @@ class PackageCheck:
         if not stat.S_ISDIR(mode.st_mode) or is_link_or_junction(mode):
             raise ValueError(f"not a real package directory: {self.package}")
         raw_catalog = read_file(bot, "meta-data/suites.json")
-        selection = [row for row in decode_json(raw_catalog)["suites"] if row["id"] == "pstack"]
+        selection = [row for row in decode_json(raw_catalog)["suites"] if row["id"] == "pstack-omp"]
         roots = {"skills": ["${roots.toolkit}/pstack-suite/generated/skills"], "extensions": [
             "${roots.toolkit}/pstack-suite/omp.ts", "${roots.toolkit}/pstack-suite/generated",
         ]}
-        if len(selection) != 1 or any(selection[0][key].get("omp") != value for key, value in roots.items()):
+        if (len(selection) != 1 or selection[0]["harness"] != "omp"
+                or any(selection[0][key] != value for key, value in roots.items())):
             self.errors.append("declared pstack Suite does not select the checked kit resources")
         self.report["bot_catalog"] = {"path": "meta-data/suites.json", **fingerprint(raw_catalog), "selection": selection}
         closure = self.json("delivery-closure.json")

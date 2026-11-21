@@ -28,13 +28,13 @@ async fn unreadable_extension_rejects_public_launch_before_herdr() {
     let entry = package.join("entry.ts");
     fs::write(&entry, "export default function(pi) {}\n").unwrap();
     fs::write(&config.suites.definition_file, json!({"suites":[{
-        "id":"selected", "name":"Selected", "agents":["omp"],
-        "extensions":{"omp":["existing extension package/entry.ts"]}
+        "id":"selected-omp", "name":"Selected · OMP", "harness":"omp",
+        "extensions":["existing extension package/entry.ts"]
     }]}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
     let saved = post(&server, "/api/tasks", json!({"name":"Selected extension", "chatName":"{task.name}",
         "agent":"omp", "taskType":"normal", "model":"default", "thinking":"default", "skill":null,
-        "prompt":"unchanged", "suite":"selected"})).await;
+        "prompt":"unchanged", "suite":"selected-omp"})).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let saved: Value = serde_json::from_str(&saved.body).unwrap();
     let id = &saved["tasks"][0]["id"];
@@ -67,16 +67,16 @@ async fn blocked_extension_assembly_rejects_public_launch_before_herdr() {
     let package = root.path().join("existing package");
     fs::create_dir(&package).unwrap();
     fs::write(package.join("entry.ts"), "export default function(pi) {}\n").unwrap();
-    let blocked = config.suites.generated_directory.join("selected");
+    let blocked = config.suites.generated_directory.join("selected-omp");
     fs::create_dir_all(blocked.parent().unwrap()).unwrap();
     fs::write(&blocked, "OWNED-OUTPUT-BLOCKER-492").unwrap();
     fs::write(&config.suites.definition_file, json!({"suites":[{
-        "id":"selected", "name":"Selected", "agents":["omp"], "extensions":{"omp":["existing package/entry.ts"]}
+        "id":"selected-omp", "name":"Selected · OMP", "harness":"omp", "extensions":["existing package/entry.ts"]
     }]}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
     let saved = post(&server, "/api/tasks", json!({"name":"Selected extension", "chatName":"{task.name}",
         "agent":"omp", "taskType":"normal", "model":"default", "thinking":"default", "skill":null,
-        "prompt":"unchanged", "suite":"selected"})).await;
+        "prompt":"unchanged", "suite":"selected-omp"})).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let saved: Value = serde_json::from_str(&saved.body).unwrap();
     let id = &saved["tasks"][0]["id"];

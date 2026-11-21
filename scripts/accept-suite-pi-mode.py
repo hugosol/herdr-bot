@@ -23,7 +23,7 @@ from acceptance.host import processes
 from acceptance.host.isolation import require, until
 from acceptance.host.provenance import digest
 PROMISES = {
-    'P14': 'Declared LSP command is never started; Pi still consumes template, file and native MCP.',
+    'P14': 'Pi rejects OMP LSP fields and does not start an OMP Suite LSP; it still consumes template, file and native MCP.',
     'P16': 'Template body absent before invocation; quoted positional arguments expand into one native user message.',
     'P23': 'Fixed toolkit entry consumes launch config with no optional extension selection.',
     'P24': 'No-Suite native and fixed-entry launches have identical tools and real MCP behavior in both modes.',
@@ -219,12 +219,12 @@ class Acceptance(CloseAcceptance):
         self.lsp_marker = self.root / 'lsp-started.json'
         lsp = self.authority / 'owned-lsp.py'
         lsp.write_text('import pathlib,time\npathlib.Path(' + repr(str(self.lsp_marker)) + ').write_text("LSP-WAS-STARTED")\ntime.sleep(300)\n', encoding='utf-8')
-        suites = []
-        for mode in ['on', 'only']:
-            suites.append({'id': 'mode-' + mode, 'name': 'Mode ' + mode, 'agents': ['pi', 'omp'],
-                'skills': {'omp': [], 'pi': []}, 'prompts': ['suite-mode.md'], 'mcp': [],
-                'lsp': {'owned-lsp': {'command': sys.executable, 'args': [str(lsp)], 'fileTypes': ['.py']}},
-                'pi': {'codemode': mode}})
+        self.mode_suites = {mode: {'id': f'mode-{mode}-pi', 'name': f'Mode {mode} · Pi', 'harness': 'pi',
+            'skills': [], 'extensions': [], 'prompts': ['suite-mode.md'], 'mcp': [], 'codemode': mode}
+            for mode in ['on', 'only']}
+        self.omp_lsp = {'owned-lsp': {'command': sys.executable, 'args': [str(lsp)], 'fileTypes': ['.py']}}
+        suites = [*self.mode_suites.values(), {'id': 'mode-lsp-omp', 'name': 'LSP canary · OMP', 'harness': 'omp',
+            'skills': [], 'extensions': [], 'mcp': [], 'lsp': self.omp_lsp}]
         # Current authority schema is recorded; no array/ID compatibility is accepted.
         (self.authority / 'suites.json').write_text(json.dumps({'suites': suites}), encoding='utf-8')
         (self.authority / 'mcp.json').write_text('{"mcpServers":{}}', encoding='utf-8')
@@ -294,7 +294,7 @@ class Acceptance(CloseAcceptance):
         wire_mark = len(self.mcp.wire)
         body = {'name': name, 'chatName': '{chat.id}', 'agent': 'pi', 'taskType': 'normal', 'model': 'probe',
                 'thinking': 'off', 'skill': None, 'prompt': '',
-                'suite': None if suite_mode is None else 'mode-' + suite_mode}
+                'suite': None if suite_mode is None else self.mode_suites[suite_mode]['id']}
         response = self.http('/api/tasks', body)
         task = next(task for task in response['tasks'] if task['name'] == name)
         preview = self.http('/api/chats/preview', {'zone': 'owned', 'taskId': task['id']})
@@ -396,6 +396,12 @@ class Acceptance(CloseAcceptance):
                 pairs.extend([native, fixed])
             self.mark('P24', pairs)
         if self.args.scenario in ['all', 'modes', 'template']:
+            if self.args.scenario != 'modes':
+                before = self.http('/api/suites')
+                candidate = dict(self.mode_suites['on'], id='lsp-rejected-pi', name='Rejected LSP · Pi')
+                self.evidence['lspFieldRejections'] = [self.http('/api/suites', dict(candidate, lsp=lsp), status=400)
+                                                        for lsp in ({}, self.omp_lsp)]
+                require(self.http('/api/suites') == before, 'Rejected Pi LSP fields changed the Suite catalog')
             on = self.case('global-only-suite-on', 'only', 'on', template=self.args.scenario != 'modes')
             only = self.case('global-on-suite-only', 'on', 'only')
             for promise in ['P23', 'P26', 'P27']:

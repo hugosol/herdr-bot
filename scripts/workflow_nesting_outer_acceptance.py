@@ -148,13 +148,19 @@ class OuterAcceptance(NativePlanningAcceptance):
             config += 'shellPath: ' + json.dumps(str(self.args.shell_path)) + '\n'
         (agent / 'config.yml').write_text(config, encoding='utf-8')
         tasks, bots, maps = definition_catalog()
-        self.fixture_tasks = {key: dict(tasks[key], agent=self.mapping[key], model='probe')
-                              for key in task_ids(tasks, bots, maps)}
+        from workflow_create_acceptance import diagnostic_suite
+        self.fixture_tasks = {}
+        for key in task_ids(tasks, bots, maps):
+            original, host = tasks[key], self.mapping[key]
+            task = dict(original, agent=host, model='probe')
+            if original.get('suite'):
+                task['suite'] = diagnostic_suite(original, host)
+            self.fixture_tasks[key] = task
         # Static isolated deployment before either backend or business launch;
         # stable source Task identities remain real authoritative IDs. Runtime
         # records and native Session identities are never manufactured/edited.
         (self.root / 'data/tasks.json').write_text(json.dumps({'tasks': list(self.fixture_tasks.values())}, ensure_ascii=False), encoding='utf-8')
-        self.evidence['taskFixturePhase'] = 'Source definitions installed before backend startup; only authorized model and explicit host mode relocated'
+        self.evidence['taskFixturePhase'] = 'Source definitions installed before backend startup; only authorized model and explicit diagnostic host/Suite selections relocated'
 
     def resolve(self, value):
         if isinstance(value, str):
@@ -211,16 +217,22 @@ export default function(pi) {
         (self.root / 'meta-data/mcp.json').write_text(json.dumps(relocated_mcp), encoding='utf-8')
         self.evidence['mcpDeployment'] = {'original': original_mcp, 'deployed': relocated_mcp,
             'binarySha256': digest(binary), 'relocation': 'Owned CBM_RUNTIME_DIR/cache/allowed root; optional UI disabled'}
+        from workflow_create_acceptance import DIAGNOSTIC_OMP_SUITE
         suites = load(REPO / 'meta-data/suites.json')['suites']
-        used = {tasks[key].get('suite') for key in ids} - {None}
+        used = {task.get('suite') for task in self.fixture_tasks.values()} - {None}
+        used.add('codebase-exploration-pi')  # Business target always stays Pi, even in the OMP diagnostic.
+        if DIAGNOSTIC_OMP_SUITE['id'] in used:
+            suites.append(DIAGNOSTIC_OMP_SUITE)
+        self.evidence['diagnosticSuiteSourceSha256'] = digest(REPO / 'scripts/workflow_create_acceptance.py')
         for suite in suites:
             if suite['id'] in used:
                 deployed = self.resolve(suite)
-                for paths in deployed.get('skills', {}).values():
-                    for path in paths:
-                        require(Path(path).exists(), ('Missing explicitly declared Suite skill resource', path))
+                for path in deployed['skills']:
+                    require(Path(path).exists(), ('Missing explicitly declared Suite skill resource', path))
                 self.evidence.setdefault('suiteDeployment', []).append({'original': suite, 'deployed': deployed})
-        (self.root / 'meta-data/suites.json').write_text(json.dumps({'suites': [item['deployed'] for item in self.evidence['suiteDeployment']]}), encoding='utf-8')
+        deployed = [item['deployed'] for item in self.evidence['suiteDeployment']]
+        require({suite['id'] for suite in deployed} == used, 'Missing Suite for an explicitly bound Task')
+        (self.root / 'meta-data/suites.json').write_text(json.dumps({'suites': deployed}), encoding='utf-8')
 
     def provision(self):
         # Only public readback/zone registration plus isolated static Map/Bot
@@ -280,7 +292,7 @@ export default function(pi) {
         proposal = self.root / 'zone/proposals'
         delivery = self.root / 'zone/deliveries'
         creation = (f'仅 Task 创建者：新建名称 {self.marker}-{label} 的 normal Task；执行配置 agent=pi、model=probe、thinking=medium、'
-            'skill=null、suite=codebase-exploration（当前已核实的兼容稳定 Suite ID）、chatName={chat.id}。'
+            'skill=null、suite=codebase-exploration-pi（当前已核实的兼容稳定 Suite ID）、chatName={chat.id}。'
             '创建时 prompt 必须原样使用以下独立字面全文（尚未授权保存；先展示候选并停轮）：\n' + BUSINESS + '\n'
             '后续 Task.prompt 优化者仅优化表达与段落，可改变字面排版，但必须保留全部语义及非 prompt 配置。') if mode == 'create' else (
             '目标为本次明确指定的真实既有 normal Task，不新建、不更名；完整保留非 prompt 配置。'
@@ -497,7 +509,7 @@ export default function(pi) {
 
     def created_target(self, target, label):
         expected = {'name': self.marker + '-' + label, 'chatName': '{chat.id}', 'agent': 'pi', 'taskType': 'normal',
-                    'model': 'probe', 'thinking': 'medium', 'skill': None, 'suite': 'codebase-exploration', 'prompt': BUSINESS}
+                    'model': 'probe', 'thinking': 'medium', 'skill': None, 'suite': 'codebase-exploration-pi', 'prompt': BUSINESS}
         require({key: value for key, value in target.items() if key != 'id'} == expected,
                 ('Created Task differs from independent full configuration', target, expected))
 

@@ -170,16 +170,22 @@ export default function(pi) {
         source = self.root / 'zone/work/source.csv'
         source.write_text('order_id,amount_cents\nA,1200\nB,300\n', encoding='utf-8')
         tasks = json.loads((REPO / 'meta-data/tasks.json').read_text(encoding='utf-8'))['tasks']
-        suite = {'id': 'p03-planning', 'name': 'Explicit planning skills', 'agents': ['omp', 'pi'],
-                 'skills': {'omp': [str(self.root / 'agent/skills')],
-                            'pi': [str(self.root / 'agent/skills' / name) for name in ['grill-with-docs', 'grilling', 'domain-modeling']]},
-                 'extensions': {}, 'prompts': [], 'lsp': {}, 'mcp': [], 'pi': {'codemode': 'on'}}
-        self.http('/api/suites', suite)
+        skills = self.root / 'agent/skills'
+        suites = {
+            'omp': {'id': 'p03-planning-omp', 'name': 'Explicit planning skills · OMP', 'harness': 'omp',
+                    'skills': [str(skills)], 'extensions': [], 'mcp': [], 'lsp': {}},
+            'pi': {'id': 'p03-planning-pi', 'name': 'Explicit planning skills · Pi', 'harness': 'pi',
+                   'skills': [str(skills / name) for name in ['grill-with-docs', 'grilling', 'domain-modeling']],
+                   'extensions': [], 'mcp': [], 'prompts': [], 'codemode': 'on'},
+        }
+        for suite in suites.values():
+            self.http('/api/suites', suite)
         for name in ['概要规划', '概要方案转 Map', 'manager']:
             original = next(task for task in tasks if task['name'] == name)
             deployed = {key: value for key, value in original.items() if key != 'id'}
-            deployed.update(model='probe', thinking='medium', suite=suite['id'] if original.get('suite') else None)
-            deployed['agent'] = self.hosts[name]
+            agent = self.hosts[name]
+            deployed.update(agent=agent, model='probe', thinking='medium',
+                            suite=suites[agent]['id'] if original.get('suite') else None)
             saved = self.save_task(deployed)
             self.ids[name] = saved['id']
             self.evidence.setdefault('taskDeployment', []).append({'original': original, 'deployed': saved,

@@ -153,8 +153,8 @@ class Acceptance(HostAcceptance):
         self.user_lsp.write_text(json.dumps({'servers': {'rust-analyzer': {'command': self.missing}}}))
         authority = self.root / 'declarations with spaces'
         authority.mkdir()
-        (authority / 'suites.json').write_text(json.dumps({'suites': [{'id': 'four-languages', 'name': 'Four languages',
-            'agents': ['omp'], 'lsp': SERVERS}]}))
+        (authority / 'suites.json').write_text(json.dumps({'suites': [{'id': 'four-languages-omp', 'name': 'Four languages · OMP',
+            'harness': 'omp', 'skills': [], 'extensions': [], 'mcp': [], 'lsp': SERVERS}]}))
         (self.root / 'paths.toml').write_text('[roots]\n')
         observer = self.root / 'owned-process-observer.ts'
         observer.write_text('export default function(pi) { pi.on("session_start", async () => { '
@@ -238,7 +238,7 @@ class Acceptance(HostAcceptance):
         self.model.case = case
         saved = self.http('/api/tasks', {'name': 'Native LSP ' + zone.name, 'chatName': '{task.name}',
             'agent': 'omp', 'taskType': 'normal', 'model': 'probe', 'thinking': 'off', 'skill': None,
-            'prompt': 'Inspect native LSP initialization and status.', 'suite': 'four-languages'})
+            'prompt': 'Inspect native LSP initialization and status.', 'suite': 'four-languages-omp'})
         task = next(task for task in saved['tasks'] if task['name'] == 'Native LSP ' + zone.name)
         self.http('/api/zones', {'id': zone.name, 'path': str(zone)})
         preview = self.http('/api/chats/preview', {'zone': zone.name, 'taskId': task['id']})

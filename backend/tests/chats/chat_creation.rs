@@ -942,9 +942,21 @@ async fn app_launch_uses_task_environment_and_selected_terminal_without_tui_file
     fs::write(&config.tasks.metadata_file, toml::to_string(&catalog).unwrap()).unwrap();
     config.suites.definition_file = storage.path().join("suites.json");
     config.suites.generated_directory = storage.path().join("generated-suites");
+    config.suites.mcp_file = storage.path().join("mcp.json");
+    fs::write(&config.suites.mcp_file, json!({"mcpServers":{
+        "omp-fixture":{"command":"controlled-omp"}, "pi-fixture":{"command":"controlled-pi"}
+    }}).to_string()).unwrap();
+    let pi_skill = storage.path().join("selected Pi skill");
+    fs::create_dir(&pi_skill).unwrap();
+    fs::write(pi_skill.join("SKILL.md"), "---\nname: selected-pi\ndescription: A selected native skill\n---\nSkill body\n").unwrap();
+    let pi_prompt = storage.path().join("pi-fixture-prompt.md");
+    fs::write(&pi_prompt, "A Pi prompt template; do not expand automatically.\n").unwrap();
     for entry in ["omp-test-suite.ts", "pi-test-suite.ts"] { fs::write(storage.path().join(entry), "// owned resource").unwrap(); }
-    fs::write(&config.suites.definition_file, json!({"suites":[{"id":"paired","name":"Paired","agents":["omp","pi"],
-        "extensions":{"omp":["omp-test-suite.ts"],"pi":["pi-test-suite.ts"]},"pi":{"codemode":"on"}}]}).to_string()).unwrap();
+    fs::write(&config.suites.definition_file, json!({"suites":[
+        {"id":"paired-omp","name":"Paired · OMP","harness":"omp","extensions":["omp-test-suite.ts"],"mcp":["omp-fixture"]},
+        {"id":"paired-pi","name":"Paired · Pi","harness":"pi","extensions":["pi-test-suite.ts"],"mcp":["pi-fixture"],
+            "skills":["selected Pi skill"],"prompts":["pi-fixture-prompt.md"],"codemode":"only"}
+    ]}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
     let dir = storage.path().join("alpha");
     fs::create_dir(&dir).unwrap();
@@ -954,7 +966,7 @@ async fn app_launch_uses_task_environment_and_selected_terminal_without_tui_file
         ("pi", "xhigh", "default", "space-default", "pi-suite.json"),
     ].into_iter().enumerate() {
         let task = save_task(&server, json!({"name":format!("App {agent}"),"chatName":"{task.name}","agent":agent,
-            "model":"gpt-6.1-sol","thinking":thinking,"suite":"paired","skill":"teach","prompt":"Literal {unknown}"})).await;
+            "model":"gpt-6.1-sol","thinking":thinking,"suite":format!("paired-{agent}"),"skill":"teach","prompt":"Literal {unknown}"})).await;
         let task_id = task["id"].as_str().unwrap();
         let preview = serde_json::from_str(&preview(&server, &zone, task_id).await.body).unwrap();
         let mut request = create_body(&zone, task_id, &preview, "User body\nsecond line");
@@ -980,8 +992,26 @@ async fn app_launch_uses_task_environment_and_selected_terminal_without_tui_file
         let manifest = argv.iter().filter_map(Value::as_str).map(Path::new)
             .find(|path| path.file_name().is_some_and(|name| name == manifest_name))
             .unwrap_or_else(|| panic!("native argv missing {manifest_name}: {argv:?}"));
-        assert!(manifest.is_file() && manifest.starts_with(storage.path().join("generated-suites/paired")),
+        assert!(manifest.is_file() && manifest.starts_with(storage.path().join(format!("generated-suites/paired-{agent}"))),
             "expected an isolated Suite manifest, found {}", manifest.display());
+        if agent == "pi" {
+            assert!(argv.contains(&json!("--no-skills")));
+            assert!(argv.contains(&json!("--no-prompt-templates")));
+            let skill_arg = [json!("--skill"), json!(fs::canonicalize(&pi_skill).unwrap())];
+            let prompt_arg = [json!("--prompt-template"), json!(pi_prompt)];
+            assert!(argv.windows(2).any(|pair| pair == skill_arg));
+            assert!(argv.windows(2).any(|pair| pair == prompt_arg));
+            let delivered: Value = serde_json::from_slice(&fs::read(manifest).unwrap()).unwrap();
+            assert_eq!(delivered, json!({"version":1,"codemode":"only","mcpServers":{"pi-fixture":{"command":"controlled-pi"}}}));
+        } else {
+            assert!(!argv.contains(&json!("--skill")));
+            assert!(!argv.contains(&json!("--prompt-template")));
+            let mcp_dir = manifest.parent().unwrap().join("mcp");
+            let mcp_arg = [json!("--extension"), json!(mcp_dir)];
+            assert!(argv.windows(2).any(|pair| pair == mcp_arg));
+            let delivered: Value = serde_json::from_slice(&fs::read(mcp_dir.join(".mcp.json")).unwrap()).unwrap();
+            assert_eq!(delivered, json!({"mcpServers":{"omp-fixture":{"command":"controlled-omp"}}}));
+        }
         let paths = argv.iter().filter_map(Value::as_str).filter_map(|s| Path::new(s).file_name()?.to_str()).collect::<Vec<_>>();
         assert!(paths.contains(&format!("{agent}-test-suite.ts").as_str()), "{paths:?}");
         assert!(paths.contains(&format!("{agent}-connect-bot.ts").as_str()), "{paths:?}");

@@ -18,6 +18,20 @@ TASK_IDS = ['task-18e3404478db1ef8-2',
     'task-18e340545eb481bc-3', 'task-18e340f5287462ec-4',
     'task-18e31d34797f1464-3', 'task-18e3415003d8cd00-5']
 FIELDS = ['when', 'plan_guide', 'node_guide']
+DIAGNOSTIC_OMP_SUITE = {'id': 'diagnostic-tools-omp', 'name': 'Native tools diagnostic · OMP',
+    'harness': 'omp', 'skills': [], 'extensions': [], 'mcp': [], 'lsp': {}}
+
+
+def diagnostic_suite(task, host):
+    suite = task.get('suite')
+    if host == task['agent'] or suite is None:
+        return suite
+    if suite in ('codebase-exploration-omp', 'codebase-exploration-pi'):
+        return {'omp': 'codebase-exploration-omp', 'pi': 'codebase-exploration-pi'}[host]
+    if suite == 'pi-codemode-pi' and host == 'omp':
+        # The optimizer keeps native tools and no selected resources. OMP has no Pi codemode setting.
+        return DIAGNOSTIC_OMP_SUITE['id']
+    raise AssertionError(('No explicit diagnostic Suite for Task and host', task['id'], suite, host))
 
 
 def check(condition, detail):
@@ -40,7 +54,13 @@ def prepare_source_resources(case):
         f'{name} = {json.dumps(value)}\n' for name, value in case.deployment_roots.items()), encoding='utf-8')
     metadata = case.root / 'meta-data'
     metadata.mkdir(exist_ok=True)
-    shutil.copy2(repo / 'meta-data/suites.json', metadata / 'suites.json')
+    source_suites = repo / 'meta-data/suites.json'
+    if case.host == 'omp':
+        catalog = json.loads(source_suites.read_text(encoding='utf-8'))
+        catalog['suites'].append(DIAGNOSTIC_OMP_SUITE)
+        write_json(metadata / 'suites.json', catalog)
+    else:
+        shutil.copy2(source_suites, metadata / 'suites.json')
     mcp = json.loads((repo / 'meta-data/mcp.json').read_text(encoding='utf-8'))
     original_mcp = json.loads(json.dumps(mcp))
     mcp['mcpServers']['codebase-memory-mcp']['args'] = ['--ui=false']
@@ -70,8 +90,8 @@ def provision(case):
     catalog = (repo / 'meta-data/task-options.toml').read_text(encoding='utf-8')
     catalog += '\n[[models]]\nid = "probe"\nlabel = "Actual authorized acceptance model"\nprovider_model = ' + json.dumps(case.provider_model) + '\nthinking = { omp = ["off"], pi = ["off"] }\n'
     (case.root / 'options.toml').write_text(catalog, encoding='utf-8')
-    # Source Suite declarations remain byte-identical. Only roots and external
-    # service/storage addresses belong to the isolated deployment.
+    # Source Suite declarations stay unchanged; only the homogeneous OMP
+    # diagnostic adds a test-owned Suite for the former Pi-only optimizer.
     copied = case.root / 'toolkit'
     for relative, field, value in [('extensions/connect-bot/config.yaml', 'endpoint', case.backend_wire.base),
                                     ('extensions/model-cost/config.yaml', 'storageDir', str(case.root / 'cost-archive'))]:
@@ -95,7 +115,7 @@ def deploy_tasks(case, host):
     for original in [case.manager, *[case.original_tasks[key] for key in TASK_IDS]]:
         task = dict(original, model='probe', thinking='default')
         if host != 'declared':
-            task['agent'] = host
+            task.update(agent=host, suite=diagnostic_suite(original, host))
         tasks.append(task)
     write_json(case.root / 'data/tasks.json', {'tasks': tasks})
     case.deployed = {task['id']: task for task in tasks}

@@ -3,7 +3,7 @@
 Approved seams S2/S3/S4. A controlled loopback model asks the REAL read tool
 for skill:// resources and calls a REAL native project MCP tool in the same
 turn. It checks literal bytes, the exact advertised skill set, native project
-instructions and omission of Suite templates. It does not use SDK assembly,
+instructions, rejection of OMP template declarations, and isolation from Pi Suite templates. It does not use SDK assembly,
 source CLI, user credentials, a replacement manager or a probe-only API.
 """
 import argparse
@@ -149,10 +149,12 @@ class Acceptance(HostAcceptance):
         self.expected_targets = {root_skill.resolve(), relative_skill.resolve(), literal_skill.resolve()}
         self.source_bytes = {path: path.read_bytes() for source in self.expected_targets for path in source.rglob('*') if path.is_file()}
         (self.authority / 'template.md').write_text('SUITE-TEMPLATE-MUST-NOT-INJECT-684\n')
-        (self.authority / 'suites.json').write_text(json.dumps({'suites':[{'id':'selected', 'name':'Selected', 'agents':['omp'],
-            'skills':{'omp': [] if self.args.scenario == 'empty' else ['${roots.owned_skills}', '.'], 'pi': []},
-            'extensions': {'omp': [str(self.root / 'native plugin with spaces' / 'extension.ts')]},
-            'prompts':['template.md']}]}))
+        self.omp_suite = {'id': 'selected-omp', 'name': 'Selected · OMP', 'harness': 'omp',
+            'skills': [] if self.args.scenario == 'empty' else ['${roots.owned_skills}', '.'],
+            'extensions': [str(self.root / 'native plugin with spaces' / 'extension.ts')], 'mcp': [], 'lsp': {}}
+        template_suite = {'id': 'template-pi', 'name': 'Template canary · Pi', 'harness': 'pi',
+            'skills': [], 'extensions': [], 'mcp': [], 'prompts': ['template.md'], 'codemode': 'on'}
+        (self.authority / 'suites.json').write_text(json.dumps({'suites': [self.omp_suite, template_suite]}))
         (self.root / 'paths.toml').write_text('[roots]\nowned_skills = ' + json.dumps(str(self.collection)) + '\n')
         # A native global default must NOT leak into the Suite skill set.
         self.sentinel(agent / 'skills/global-default', 'global-default')
@@ -245,9 +247,14 @@ readline.createInterface({input:process.stdin}).on('line', line => {
         (directory / 'SKILL.md').write_text(f'---\nname: {name}\ndescription: Undeclared sentinel\n---\nNot selected\n')
 
     def exercise(self):
+        before = self.http('/api/suites')
+        candidate = dict(self.omp_suite, id='prompts-rejected-omp', name='Rejected templates · OMP')
+        self.evidence['templateFieldRejections'] = [self.http('/api/suites', dict(candidate, prompts=prompts), status=400)
+                                                    for prompts in ([], ['template.md'])]
+        require(self.http('/api/suites') == before, 'Rejected OMP template fields changed the Suite catalog')
         saved = self.http('/api/tasks', {'name':'Suite exact skills', 'chatName':'{task.name}-{chat.id}',
             'agent':'omp', 'taskType':'normal', 'model':'probe', 'thinking':'off', 'skill':None,
-            'prompt':'Keep native instructions.', 'suite':'selected'})
+            'prompt':'Keep native instructions.', 'suite':self.omp_suite['id']})
         task_id = saved['tasks'][0]['id']
         for index, zone in enumerate(self.zones):
             if index:

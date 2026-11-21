@@ -144,7 +144,8 @@ class Acceptance(skills.Acceptance):
             central['unreachable'] = {'type':'http','url':f'http://127.0.0.1:{self.unreachable.getsockname()[1]}/mcp'}
         (self.authority / 'mcp.json').write_text(json.dumps({'mcpServers':central}))
         (self.authority / 'suites.json').write_text(json.dumps({'suites':[{
-            'id':'selected','name':'MCP acceptance','agents':['omp'],'mcp':list(central)}]}))
+            'id':'selected-omp','name':'MCP acceptance · OMP','harness':'omp',
+            'skills':[],'extensions':[],'mcp':list(central),'lsp':{}}]}))
         (self.root / 'agent/mcp.json').write_text(json.dumps({'mcpServers':user,
             'disabledServers':['denylisted'] if scenario == 'precedence' else []}))
         zone = self.zones[0]
@@ -198,7 +199,7 @@ class Acceptance(skills.Acceptance):
     def exercise(self):
         saved = self.http('/api/tasks', {'name':'Native MCP','chatName':'{task.name}-{chat.id}',
             'agent':'omp','taskType':'normal','model':'probe','thinking':'off','skill':None,
-            'prompt':'','suite':'selected'})
+            'prompt':'','suite':'selected-omp'})
         task = saved['tasks'][0]['id']
         self.http('/api/zones', {'id':'owned','path':str(self.zones[0])})
         preview = self.http('/api/chats/preview', {'zone':'owned','taskId':task})

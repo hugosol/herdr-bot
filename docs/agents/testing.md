@@ -602,7 +602,7 @@ CLI 安全与故障代理定向回归：`CHIEF_RECOVERY_TOOLKIT="$TOOLKIT_WT" py
 
 Suite 定义管理与 Task 引用完整性的隔离验收入口见[使用说明](../usage.md#task-单-suite-选择与引用保护)。配置通过不代表原生宿主已发现或消费资源，实际加载仍归下列宿主专项验收。历史离线迁移工具及专属测试已归档，不再随仓库提供；正常启动不会自动迁移旧格式。测试和发布工单均不授权修改用户部署数据。
 
-Task API 的旧 `extensions` 字段（包括空数组）必须拒绝；固定扩展在 Suite 页全局只读展示名称、解析后的入口及执行角色，Task 编辑页不再显示该列表。未选择 Suite 仍加载固定扩展；两宿主 auto connect-bot 属于固定扩展，不能再作为 Suite 可选引用。资源装配并发／故障夹具及真实 Pi 模式／MCP runner 的 Task 请求同样不发送该旧字段；Suite 扩展只使用 `extensions: {pi: [路径]}`（OMP 同理），相对 Suite 文件解析；不再提供可选目录或 ID 解析，旧 `extensionOptions` 字段应拒绝。每次启动／新进程恢复使用当前 Suite 路径；新增入口无需修改 TOML。固定入口仍按元数据及角色规则加载。Pi 必须指向具体文件；OMP 仍可传原生支持的文件或目录；相同目标仅传一次。浏览器的精确 Pi argv 预期同时保留 `builtin:mcp`、`builtin:tool-search`、无 Suite 时的 `builtin:codemode` 以及元数据声明的固定 `pi-suite`；过滤恢复仍逐项断言文件扩展，不把内建扩展误当作失效文件。Suite `extensions` 只接受宿主键对象，不接受旧数组；现有浏览器 Suite 管理、Task 引用、三步编辑和窄视口检查使用相同新形状，原先只测试旧 Task 可选扩展勾选的场景已退役，不保留旧业务选择兼容分支。
+Task API 的旧 `extensions` 字段（包括空数组）必须拒绝；固定扩展在 Suite 页全局只读展示名称、解析后的入口及执行角色，Task 编辑页不再显示该列表。未选择 Suite 仍加载固定扩展；两宿主 auto connect-bot 属于固定扩展，不能再作为 Suite 可选引用。资源装配并发／故障夹具及真实 Pi 模式／MCP runner 的 Task 请求同样不发送该旧字段；Suite 使用单值 `harness`，扩展只使用 `extensions: [路径]`（由 harness 决定入口语义），相对 Suite 文件解析；不再提供可选目录或 ID 解析，旧 `extensionOptions` 字段应拒绝。每次启动／新进程恢复使用当前 Suite 路径；新增入口无需修改 TOML。固定入口仍按元数据及角色规则加载。Pi 必须指向具体文件；OMP 仍可传原生支持的文件或目录；相同目标仅传一次。浏览器的精确 Pi argv 预期同时保留 `builtin:mcp`、`builtin:tool-search`、无 Suite 时的 `builtin:codemode` 以及元数据声明的固定 `pi-suite`；过滤恢复仍逐项断言文件扩展，不把内建扩展误当作失效文件。Suite `skills`／`extensions` 只接受单宿主数组，不接受旧宿主键对象；Pi 仅接受顶层 `codemode`／`prompts`，OMP 仅接受 `lsp`，跨宿主字段即使为空也拒绝；现有浏览器 Suite 管理、Task 引用、三步编辑和窄视口检查使用相同新形状，原先只测试旧 Task 可选扩展勾选的场景已退役，不保留旧业务选择兼容分支。
 
 ## 首批 Suite 原生发现与实现命令
 
@@ -651,7 +651,7 @@ python scripts/test-real-herdr-suite-skills.py `
   --backend 'backend/target/debug/herdr-bot.exe'
 ```
 
-默认 `--scenario selected` 创建独立根引用／声明相对路径／含空格的技能集合及名称含 `*` 的技能，在两个不同 Chat cwd 中实际 `read skill://...` 读取技能正文、scripts、references 与资产；第二次发起前向显式来源集合新增技能，验证后续发现将其纳入；未声明目录中的技能不参与。用户／项目／managed 默认技能、已加载插件的同名错误正文及可被错误通配符匹配的技能均为独立哨兵；原生最终列表必须排除它们。第二次启动还核对第一次的配置未被改写。受控回环模型检查原生最终技能列表，只要求真实 read／write 工具执行预定动作；通过实际原生 `xd://mcp__native_probe` 调用取得字面结果，并核对 MCP 服务器记录的 `tools/call`。同次还观察 Suite 本地模板未注入、原生 `AGENTS.md` 指令仍在。这里只证明协议与资源消费机制，不证明真实模型自主遵循业务职责。
+默认 `--scenario selected` 创建独立根引用／声明相对路径／含空格的技能集合及名称含 `*` 的技能，在两个不同 Chat cwd 中实际 `read skill://...` 读取技能正文、scripts、references 与资产；第二次发起前向显式来源集合新增技能，验证后续发现将其纳入；未声明目录中的技能不参与。用户／项目／managed 默认技能、已加载插件的同名错误正文及可被错误通配符匹配的技能均为独立哨兵；原生最终列表必须排除它们。第二次启动还核对第一次的配置未被改写。受控回环模型检查原生最终技能列表，只要求真实 read／write 工具执行预定动作；通过实际原生 `xd://mcp__native_probe` 调用取得字面结果，并核对 MCP 服务器记录的 `tools/call`。同次先验证 OMP Suite 的空及非空 `prompts` 字段均被 API 拒绝，再观察另一份 Pi Suite 的模板哨兵未注入 OMP、原生 `AGENTS.md` 指令仍在。这里只证明协议与资源消费机制，不证明真实模型自主遵循业务职责。
 
 runner 隔离 HOME／APPDATA／XDG、agent 配置与会话、命名 Herdr server、动态回环模型／后端和源／生成目录，不读取用户凭据或已有 Chat；静态页面使用测试拥有的占位文件，因为本入口不承担 S1 页面验收。正常及失败路径持续消费服务日志、停止所属进程，持有真实 MCP 进程句柄确认退出；证据 JSON 分开保留原始错误和清理错误。输出指向独占 Temp 的 `evidence.json`，保留实际请求／响应、公开入口结果、MCP wire、来源 revision／diff／哈希、源路径、配置产物及原始日志，不在仓库生成验收报告。
 

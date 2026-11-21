@@ -9,8 +9,8 @@ Windows 上的 agent 对话主界面。Task 是可复用预设，Chat 是实际�
 _Avoid_: Bot, bot-template, 模板, 对话实例
 
 **Suite（场景工具集）**:
-为某一类场景预设的可复用工具集合，一个 Task 至多选择一个 Suite 提供所需的场景资源，同一个 Suite 可被多个 Task 复用；它不替代 Task 的初始消息、初始 Skill 调用或模型设置。
-_Avoid_: Task, 初始指示, 运行时 profile
+为某一类场景及单一宿主（harness）预设的可复用工具集合，分为 Pi Suite 与 OMP Suite，宿主归属在创建后不变；一个 Task 至多选择一个与其 agent 匹配的 Suite，同一个 Suite 可被多个 Task 复用。两类 Suite 独立选择场景资源，但可以引用同一底层资源；它不替代 Task 的初始消息、初始 Skill 调用或模型设置。
+_Avoid_: 跨宿主工具集, Task, 初始指示, 运行时 profile
 
 **Task 类型**:
 Task 的用途分类，区分普通用途、流程管理者和需求分流者（chief）；普通 Task 既可独立发起 Chat，也可用于 node 执行，节点执行者不是独立 Task 类型。它不是运行该 Task 所用的 agent 种类，也不是某次执行的身份。
@@ -61,7 +61,7 @@ _Avoid_: 当前选中 Task, Task 快照, 推测来源
 _Avoid_: Task, Task 实例
 
 **Suite 技能来源**:
-Suite 按兼容宿主明确选择的技能范围，可以是技能集合或单个技能；选择集合意味着其成员变化会影响后续发现。它界定最终可用技能，不等于初始 Skill 调用，不包含未经该 Suite 选择的默认技能，也不表示禁止发现过程扫描其他目录或限制文件访问。
+Suite 按自身宿主明确选择的技能范围，可以是技能集合或单个技能；选择集合意味着其成员变化会影响后续发现。它界定最终可用技能，不等于初始 Skill 调用，不包含未经该 Suite 选择的默认技能，也不表示禁止发现过程扫描其他目录或限制文件访问。
 _Avoid_: 初始技能, 全局技能目录, 技能副本
 
 **Suite 扩展**:

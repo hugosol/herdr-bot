@@ -54,13 +54,13 @@ Pi 状态及会话目录。静态页面必须由当前 worktree 前端构建产�
 | P26 | 全局 only + Suite on 的声明必须恰为 read、bash、edit、write、codemode；全局 on + Suite only 必须恰为 codemode。前后读取原全局 codemode，不能写回 Suite 模式。Pi 自己的 `lastChangelogVersion` 记账不等于改写模式，原始前后 settings 均保留。 |
 | P27 | `codemode` 实际调用底层 `tools.read` 读取文件；结果须含独立字面 `PI-ONLY-REAL-FILE-731`，再核对源文件内容及哈希未变。 |
 | P16 | 模板正文哨兵在初始模型请求及首次工具续轮均不存在，系统消息始终不得含正文。显式 `/suite-mode "red fox" blue` 后，原生位置参数展开的 user 文本必须为 `PI-TEMPLATE-BODY-827 red fox\|blue\|red fox blue`，同时核对原生 SessionManager 历史。 |
-| P14 | 共享 Suite 声明一个有启动标记的受控 LSP 命令及 Python 文件。所属进程树没有该命令、启动标记不存在，而模板、真实文件及原生 MCP 确实被消费。 |
+| P14 | 向 Pi Suite POST 空及非空 `lsp` 均拒绝且清单不变。受控 LSP 命令及 Python 文件仅属于另一份 OMP Suite；合法 Pi Suite 的原生模板、真实文件与 MCP 被消费，所属进程树没有该 LSP 命令且启动标记不存在。 |
 
 MCP 的 `tools/call` 还须在真实 endpoint wire 中恰出现一次，并返回独立受控文件正文
 `PI-NATIVE-MCP-FILE-619`。测试没有用预期字符串替代 Pi 的文件读取或 native MCP 执行。
 本矩阵选择空技能／可选扩展集合，只使用本票所需模板与原生资源，不建立复制／junction
 回退，也不声称完成非空技能或可选扩展工具消费验收。Suite 扩展统一直接传具体源文件入口，
-不生成扩展链接／清单；非空技能同样直接引用 `skills.pi` 原目录，不需要创建符号链接权限。
+不生成扩展链接／清单；非空技能同样直接引用 Pi Suite 的 `skills` 原目录，不需要创建符号链接权限。
 
 默认 `--scenario all` 覆盖六次真实发起。`baseline`、`modes`、`template` 可用于窄反馈；
 部分场景即使成功也非零退出，不代表全部 Coverage 完成。缺依赖、行为不符或清理失败均非零，

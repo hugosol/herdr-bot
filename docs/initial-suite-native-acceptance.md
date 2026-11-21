@@ -48,7 +48,7 @@ pi_extensions = 'D:/sources/pi-extension'
 ```
 
 The current exploration Pi declaration names the `pi-web-access/index.ts` source
-entry directly in `extensions.pi`. Prepare that source and its runtime dependencies
+entry directly in the Pi Suite's `extensions` array. Prepare that source and its runtime dependencies
 before running acceptance. Pi entries must name a concrete file, not a package
 directory. Suite paths preserve root references, including the owned toolkit
 replacement; there is no optional metadata catalog.

@@ -1,71 +1,31 @@
 {
   "suites": [
     {
-      "id": "web-access",
-      "name": "网页访问",
-      "agents": [
-        "pi"
+      "id": "web-access-pi",
+      "name": "网页访问 · Pi",
+      "harness": "pi",
+      "skills": [],
+      "extensions": [
+        "${roots.pi_extensions}/pi-web-access/index.ts"
       ],
-      "skills": {
-        "omp": [],
-        "pi": []
-      },
-      "extensions": {
-        "pi": [
-          "${roots.pi_extensions}/pi-web-access/index.ts"
-        ]
-      },
-      "prompts": [],
-      "lsp": {},
       "mcp": [],
-      "pi": {
-        "codemode": "on"
-      }
+      "prompts": [],
+      "codemode": "on"
     },
     {
-      "id": "codebase-exploration",
-      "name": "代码库探索",
-      "agents": [
-        "omp",
-        "pi"
+      "id": "codebase-exploration-omp",
+      "name": "代码库探索 · OMP",
+      "harness": "omp",
+      "skills": [
+        "${roots.wayfinder_skills}",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration"
       ],
-      "skills": {
-        "omp": [
-          "${roots.wayfinder_skills}",
-          "${roots.wayfinder}/dependent-skills/codebase-exploration"
-        ],
-        "pi": [
-          "${roots.wayfinder}/dependent-skills/codebase-exploration/grill-with-docs",
-          "${roots.wayfinder}/dependent-skills/codebase-exploration/teach",
-          "${roots.wayfinder_skills}/code-review",
-          "${roots.wayfinder_skills}/wayfinder",
-          "${roots.wayfinder}/dependent-skills/codebase-exploration/writing-for-agents",
-          "${roots.wayfinder}/dependent-skills/codebase-exploration/improve-codebase-architecture",
-          "${roots.wayfinder}/dependent-skills/codebase-exploration/expert-translate",
-          "${roots.wayfinder}/dependent-skills/codebase-exploration/grilling",
-          "${roots.wayfinder}/dependent-skills/codebase-exploration/domain-modeling",
-          "${roots.wayfinder}/dependent-skills/codebase-exploration/codebase-design",
-          "${roots.wayfinder}/dependent-skills/codebase-exploration/research",
-          "${roots.wayfinder_skills}/prototype",
-          "${roots.wayfinder_skills}/lighthouse",
-          "${roots.wayfinder_skills}/backtracer",
-          "${roots.wayfinder_skills}/setup-matt-pocock-skills",
-          "${roots.wayfinder_skills}/to-contract",
-          "${roots.wayfinder_skills}/to-spec",
-          "${roots.wayfinder_skills}/to-tickets",
-          "${roots.wayfinder}/dependent-skills/codebase-exploration/retro"
-        ]
-      },
-      "extensions": {
-        "omp": [
-          "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"
-        ],
-        "pi": [
-          "${roots.toolkit}/entrypoints/pi-auto/codebase-tools.ts",
-          "${roots.pi_extensions}/pi-web-access/index.ts"
-        ]
-      },
-      "prompts": [],
+      "extensions": [
+        "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"
+      ],
+      "mcp": [
+        "codebase-memory-mcp"
+      ],
       "lsp": {
         "jdtls": {
           "args": [],
@@ -129,34 +89,58 @@
             "jsconfig.json"
           ]
         }
-      },
-      "mcp": [
-        "codebase-memory-mcp"
-      ],
-      "pi": {
-        "codemode": "on"
       }
     },
     {
-      "id": "code-implementation",
-      "name": "代码实现",
-      "agents": [
-        "omp"
+      "id": "codebase-exploration-pi",
+      "name": "代码库探索 · Pi",
+      "harness": "pi",
+      "skills": [
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/grill-with-docs",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/teach",
+        "${roots.wayfinder_skills}/code-review",
+        "${roots.wayfinder_skills}/wayfinder",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/writing-for-agents",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/improve-codebase-architecture",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/expert-translate",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/grilling",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/domain-modeling",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/codebase-design",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/research",
+        "${roots.wayfinder_skills}/prototype",
+        "${roots.wayfinder_skills}/lighthouse",
+        "${roots.wayfinder_skills}/backtracer",
+        "${roots.wayfinder_skills}/setup-matt-pocock-skills",
+        "${roots.wayfinder_skills}/to-contract",
+        "${roots.wayfinder_skills}/to-spec",
+        "${roots.wayfinder_skills}/to-tickets",
+        "${roots.wayfinder}/dependent-skills/codebase-exploration/retro"
       ],
-      "skills": {
-        "omp": [
-          "${roots.wayfinder_skills}",
-          "${roots.wayfinder}/dependent-skills/code-implementation"
-        ],
-        "pi": []
-      },
-      "extensions": {
-        "omp": [
-          "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts",
-          "${roots.wayfinder}/extensions"
-        ]
-      },
+      "extensions": [
+        "${roots.toolkit}/entrypoints/pi-auto/codebase-tools.ts",
+        "${roots.pi_extensions}/pi-web-access/index.ts"
+      ],
+      "mcp": [
+        "codebase-memory-mcp"
+      ],
       "prompts": [],
+      "codemode": "on"
+    },
+    {
+      "id": "code-implementation-omp",
+      "name": "代码实现 · OMP",
+      "harness": "omp",
+      "skills": [
+        "${roots.wayfinder_skills}",
+        "${roots.wayfinder}/dependent-skills/code-implementation"
+      ],
+      "extensions": [
+        "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts",
+        "${roots.wayfinder}/extensions"
+      ],
+      "mcp": [
+        "codebase-memory-mcp"
+      ],
       "lsp": {
         "jdtls": {
           "args": [],
@@ -220,49 +204,31 @@
             "jsconfig.json"
           ]
         }
-      },
-      "mcp": [
-        "codebase-memory-mcp"
-      ]
-    },
-    {
-      "id": "pstack",
-      "name": "pstack",
-      "agents": [
-        "omp"
-      ],
-      "skills": {
-        "omp": [
-          "${roots.toolkit}/pstack-suite/generated/skills"
-        ]
-      },
-      "extensions": {
-        "omp": [
-          "${roots.toolkit}/pstack-suite/omp.ts",
-          "${roots.toolkit}/pstack-suite/generated"
-        ]
-      },
-      "prompts": [],
-      "lsp": {},
-      "mcp": []
-    },
-    {
-      "id": "pi-codemode",
-      "name": "codemode",
-      "agents": [
-        "pi"
-      ],
-      "skills": {
-        "omp": [],
-        "pi": []
-      },
-      "extensions": {},
-      "prompts": [],
-      "lsp": {},
-      "mcp": [],
-      "pi": {
-        "codemode": "only"
       }
+    },
+    {
+      "id": "pstack-omp",
+      "name": "pstack · OMP",
+      "harness": "omp",
+      "skills": [
+        "${roots.toolkit}/pstack-suite/generated/skills"
+      ],
+      "extensions": [
+        "${roots.toolkit}/pstack-suite/omp.ts",
+        "${roots.toolkit}/pstack-suite/generated"
+      ],
+      "mcp": [],
+      "lsp": {}
+    },
+    {
+      "id": "pi-codemode-pi",
+      "name": "codemode · Pi",
+      "harness": "pi",
+      "skills": [],
+      "extensions": [],
+      "mcp": [],
+      "prompts": [],
+      "codemode": "only"
     }
   ]
 }

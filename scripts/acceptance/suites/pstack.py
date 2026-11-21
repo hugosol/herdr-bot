@@ -264,10 +264,10 @@ export default function (omp) {
 
     def prepare_catalogs(self):
         production = json.loads((REPO / 'meta-data/suites.json').read_text(encoding='utf-8'))
-        chosen = next(suite for suite in production['suites'] if suite['id'] == 'pstack')
+        chosen = next(suite for suite in production['suites'] if suite['id'] == 'pstack-omp')
         self.suites = self.root / 'suites.json'
-        dump(self.suites, {'suites': [chosen, {'id': 'owned-other', 'name': 'Owned other Suite', 'agents': ['omp'],
-                                                       'skills': {'omp': [str(self.agent_dir / 'skills')]}}]})
+        dump(self.suites, {'suites': [chosen, {'id': 'owned-other-omp', 'name': 'Owned other Suite · OMP',
+            'harness': 'omp', 'skills': [str(self.agent_dir / 'skills')], 'extensions': [], 'mcp': [], 'lsp': {}}]})
         dump(self.root / 'mcp.json', {'mcpServers': {}})
         write(self.root / 'paths.toml', '[roots]\ntoolkit = ' + json.dumps(str(self.deployment)) +
               '\nomp_agent = ' + json.dumps(str(self.agent_dir)) + '\n')
@@ -361,9 +361,9 @@ thinking = {{ omp = ["high"] }}
         require(code == status, (code, result))
         return result
 
-    def task(self, name, suite='pstack'):
+    def task(self, name, suite='pstack-omp'):
         body = {'name': name, 'chatName': 'Owned {chat.id}', 'agent': 'omp', 'taskType': 'normal',
-                'model': 'probe' if suite == 'pstack' else 'default', 'thinking': 'high' if suite == 'pstack' else 'default',
+                'model': 'probe' if suite == 'pstack-omp' else 'default', 'thinking': 'high' if suite == 'pstack-omp' else 'default',
                 'skill': None, 'prompt': '', 'suite': suite}
         result = self.http('/api/tasks', body)
         return next(t for t in result['tasks'] if t['name'] == name)['id']

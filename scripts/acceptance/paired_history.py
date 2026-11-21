@@ -350,11 +350,14 @@ class Recovery(Acceptance):
             skill = directory / 'paired-initial'
             skill.mkdir(parents=True)
             (skill / 'SKILL.md').write_text(f'---\nname: paired-initial\ndescription: Owned initial marker\n---\n{SKILL}\n', encoding='utf-8')
-            suite = {'id': variant, 'name': variant, 'agents': [self.agent],
-                     'skills': {self.agent: [str(directory if self.agent == 'omp' else skill)]},
-                     'extensions': {self.agent: [str(entry)]}}
-            if self.agent == 'pi':
-                suite['pi'] = {'codemode': 'on'}
+            label = 'OMP' if self.agent == 'omp' else 'Pi'
+            suite = {'id': f'{variant}-{self.agent}', 'name': f'{variant} · {label}', 'harness': self.agent,
+                     'skills': [str(directory if self.agent == 'omp' else skill)],
+                     'extensions': [str(entry)], 'mcp': []}
+            if self.agent == 'omp':
+                suite['lsp'] = {}
+            else:
+                suite.update(prompts=[], codemode='on')
             suites.append(suite)
         dump(self.suites_path, {'suites': suites})
         dump(self.root / 'mcp.json', {'mcpServers': {}})
@@ -487,7 +490,7 @@ generated_directory = {q(self.root / 'generated')}
     def preset(self, variant):
         return dict(name='paired-source', chatName='Owned paired {chat.id}', agent=self.agent,
                     model='launch-only' if variant == 'before' else 'future-only', thinking='high',
-                    skill='paired-init', prompt=INITIAL, suite=variant)
+                    skill='paired-init', prompt=INITIAL, suite=f'{variant}-{self.agent}')
 
     def launch(self, container):
         self.http('/api/zones', {'id': 'paired-owned', 'path': str(self.origin)})

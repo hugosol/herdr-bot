@@ -107,7 +107,7 @@ run_instructions = '${roots.project}/docs/workflow-runtime.md'
 [suites]
 definition_file = '${roots.project}/meta-data/suites.json'
 mcp_file = '${roots.project}/meta-data/mcp.json'
-# 可重建的技能目录链接及原生宿主入口文件；不包含认证／模型／会话副本。
+# 每次启动独立的原生宿主配置产物；不创建技能链接，不包含认证／模型／会话副本。
 generated_directory = '${roots.suite_resources}'
 
 # Task 设置（可选，缺省为本配置文件目录下的 meta-data/tasks.json）。

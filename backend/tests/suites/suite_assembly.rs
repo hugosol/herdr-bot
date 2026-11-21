@@ -39,15 +39,15 @@ async fn resource_check_failure(locked: bool) {
     let entry = root.path().join("entry.ts");
     fs::write(&entry, "export default function(pi) {}\n").unwrap();
     fs::write(&config.suites.definition_file, json!({"suites":[{
-        "id":"selected", "name":"Selected", "agents":["omp"], "extensions":{"omp":["entry.ts"]}
+        "id":"selected-omp", "name":"Selected · OMP", "harness":"omp", "extensions":["entry.ts"]
     }]}).to_string()).unwrap();
-    let unowned = config.suites.generated_directory.join("selected").join("user-note.txt");
+    let unowned = config.suites.generated_directory.join("selected-omp").join("user-note.txt");
     fs::create_dir_all(unowned.parent().unwrap()).unwrap();
     fs::write(&unowned, "UNOWNED-KEEP-746").unwrap();
     let server = TestServer::start(&config).await;
     let saved = post(&server, "/api/tasks", json!({"name":"Assembly", "chatName":"{task.name}",
         "agent":"omp", "taskType":"normal", "model":"default", "thinking":"default", "skill":null,
-        "prompt":"unchanged", "suite":"selected"})).await;
+        "prompt":"unchanged", "suite":"selected-omp"})).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let saved: Value = serde_json::from_str(&saved.body).unwrap();
     let id = &saved["tasks"][0]["id"];
@@ -83,7 +83,7 @@ async fn resource_check_failure(locked: bool) {
 }
 
 fn declaration(id: &str, sentinel: &str) -> Value {
-    json!({"id":id, "name":id, "agents":["omp"], "mcp":[sentinel], "lsp":{
+    json!({"id":id, "name":format!("{id} · OMP"), "harness":"omp", "mcp":[sentinel], "lsp":{
         "publication-probe":{"command":sentinel, "fileTypes":[".probe"]}
     }})
 }
@@ -197,11 +197,11 @@ async fn windows_true_file_directory_and_cross_volume_links_preserve_targets_on_
     config.suites.mcp_file = root.path().join("mcp.json");
     config.suites.generated_directory = root.path().join("generated");
     config.herdr.executable = herdr.executable().to_owned();
-    let suite = json!({"id":"selected","name":"Selected","agents":["omp"],"skills":{"omp":[volume.0.clone()]}});
+    let suite = json!({"id":"selected-omp","name":"Selected · OMP","harness":"omp","skills":[volume.0.clone()]});
     fs::write(&config.suites.definition_file, json!({"suites":[suite]}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
     assert_eq!(post(&server, "/api/zones", json!({"id":"owned","path":root.path()})).await.status, 200);
-    let id = save_task(&server, "selected", "True links").await;
+    let id = save_task(&server, "selected-omp", "True links").await;
     let body = launch_body(&server, &id).await;
     let reply = post(&server, "/api/chats", body).await;
     assert_eq!(reply.status, 202, "{}", reply.body);
@@ -215,13 +215,13 @@ async fn windows_true_file_directory_and_cross_volume_links_preserve_targets_on_
     assert_eq!(manifest["skills"]["customDirectories"], json!([fs::canonicalize(&volume.0).unwrap()]));
     assert!(!assembly.join("skills").exists());
     assert_eq!(fs::read_to_string(source.join("asset.txt")).unwrap(), "REAL-FILE-SENTINEL-902");
-    let unowned = config.suites.generated_directory.join("selected").join("keep.txt");
+    let unowned = config.suites.generated_directory.join("selected-omp").join("keep.txt");
     fs::write(&unowned, "UNOWNED-KEEP-417").unwrap();
     let bad = volume.0.join("bad skill");
     fs::create_dir(&bad).unwrap();
     fs::write(bad.join("SKILL.md"), "---\nname: selected\ndescription: Duplicate selected name\n---\nDO-NOT-DELETE-579\n").unwrap();
     let bad_before = file_hash(&bad.join("SKILL.md"));
-    let definition = json!({"suites":[{"id":"selected","name":"Selected","agents":["omp"],"skills":{"omp":[volume.0.clone()]}}]});
+    let definition = json!({"suites":[{"id":"selected-omp","name":"Selected · OMP","harness":"omp","skills":[volume.0.clone()]}]});
     fs::write(&config.suites.definition_file, definition.to_string()).unwrap();
     let body = launch_body(&server, &id).await;
     let failed = post(&server, "/api/chats", body).await;
@@ -314,8 +314,8 @@ async fn publication_scenarios(resources: bool) {
             "PUBLICATION-A-193":{"command":"MCP-A-461"},
             "PUBLICATION-B-827":{"command":"MCP-B-902"}
         }}).to_string()).unwrap();
-        let second_suite = if same_suite { "first" } else { "second" };
-        let mut first = declaration("first", "PUBLICATION-A-193");
+        let second_suite = if same_suite { "first-omp" } else { "second-omp" };
+        let mut first = declaration("first-omp", "PUBLICATION-A-193");
         let mut second = declaration(second_suite, "PUBLICATION-B-827");
         if resources {
             for (suite, name, body, asset) in [
@@ -328,8 +328,8 @@ async fn publication_scenarios(resources: bool) {
                 fs::write(source.join("skill parents/selected").join("SKILL.md"), format!("---\nname: selected\ndescription: Selected resource\n---\n{body}\n")).unwrap();
                 fs::write(source.join("extension").join("entry.ts"), "export default function(pi) {}\n").unwrap();
                 fs::write(source.join("extension").join("asset.txt"), asset).unwrap();
-                suite["skills"] = json!({"omp":[source.join("skill parents")]});
-                suite["extensions"] = json!({"omp":[source.join("extension").join("entry.ts")]});
+                suite["skills"] = json!([source.join("skill parents")]);
+                suite["extensions"] = json!([source.join("extension").join("entry.ts")]);
             }
         }
         #[cfg(windows)]
@@ -344,7 +344,7 @@ async fn publication_scenarios(resources: bool) {
         herdr.set_behavior(json!({"agent_start_gate":{"wait_for_file":release,"timeout_ms":15000}}));
         let server = TestServer::start(&config).await;
         assert_eq!(post(&server, "/api/zones", json!({"id":"owned","path":root.path()})).await.status, 200);
-        let task_a = save_task(&server, "first", "First observer").await;
+        let task_a = save_task(&server, "first-omp", "First observer").await;
         let task_b = save_task(&server, second_suite, "Second observer").await;
         let mut accepted = Vec::new();
         let observation = std::panic::AssertUnwindSafe(async {

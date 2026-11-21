@@ -57,8 +57,8 @@ IMPLEMENTATION = {
     'domain-modeling': ('wayfinder', 'dependent-skills/code-implementation/domain-modeling'),
 }
 OMP_PARENTS = {
-    'codebase-exploration': [('wayfinder_skills', ''), ('wayfinder', 'dependent-skills/codebase-exploration')],
-    'code-implementation': [('wayfinder_skills', ''), ('wayfinder', 'dependent-skills/code-implementation')],
+    'codebase-exploration-omp': [('wayfinder_skills', ''), ('wayfinder', 'dependent-skills/codebase-exploration')],
+    'code-implementation-omp': [('wayfinder_skills', ''), ('wayfinder', 'dependent-skills/code-implementation')],
 }
 
 
@@ -91,9 +91,9 @@ def discovered_sources(roots, suite_id):
 
 
 SCENARIOS = {
-    'exploration-omp': ('omp', 'codebase-exploration', EXPLORATION),
-    'exploration-pi': ('pi', 'codebase-exploration', EXPLORATION),
-    'implementation-omp': ('omp', 'code-implementation', IMPLEMENTATION),
+    'exploration-omp': ('omp', 'codebase-exploration-omp', EXPLORATION),
+    'exploration-pi': ('pi', 'codebase-exploration-pi', EXPLORATION),
+    'implementation-omp': ('omp', 'code-implementation-omp', IMPLEMENTATION),
 }
 
 
@@ -270,7 +270,7 @@ export default function(pi) {
                       if entry in (row.get('CommandLine') or '').replace('\\', '/').lower()]
             require(native, ('Installed delivered CLI was not observed under Herdr', entry))
             self.evidence['publicNativeEntrypoint'] = native
-            if self.suite_id == 'code-implementation':
+            if self.suite_id == 'code-implementation-omp':
                 registered = [c for c in observed['commands'] if c['source'] == 'extension' and c['name'] == 'hyper-auto-coding']
                 require(len(registered) == 1, ('Actual oh-my-wayfinder command registration missing', registered))
                 # No slug means the real handler's usage branch, before reading

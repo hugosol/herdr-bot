@@ -62,16 +62,16 @@ class SkillSources(unittest.TestCase):
                 child.mkdir(parents=True, exist_ok=True)
                 (child / 'SKILL.md').write_text('---\n' + header + '\n---\nBody', encoding='utf-8')
             roots = {'wayfinder': str(wayfinder), 'wayfinder_skills': str(wayfinder / 'skills')}
-            first = discover(roots, 'codebase-exploration')
+            first = discover(roots, 'codebase-exploration-omp')
             self.assertEqual(set(first), {'first', 'expert-translate'})
-            self.assertEqual(set(discover(roots, 'code-implementation')), {'first', 'retro'})
+            self.assertEqual(set(discover(roots, 'code-implementation-omp')), {'first', 'retro'})
             added = exploration / 'added'
             added.mkdir()
             (added / 'SKILL.md').write_text('---\nname: added\ndescription: Added\n---\nBody', encoding='utf-8')
-            second = discover(roots, 'codebase-exploration')
+            second = discover(roots, 'codebase-exploration-omp')
             self.assertEqual(set(second), {'first', 'expert-translate', 'added'})
             self.assertEqual(second['added'], added.resolve())
-            self.assertEqual(set(discover(roots, 'code-implementation')), {'first', 'retro'})
+            self.assertEqual(set(discover(roots, 'code-implementation-omp')), {'first', 'retro'})
 
 
 if __name__ == '__main__':

@@ -104,7 +104,7 @@ class Launch(Recovery):
             Path(__file__), probe, scripts / 'paired-task-launch-browser.mjs')}
         suites = json.loads(self.suites_path.read_text(encoding='utf-8'))
         suite = suites['suites'][0]
-        suite['extensions'][self.agent].append(str(probe))
+        suite['extensions'].append(str(probe))
         if self.template:
             template = self.root / 'paired-native-template.md'
             template.write_text('---\ndescription: Owned launch probe\n---\nPAIRED TEMPLATE BODY: [$1]\n', encoding='utf-8')

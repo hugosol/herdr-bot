@@ -55,10 +55,10 @@ class PlanWorkflowScenario:
             '\n[[skills]]\nid = "writing-for-agents"\nlabel = "/writing-for-agents"\nnative_name = "writing-for-agents"\n' +
             '\n[[extensions]]\nid = "pi-suite"\nlabel = "Pi Suite"\nagent = "pi"\nkind = "fixed"\nentrypoint = ' + json.dumps(str(suite_entry)) + '\n', encoding='utf-8')
         # The isolated backend owns this Suite; no machine/user deployment is read.
-        planning_suite = {'id': 'acceptance-planning', 'name': 'Isolated planning',
-            'agents': ['pi'], 'skills': {'pi': [str(self.root / 'agent/skills' / name)
-                for name in ['grill-with-docs', 'grilling', 'domain-modeling', 'writing-for-agents']]},
-            'extensions': {}, 'prompts': [], 'lsp': {}, 'mcp': [], 'pi': {'codemode': 'on'}}
+        planning_suite = {'id': 'acceptance-planning-pi', 'name': 'Isolated planning · Pi',
+            'harness': 'pi', 'skills': [str(self.root / 'agent/skills' / name)
+                for name in ['grill-with-docs', 'grilling', 'domain-modeling', 'writing-for-agents']],
+            'extensions': [], 'prompts': [], 'mcp': [], 'codemode': 'on'}
         self.http('/api/suites', planning_suite)
         self.evidence['planningSuite'] = planning_suite
         # The backend resolves its default prompts.local.toml beside backend.toml.

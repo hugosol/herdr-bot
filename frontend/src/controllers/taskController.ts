@@ -5,7 +5,7 @@
  * 能力事实（agent / model / thinking / skill）由后端公开，保存失败时页面不能表示已保存。
  */
 
-import type { Suite } from './suiteController'
+import { isSuite, type Suite } from './suiteController'
 
 export type TaskType = 'normal' | 'manager' | 'chief'
 export type TaskAgent = 'omp' | 'pi'
@@ -90,7 +90,9 @@ function isOptions(value: unknown): value is TaskOptions {
     isStringArray(options.models) &&
     isStringArray(options.skills) &&
     typeof options.thinking === 'object' &&
-    options.thinking !== null
+    options.thinking !== null &&
+    (options.suites === undefined || (Array.isArray(options.suites) && options.suites.every(isSuite))) &&
+    (options.mcp === undefined || isStringArray(options.mcp))
   )
 }
 

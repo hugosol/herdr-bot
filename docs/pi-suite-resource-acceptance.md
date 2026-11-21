@@ -73,7 +73,7 @@ user Chat/daemon processes.
 | `empty` | P21: explicit empty Suite MCP list still calls the native file server. |
 | `unreadable-skill`, `unreadable-extension` | P46: after successful preview, a Windows exclusive file handle makes SKILL.md or the concrete extension entry truly unreadable (not an arbitrary package asset pre-scan); public launch rejects with the resource identity, no model request and unchanged Herdr tab list. |
 | `generation-failure` | P46: after preview a normal file blocks the owned output directory; launch refuses instead of continuing empty. |
-| `incompatible` | P46: after preview the same Suite becomes OMP-only; Pi startup rejects instead of ignoring it. |
+| `incompatible` | P46: after preview, the owned persisted Pi Task is explicitly changed to reference an existing OMP Suite; Pi startup rejects before Herdr/model invocation. Suite harness remains immutable. |
 | `unreachable` | P46: a syntactically valid native MCP endpoint is unreachable. Normal startup and the working native MCP call still happen; real tool failure and native `/mcp` error/state are retained, not a new all-ready gate. |
 
 MCP endpoints are test-owned HTTP protocol servers that read independent files;

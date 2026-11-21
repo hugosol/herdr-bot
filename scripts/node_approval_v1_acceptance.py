@@ -248,6 +248,7 @@ class PublishedV1Acceptance(OuterAcceptance):
             dirs_exist_ok=True, symlinks=False)
         tasks, bots, maps = definition_catalog()
         used = {task.get('suite') for task in self.fixture_tasks.values()} - {None}
+        used.add('codebase-exploration-pi')  # Created business targets remain Pi for both manager harnesses.
         suites = [suite for suite in load(REPO / 'meta-data/suites.json')['suites'] if suite['id'] in used]
         require({suite['id'] for suite in suites} == used, 'Missing original source Suite')
         deployed = [self.resolve(suite) for suite in suites]
@@ -662,7 +663,7 @@ class PublishedV1Acceptance(OuterAcceptance):
     def target_fixture(self, suffix='v1'):
         expected = {'name': 'Published literal target ' + self.marker + '-' + suffix, 'chatName': '{chat.id}', 'agent': 'pi',
             'taskType': 'normal', 'model': 'probe', 'thinking': 'medium', 'skill': None, 'prompt': BUSINESS,
-            'suite': 'codebase-exploration'}
+            'suite': 'codebase-exploration-pi'}
         target = self.save_task(expected)
         require({key: value for key, value in target.items() if key != 'id'} == expected, ('Complete target differs from literal', target, expected))
         return target
@@ -826,7 +827,7 @@ class PublishedV1Acceptance(OuterAcceptance):
             require(len(targets) == 1, ('Outer did not create its independently named normal Task', targets))
             task = self.task(targets[0]['id'])
             expected = {'name': self.marker + '-outer', 'chatName': '{chat.id}', 'agent': 'pi',
-                'taskType': 'normal', 'model': 'probe', 'thinking': 'medium', 'skill': None, 'suite': 'codebase-exploration'}
+                'taskType': 'normal', 'model': 'probe', 'thinking': 'medium', 'skill': None, 'suite': 'codebase-exploration-pi'}
             require({key: value for key, value in task.items() if key not in ['id', 'prompt']} == expected,
                 ('Outer lost exact execution configuration', task, expected))
             bots = [item for item in self.bot_catalog()['bots'] if item.get('task_id') == task['id']]
@@ -956,7 +957,7 @@ class PublishedV1Acceptance(OuterAcceptance):
                 + json.dumps(GUIDES, ensure_ascii=False) + '。仍由各节点原生成果批准机制履行本次成果职责。' + common)
         if filename == OUTER:
             return (f'为只读 CSV 差异核对新建 normal Task，name={self.marker}-outer；agent=pi、model=probe、thinking=medium、'
-                'skill=null、suite=codebase-exploration、chatName={chat.id}，不设置group。' + BUSINESS +
+                'skill=null、suite=codebase-exploration-pi、chatName={chat.id}，不设置group。' + BUSINESS +
                 '本次只交付配置，不要求提供或读取业务 CSV；当前 Map 仅有可选命名输入 materials，'
                 '已绑定的材料只作本次范围说明。真实管理者检查实际命名输入后确认输入，不等待未来业务 CSV。'
                 f'明确委托 W2 仅保义优化并保存本次新 Task 的 prompt，随后为该实际 Task 创建新 Bot，name 和 ID 均为 native-outer-{self.host}。'
@@ -1158,7 +1159,7 @@ class PublishedV1Acceptance(OuterAcceptance):
             for stage, duty in stages.items():
                 target = self.save_task({'name': 'Owned planning ' + stage, 'chatName': '{chat.id}',
                     'agent': 'pi', 'taskType': 'normal', 'model': 'probe', 'thinking': 'medium',
-                    'skill': None, 'prompt': duty, 'suite': 'codebase-exploration'})
+                    'skill': None, 'prompt': duty, 'suite': 'codebase-exploration-pi'})
                 identity = 'native-planning-' + stage
                 expected = {'name': 'Owned planning ' + stage, 'task_id': target['id'],
                     'when': duty, 'plan_guide': duty, 'node_guide': duty}
