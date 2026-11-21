@@ -1,9 +1,9 @@
 {
   "suites": [
     {
+      "harness": "pi",
       "id": "web-access-pi",
       "name": "网页访问 · Pi",
-      "harness": "pi",
       "skills": [],
       "extensions": [
         "${roots.pi_extensions}/pi-web-access/index.ts"
@@ -13,9 +13,9 @@
       "codemode": "on"
     },
     {
+      "harness": "omp",
       "id": "codebase-exploration-omp",
       "name": "代码库探索 · OMP",
-      "harness": "omp",
       "skills": [
         "${roots.wayfinder_skills}",
         "${roots.wayfinder}/dependent-skills/codebase-exploration"
@@ -89,12 +89,13 @@
             "jsconfig.json"
           ]
         }
-      }
+      },
+      "dap": []
     },
     {
+      "harness": "pi",
       "id": "codebase-exploration-pi",
       "name": "代码库探索 · Pi",
-      "harness": "pi",
       "skills": [
         "${roots.wayfinder}/dependent-skills/codebase-exploration/grill-with-docs",
         "${roots.wayfinder}/dependent-skills/codebase-exploration/teach",
@@ -127,9 +128,9 @@
       "codemode": "on"
     },
     {
+      "harness": "omp",
       "id": "code-implementation-omp",
       "name": "代码实现 · OMP",
-      "harness": "omp",
       "skills": [
         "${roots.wayfinder_skills}",
         "${roots.wayfinder}/dependent-skills/code-implementation"
@@ -141,7 +142,6 @@
       "mcp": [
         "codebase-memory-mcp"
       ],
-      "dap": ["codelldb"],
       "lsp": {
         "jdtls": {
           "args": [],
@@ -205,26 +205,98 @@
             "jsconfig.json"
           ]
         }
-      }
+      },
+      "dap": [
+        "codelldb"
+      ]
     },
     {
+      "harness": "omp",
       "id": "pstack-omp",
       "name": "pstack · OMP",
-      "harness": "omp",
       "skills": [
         "${roots.toolkit}/pstack-suite/generated/skills"
       ],
       "extensions": [
         "${roots.toolkit}/pstack-suite/omp.ts",
-        "${roots.toolkit}/pstack-suite/generated"
+        "${roots.toolkit}/pstack-suite/generated",
+        "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"
       ],
-      "mcp": [],
-      "lsp": {}
+      "mcp": [
+        "codebase-memory-mcp"
+      ],
+      "lsp": {
+        "jdtls": {
+          "args": [],
+          "command": "jdtls",
+          "fileTypes": [
+            ".java"
+          ],
+          "rootMarkers": [
+            "pom.xml",
+            "build.gradle",
+            "build.gradle.kts",
+            "settings.gradle",
+            ".project"
+          ]
+        },
+        "pyright": {
+          "args": [
+            "--stdio"
+          ],
+          "command": "pyright-langserver",
+          "fileTypes": [
+            ".py",
+            ".pyi"
+          ],
+          "rootMarkers": [
+            "pyproject.toml",
+            "pyrightconfig.json",
+            "setup.py",
+            "setup.cfg",
+            "requirements.txt",
+            "Pipfile"
+          ]
+        },
+        "rust-analyzer": {
+          "args": [],
+          "command": "rust-analyzer",
+          "fileTypes": [
+            ".rs"
+          ],
+          "rootMarkers": [
+            "Cargo.toml",
+            "rust-analyzer.toml"
+          ]
+        },
+        "typescript-language-server": {
+          "args": [
+            "--stdio"
+          ],
+          "command": "typescript-language-server",
+          "fileTypes": [
+            ".ts",
+            ".tsx",
+            ".js",
+            ".jsx",
+            ".mjs",
+            ".cjs"
+          ],
+          "rootMarkers": [
+            "package.json",
+            "tsconfig.json",
+            "jsconfig.json"
+          ]
+        }
+      },
+      "dap": [
+        "codelldb"
+      ]
     },
     {
+      "harness": "pi",
       "id": "pi-codemode-pi",
       "name": "codemode · Pi",
-      "harness": "pi",
       "skills": [],
       "extensions": [],
       "mcp": [],
