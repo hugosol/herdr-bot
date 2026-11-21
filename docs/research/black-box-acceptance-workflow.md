@@ -1,7 +1,9 @@
 # 从 contract 到黑盒验收：验证代码库与通用执行流程建设计划
 
 日期：2026-11-21  
-状态：讨论共识与实施方向；不是已交付能力或产品验收通过声明。
+状态：讨论共识与实施方向；不是产品验收通过声明。
+
+实施记录：黑盒验收代码已迁入独立项目 `E:/Developer/myhub/herdr-bot-tester`。该项目通过显式产品根运行，产品构建与自身回归留在产品仓。当前命令见验证项目 `README.md`；本文的后续 Wayfinder 分流与通用执行流程仍是建设计划。迁移检查不能替代真实宿主／模型验收。
 
 ## 1. 文档目的与结论
 
@@ -547,7 +549,7 @@ pstack 的 verification skill 结构可以作为基础，但「曾使用 pstack 
 
 - [测试指引](../agents/testing.md)
 - [领域词汇](../../GLOSSARY.md)
-- [源码与产物来源核对](../../scripts/acceptance/host/provenance.py)
+- [源码与产物来源核对](../../../herdr-bot-tester/scripts/acceptance/host/provenance.py)
 - [Node 成果批准 contract](../../../archive-docs/herdr-bot/node-result-approval/contract.md)
 - [12：原生生命周期验收](../../../archive-docs/herdr-bot/node-result-approval/implementation/12-native-approval-lifecycle-acceptance.md)
 - [13：真实模型交接与结束节点](../../../archive-docs/herdr-bot/node-result-approval/implementation/13-model-handoff-end-node-acceptance.md)

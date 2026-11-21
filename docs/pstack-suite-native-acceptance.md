@@ -1,5 +1,15 @@
 # pstack Suite 跨仓原生验收
 
+黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+
+```powershell
+$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
+$BOT = 'E:/Developer/myhub/herdr-bot'
+$env:HERDR_BOT_WORKTREE = $BOT
+```
+
+验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+
 在 Windows 上用实际安装的 Herdr TUI 和 OMP，从当前 herdr-bot worktree 的公开 Task／Chat HTTP 发起和恢复。Runner 使用真实 OMP 原生交互及 Session 历史，受控模型只返回明确的本地工具调用，不替宿主执行工具，也不填写历史、状态或工具结果。它不使用用户 credential、既有会话或全局配置。不要同时运行其他占用已经配对的原生／全仓验收。
 
 ## 安装选择与构建
@@ -23,7 +33,7 @@ cargo build --manifest-path backend/Cargo.toml --locked --bins --example safe_sh
 Set-Location $Toolkit
 bun install --frozen-lockfile
 Set-Location $Bot
-python scripts/accept-pstack-suite.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-pstack-suite `
   --herdr-bot-worktree $Bot --toolkit-worktree $Toolkit `
   --backend $Backend --isolated-config $Config --cases all --evidence-dir $Evidence
 ```

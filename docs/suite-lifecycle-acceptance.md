@@ -1,6 +1,16 @@
 # Suite Chat lifecycle acceptance
 
-`python scripts/accept-suite-lifecycle.py` owns P12/P13/P28/P29/P30/P31/P32 and
+黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+
+```powershell
+$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
+$BOT = 'E:/Developer/myhub/herdr-bot'
+$env:HERDR_BOT_WORKTREE = $BOT
+```
+
+验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-lifecycle` owns P12/P13/P28/P29/P30/P31/P32 and
 P35's **real concurrent startup consumption**. P35 assembly/publication tests
 remain separate. The approved boundaries are public Task/Suite/Chat/workflow HTTP
 (S2), isolated deployment/startup and restart (S3), and installed native agents
@@ -100,8 +110,8 @@ bun run test
 
 Set-Location $HERDR_BOT_WT
 $env:LIFECYCLE_TOOLKIT_WORKTREE = $TOOLKIT_WT
-python scripts/accept-suite-lifecycle.test.py
-python scripts/accept-suite-lifecycle.py `
+python "$TESTER/scripts/accept-suite-lifecycle.test.py"
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-lifecycle `
   --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
   --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
   --paths-file "$ISOLATED_PATHS" --scenario all --host all `
@@ -134,16 +144,16 @@ $ISOLATED_PATHS = "$HERDR_BOT_WT/.scratch/suite-cli-research/evidence/11-lifecyc
 $EVIDENCE_DIR = "$HERDR_BOT_WT/.scratch/suite-cli-research/evidence/11-lifecycle/native-01"
 Set-Location $HERDR_BOT_WT
 $env:HERDR_BOT_MANUAL_SYMLINKS = '1'
-python scripts/accept-suite-lifecycle.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" --paths-file "$ISOLATED_PATHS" --scenario all --host all --evidence-dir "$EVIDENCE_DIR"
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-lifecycle --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" --paths-file "$ISOLATED_PATHS" --scenario all --host all --evidence-dir "$EVIDENCE_DIR"
 # Second invocation: independent native-only slices are attempted even when links fail.
 $EVIDENCE_DIR = "$HERDR_BOT_WT/.scratch/suite-cli-research/evidence/11-lifecycle/native-02"
-python scripts/accept-suite-lifecycle.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" --paths-file "$ISOLATED_PATHS" --scenario all --host all --evidence-dir "$EVIDENCE_DIR"
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-lifecycle --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" --paths-file "$ISOLATED_PATHS" --scenario all --host all --evidence-dir "$EVIDENCE_DIR"
 # Third invocation: native user-attributed Skill history and managed Workspace fixtures corrected.
 $EVIDENCE_DIR = "$HERDR_BOT_WT/.scratch/suite-cli-research/evidence/11-lifecycle/native-03"
-python scripts/accept-suite-lifecycle.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" --paths-file "$ISOLATED_PATHS" --scenario all --host all --evidence-dir "$EVIDENCE_DIR"
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-lifecycle --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" --paths-file "$ISOLATED_PATHS" --scenario all --host all --evidence-dir "$EVIDENCE_DIR"
 # Fourth invocation: preserve stable zone IDs and reload native credential snapshots.
 $EVIDENCE_DIR = "$HERDR_BOT_WT/.scratch/suite-cli-research/evidence/11-lifecycle/native-04"
-python scripts/accept-suite-lifecycle.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" --paths-file "$ISOLATED_PATHS" --scenario all --host all --evidence-dir "$EVIDENCE_DIR"
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-lifecycle --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" --paths-file "$ISOLATED_PATHS" --scenario all --host all --evidence-dir "$EVIDENCE_DIR"
 ```
 
 Worktree roots came from the assignment. The dependency-only file was authored
@@ -164,7 +174,7 @@ The final invocation used the same complete command with
 
 ```powershell
 $EVIDENCE_DIR = "$HERDR_BOT_WT/.scratch/suite-cli-research/evidence/11-lifecycle/native-05"
-python scripts/accept-suite-lifecycle.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" --paths-file "$ISOLATED_PATHS" --scenario all --host all --evidence-dir "$EVIDENCE_DIR"
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-lifecycle --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" --paths-file "$ISOLATED_PATHS" --scenario all --host all --evidence-dir "$EVIDENCE_DIR"
 ```
 
 It preserves the existing read-only authority boundary after backend restart

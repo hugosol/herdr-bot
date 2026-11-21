@@ -1,6 +1,16 @@
 # Pi Suite 模式与模板真实验收
 
-`python scripts/accept-suite-pi-mode.py` 负责 P14、P16、P23、P24、P26、P27。
+黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+
+```powershell
+$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
+$BOT = 'E:/Developer/myhub/herdr-bot'
+$env:HERDR_BOT_WORKTREE = $BOT
+```
+
+验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-mode` 负责 P14、P16、P23、P24、P26、P27。
 入口经公开 Task／Chat HTTP 发起真实 Herdr pane，由 PATH 上已安装的 Pi 正常启动；
 它不直接用 SDK 发起 agent，不替换 MCP manager，也不修改 Pi／Herdr 源码。
 SessionManager SDK 仅用于事后读取原生历史。外部模型和 MCP endpoint 是数值回环受控服务，
@@ -24,7 +34,7 @@ bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
 $BACKEND_BINARY = Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe'
-python scripts/accept-suite-pi-mode.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-mode `
   --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
   --backend "$BACKEND_BINARY" --paths-file "$ISOLATED_PATHS" `
   --evidence-dir "$EVIDENCE_DIR"
@@ -68,7 +78,7 @@ MCP 的 `tools/call` 还须在真实 endpoint wire 中恰出现一次，并返�
 
 ```powershell
 $env:PI_MODE_TOOLKIT_WORKTREE = $TOOLKIT_WT
-python scripts/accept-suite-pi-mode.test.py
+python "$TESTER/scripts/accept-suite-pi-mode.test.py"
 ```
 
 该回归只证明缺依赖时保留原错误、六项保持未验证且不启动服务，不代替 S4 成功证据。

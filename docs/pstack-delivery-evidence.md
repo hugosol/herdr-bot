@@ -1,11 +1,21 @@
 # pstack 交付包与分层证据
 
+黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+
+```powershell
+$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
+$BOT = 'E:/Developer/myhub/herdr-bot'
+$env:HERDR_BOT_WORKTREE = $BOT
+```
+
+验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+
 从本次 herdr-bot worktree 根运行（Python 3.11+；参数必须为绝对路径，证据目录必须不存在）：
 
 ```powershell
-python scripts/check-pstack-delivery.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" check-pstack-delivery `
   --herdr-bot-worktree $Bot --toolkit-worktree $Toolkit --evidence-dir $NewPackageEvidence
-python scripts/check-pstack-delivery.test.py $Toolkit
+python "$TESTER/scripts/check-pstack-delivery.test.py" $Toolkit
 ```
 
 检查器不调用生成器、不联网、不启动宿主或读取用户配置；只创建指定证据目录和 `summary.json`。以 toolkit 的 `pstack-suite/manifest.json`、所有权账本和独立审查的 `delivery-closure.json` 对照实际文件；读取各文件、计算摘要，并再次从引用目标读取内容（重复目标共用本次读取）。缺失、不可读、未发布、字节漂移、来源错配和非清单路径不能靠文件名通过。`0` 仅代表包检查；`1` 保留失败明细；`2` 是用法或无法创建新证据目录。读到语义规则不等于执行过规则。确认后的本地模型输入、角色清单和 persona 是 setup 产物，不是未配置包的固定内容；Java/TLC、渲染、CLI/UI、forge 等外部前提不由离线检查认证。

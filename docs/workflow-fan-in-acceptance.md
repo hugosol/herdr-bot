@@ -1,5 +1,15 @@
 # 共享文件 → 双消费者 → 业务汇总的真实验收
 
+黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+
+```powershell
+$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
+$BOT = 'E:/Developer/myhub/herdr-bot'
+$env:HERDR_BOT_WORKTREE = $BOT
+```
+
+验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+
 本场景覆盖文件交接协议的 P23/P24：真实 Herdr、Pi 原生 Chat、实际模型和两个参与 worktree。受控 HTTP 回归、已有旧版 A/B→C 示例、准备好的文件或最终 completed 状态都不能替代本场景。角色工具与门禁另见[测试指引](agents/testing.md#文件交接真实角色自动验收)；本入口复用其隔离部署和真实模型传输，不复制旧例中“manager 默认读材料验收”的职责。
 
 ## 入口与依赖
@@ -9,7 +19,7 @@
 ```powershell
 $env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --example safe_shutdown_shell
-python scripts/test-workflow-file-handoff.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-file-handoff `
   --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
   --toolkit $TOOLKIT_WT --scenario fan-in --paths-file $ISOLATED_PATHS
 ```
@@ -59,7 +69,7 @@ node scripts/test-backend.mjs
 npm --prefix frontend test
 # runner 的缺依赖 fail-closed 回归，不代表真实业务通过
 $env:WORKFLOW_HANDOFF_TOOLKIT = $TOOLKIT_WT
-python scripts/test-workflow-file-handoff.test.py
+python "$TESTER/scripts/test-workflow-file-handoff.test.py"
 
 # toolkit，临时 worktree 不共享默认 sibling 布局时显式指定安全壳及只读元数据
 $env:HERDR_BOT_REPO = $HERDR_BOT_WT

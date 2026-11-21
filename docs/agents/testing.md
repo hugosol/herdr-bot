@@ -1,14 +1,24 @@
 # 测试指引
 
+黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+
+```powershell
+$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
+$BOT = 'E:/Developer/myhub/herdr-bot'
+$env:HERDR_BOT_WORKTREE = $BOT
+```
+
+验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+
 命令均从仓库根目录执行。本文记录入口选择与安全约束；测试结果和性能记录留在运行日志中。
 
 ## 验收脚本的共享设施
 
-原 `accept-*.py`、`test-real-*.py` 和 `check-*.py` 命令路径、参数及退出语义保持不变。入口不作为其他场景的共享库；已有 implementation 使用正常 Python import。
+黑盒验收的 `accept-*.py`、`test-real-*.py` 及其专用 `check-*.py` 已迁入验证项目。文件名、参数及退出语义保持不变，原产品路径不保留兼容入口。产品自己的网络护栏、Schema、文档检查和构建脚本仍留在产品仓。入口不作为其他场景的共享库；已有 implementation 使用正常 Python import。
 
 - `scripts/acceptance/host/` 持有进程句柄与输出消费、独占环境与清理、来源检查、原生观察、透明流量记录、模型传输和证据归档。受控 provider 不代表真实模型验收。透明观察服务与隔离业务后端均显式选择 49152–65535 的数值回环端口，避免 Windows 的 `port=0` 分配到该范围之外；仅启动前实际地址占用碰撞允许重新分配，后端启动失败及业务／模型请求不因此重放。
 - `scripts/acceptance/workflow/`、`scripts/acceptance/suites/`、`scripts/acceptance/native/` 及 `acceptance.suite_resources`／`acceptance.suite_lifecycle` 保留已被复用的场景 implementation。P22 默认模型、业务判据、覆盖清单和各场景的通过条件不移入通用设施。
-- 设施自测仍使用原 `workflow_completion_transport.test.py`、`workflow_evidence.test.py` 等入口；它们直接导入所属设施。CLI 安全回归继续经过原命令路径，不替代真实模型／双宿主验收。
+- 设施自测仍使用原 `workflow_completion_transport.test.py`、`workflow_evidence.test.py` 等入口；它们直接导入所属设施。CLI 安全回归经过验证项目中的同名入口，不替代真实模型／双宿主验收。
 - 改动共享 implementation 时，同步维护场景的源码哈希／原文证据清单；不能只记录薄 CLI 的身份。清理失败、部分覆盖和单宿主诊断仍不能成为完整通过。
 
 ## 真实模型验收的范围
@@ -39,7 +49,7 @@
 
 ### Herdr 宿主选择专项（S1／S3）
 
-先构建本 worktree 的 `frontend` 与生产 `herdr-bot`，并使用独占绝对 `CARGO_TARGET_DIR`。运行 `python scripts/accept-herdr-host-selection.py --backend <herdr-bot.exe> --herdr <herdr.exe> --app <herdr-app.exe> --core <hc.exe> --evidence-dir <新的证据目录>`，所有路径显式且绝对；证据目录使用 `%TEMP%` 下简短的独占名称，避免 App 的 `herdr-app.sock` 路径超过 Windows Unix socket 长度限制。专项用独占 TUI、App 和两个 core；从公开 HTTP 触发放置，以实际容器、Tab、Pane、终端归属及 core-local ID 碰撞核对配置路由和错配拒绝。固定操作分别核对脚本标记、HTTP 回执与独立宿主探测（成功脚本不必启动或停止进程），退出用所属进程和 core／holder 句柄确认。它不证明真实 Task 初始化或业务输入；有关 agent 行为另验。
+先构建本 worktree 的 `frontend` 与生产 `herdr-bot`，并使用独占绝对 `CARGO_TARGET_DIR`。运行 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-herdr-host-selection --backend <herdr-bot.exe> --herdr <herdr.exe> --app <herdr-app.exe> --core <hc.exe> --evidence-dir <新的证据目录>`，所有路径显式且绝对；证据目录使用 `%TEMP%` 下简短的独占名称，避免 App 的 `herdr-app.sock` 路径超过 Windows Unix socket 长度限制。专项用独占 TUI、App 和两个 core；从公开 HTTP 触发放置，以实际容器、Tab、Pane、终端归属及 core-local ID 碰撞核对配置路由和错配拒绝。固定操作分别核对脚本标记、HTTP 回执与独立宿主探测（成功脚本不必启动或停止进程），退出用所属进程和 core／holder 句柄确认。它不证明真实 Task 初始化或业务输入；有关 agent 行为另验。
 
 ### 配对 Task 发起、ready 与初始输入（S1／S2／S3）
 
@@ -53,7 +63,7 @@ $Evidence = 'C:/absolute/paired-launch-new-evidence'
 $env:CARGO_TARGET_DIR = 'C:/absolute/paired-launch-exclusive-cargo'
 $Backend = Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe'
 Set-Location $Bot
-python scripts/accept-paired-task-launch.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-paired-task-launch `
   --herdr-bot-worktree $Bot --toolkit-worktree $Toolkit --backend $Backend `
   --isolated-config $Config --combinations all --cases all --evidence-dir $Evidence
 ```
@@ -103,7 +113,7 @@ npm --prefix frontend run build
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 cargo build --manifest-path backend/Cargo.toml --locked --bins --example safe_shutdown_shell --example recovery_herdr_proxy
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
-python scripts/accept-paired-history-recovery.py --herdr-bot-worktree $bot --toolkit-worktree $toolkit --backend $backend --paths-file $paths --directions tui-to-app,app-to-tui --evidence-dir $evidence
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-paired-history-recovery --herdr-bot-worktree $bot --toolkit-worktree $toolkit --backend $backend --paths-file $paths --directions tui-to-app,app-to-tui --evidence-dir $evidence
 ```
 
 `$paths` 是另建的 TOML，只声明安装位置，不复制任何 agent 的常用配置、历史或认证。将下列绝对路径替换为本机实际安装值：
@@ -127,7 +137,7 @@ toolkit_baseline = 'C:/absolute/original-toolkit-checkout'
 
 原生专项用数值回环的自有机械文本 provider 只为初次发起生成可读历史，不访问真实模型或用户凭据；安装的 OMP／Pi、框架／connect-bot、宿主和后端走真实路径。先读取实际历史、保留文件头与原容器 ID；退出并持句柄核对旧 agent、旧端及 core 后，才配置另一端及第二个默认容器名。Resume 之后从实际新进程的 native `session_start` 取 SessionManager ID/file 和 `process.cwd()`，从安装包再读原 Chat 的正文，检查目标所属 Workspace/Space、Tab/Pane、core 与内部焦点。透明 CLI 记录器原样转发到本次安装，不替换宿主、原生上报或响应。记录参数只用于检查没有重放模型／思考覆盖、没有强加扩展、目录降级未指定 cwd，以及没有重发创建、启动或输入；不能用参数证明恢复、实际 cwd 或聚焦。两端回执都不证明 Windows 置前。更新来源 Task 的 Suite 和固定环境标记，观察最新扩展确实运行，并比较原生输入、历史和模型访问记录；独立的原生默认扩展观察器不向产品上报身份。
 
-同端命中、跨端无匹配、人工同值、Git 主工作树与目录缺失、四种环境降级、原文件头和来源 agent 冲突均保留独立格子。Task 发起的 Chat 已记录原生文件时，再次登记不会覆盖历史 cwd；本次实际 cwd 由恢复回执和当前会话登记分别展示。未记录原生文件的普通接入继续按既有规则补充历史。未启动、未定位或原生恢复选择框仍待处理时，不将选择框、存在的终端或最近的回执计为成功，专项不替用户选择分叉或继续。人工同值／无来源只改变一次本格的自有历史输入，Resume 前后均保留原始字节，并核对公开记录、既有持久格式和原字段；同一 Windows cwd 的尾斜杠不算换目录。安装端若不能构造真实 Git 歧义或缺少实际退出记录，不用控制结果补格。App 没有可据以确认历史 checkout 的归属，默认 cwd 用同一 Space 的独立原生空白 Tab 取证。错误／畸形／空成功等确定性外部响应、被拒绝的启动／定位以及其他原生身份冲突另用 `chat_resume`、`chat_resume_environment`、`chat_resume_omp`、`chat_resume_pi`、`chat_resume_timeout` 的公开 HTTP＋控制 CLI 边界；它们不证明安装宿主通过。新证据目录包含原始错误、HTTP、native 布局／进程／退出、SessionManager 历史及各仓原始日志。每格另保留一个独占、短路径的临时状态根（见该格 `root`），可在证据归档后独立删除；仅根进程结束或目录可以删除不构成退出证明。CLI 边界回归可用 `python scripts/accept-paired-history-recovery.test.py`，它不启动宿主。
+同端命中、跨端无匹配、人工同值、Git 主工作树与目录缺失、四种环境降级、原文件头和来源 agent 冲突均保留独立格子。Task 发起的 Chat 已记录原生文件时，再次登记不会覆盖历史 cwd；本次实际 cwd 由恢复回执和当前会话登记分别展示。未记录原生文件的普通接入继续按既有规则补充历史。未启动、未定位或原生恢复选择框仍待处理时，不将选择框、存在的终端或最近的回执计为成功，专项不替用户选择分叉或继续。人工同值／无来源只改变一次本格的自有历史输入，Resume 前后均保留原始字节，并核对公开记录、既有持久格式和原字段；同一 Windows cwd 的尾斜杠不算换目录。安装端若不能构造真实 Git 歧义或缺少实际退出记录，不用控制结果补格。App 没有可据以确认历史 checkout 的归属，默认 cwd 用同一 Space 的独立原生空白 Tab 取证。错误／畸形／空成功等确定性外部响应、被拒绝的启动／定位以及其他原生身份冲突另用 `chat_resume`、`chat_resume_environment`、`chat_resume_omp`、`chat_resume_pi`、`chat_resume_timeout` 的公开 HTTP＋控制 CLI 边界；它们不证明安装宿主通过。新证据目录包含原始错误、HTTP、native 布局／进程／退出、SessionManager 历史及各仓原始日志。每格另保留一个独占、短路径的临时状态根（见该格 `root`），可在证据归档后独立删除；仅根进程结束或目录可以删除不构成退出证明。CLI 边界回归可用 `python "$TESTER/scripts/accept-paired-history-recovery.test.py"`，它不启动宿主。
 
 ### Task 发起与初始输入（S1）
 
@@ -173,7 +183,7 @@ $Evidence = 'E:/acceptance/paired-close-reminders-new'
 $env:CARGO_TARGET_DIR = 'E:/acceptance/paired-close-reminders-cargo'
 $Backend = Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe'
 Set-Location $HerdrBotWorktree
-python scripts/accept-paired-close-reminders.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-paired-close-reminders `
   --herdr-bot-worktree $HerdrBotWorktree --toolkit-worktree $ToolkitWorktree `
   --backend $Backend --isolated-config $IsolatedConfig `
   --close-cases all --reminder-cases all --evidence-dir $Evidence
@@ -196,7 +206,7 @@ $evidence = 'C:/absolute/chief-run-new-evidence'
 $env:CARGO_TARGET_DIR = 'C:/absolute/chief-run-new-cargo-target'
 $backend = Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe'
 Set-Location $bot
-python scripts/accept-paired-chief-run.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-paired-chief-run `
   --herdr-bot-worktree $bot --toolkit-worktree $toolkit --backend $backend `
   --isolated-config $config --scenarios all --evidence-dir $evidence
 ```
@@ -205,7 +215,7 @@ python scripts/accept-paired-chief-run.py `
 
 - 每格启动实际所选 Herdr 和 OMP／Pi、生产 HTTP、toolkit 和实际 TUI 客户端／App 窗口。只操作本格创建的容器、Pane、任务、Run、HOME、APPDATA、XDG、agent 和 core；不读用户认证，不接现存 Chat。每格保存真实安装指纹、公开与持久关联、原生历史、终端调用的请求／处置／原始回执及所属进程退出证据。`nativeRoot` 另保留本次独占短路径状态根，供复核后删除；留存目录不是进程退出证明，未确认退出的格不会通过。
 - 第一条业务消息经实际宿主终端提交。外部 CLI 门闩在转发前读回 Chat／原生 header／Run 或委派关联，正常调用不改参数或回执。有分派的普通 Chat 第一次明确拒绝时不调用宿主，下一次通过实际宿主，同一目标／原文只有一次进入历史；比较独立创建、发起和输入次数。原分派 chief 保留为同名存活对照，更换当前 chief 后核对实际输入与报告读回。受控故障分别拒绝 chief／Run 通知，确认报告已保存且观察 46 秒无重投；成功业务和失败证据分开记录。
-- 聚焦以所选宿主原生布局与焦点为准，不声称 Windows 置前。通过原生输入正常退出旧 agent 后再恢复；App 另核对实际会话自行发出的 `launch_ended`，不替它上报。App Pi 用原生 `/new` 先离开旧 Session、确认旧 owner 撤回后再退出；此格只证明已撤回 owner 后的恢复，不认证强制关闭或未送达退出上报后的旧 owner 回收。原生 Resume 后用真正的 manager／node 扩展工具读 Run 和交接，检查原执行；不做跨端 Run 迁移。另以明确聚焦失败核对没有复发 Resume，删除自有来源 Task 后检查降级提示、无显式角色装配和原 Run 不变。独立 CLI 门闩回归：把 `PAIRED_NATIVE_RECEIPT` 指向本次 `debug/examples/paired_native_receipt.exe` 后执行 `python scripts/accept-paired-chief-run.test.py`。
+- 聚焦以所选宿主原生布局与焦点为准，不声称 Windows 置前。通过原生输入正常退出旧 agent 后再恢复；App 另核对实际会话自行发出的 `launch_ended`，不替它上报。App Pi 用原生 `/new` 先离开旧 Session、确认旧 owner 撤回后再退出；此格只证明已撤回 owner 后的恢复，不认证强制关闭或未送达退出上报后的旧 owner 回收。原生 Resume 后用真正的 manager／node 扩展工具读 Run 和交接，检查原执行；不做跨端 Run 迁移。另以明确聚焦失败核对没有复发 Resume，删除自有来源 Task 后检查降级提示、无显式角色装配和原 Run 不变。独立 CLI 门闩回归：把 `PAIRED_NATIVE_RECEIPT` 指向本次 `debug/examples/paired_native_receipt.exe` 后执行 `python "$TESTER/scripts/accept-paired-chief-run.test.py"`。
 - 场景使用数值回环的受控机械 provider 和受控外部拒绝。它能驱动真实扩展工具、持久报告和手动推进的生产机制，不证明真实模型对需求的理解、结果质量或外部传播。该命令不触发真实模型网络；只有逐次明确授权的配置才能用于另外的真实网络验收，缺授权和未跑的原生格子均不能由全仓绿补齐。
 
 ### Chief 委派与报告（S1）
@@ -316,44 +326,44 @@ P10 嵌套归属选择器为 `nesting::dual_role_routes_report_to_parent_and_man
 从参与的 herdr-bot worktree 根运行：
 
 ```sh
-python scripts/accept-node-approval-handoff.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-node-approval-handoff --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"
 ```
 
 参数必须是显式绝对路径，证据目录必须不存在；`--backend` 是本 worktree 生产 `herdr-bot.exe`，旁置同次构建的 `herdr-paths.exe`、`herdr-fixture.exe` 与 `examples/safe_shutdown_shell.exe`。使用独立绝对 `CARGO_TARGET_DIR`、两仓现有 frozen-lock 依赖及 Bun 1.4.4。paths 沿用共享原生验收设施的只读 `herdr`、`omp_package`、`pi_package`、`omp_state_extension`、`pi_state_extension`。授权模型 JSON 使用 `provider/model/baseUrl/apiKeyEnv`，可选参数沿用共享模型传输设施；不限定模型产品，不发现用户认证、不安装宿主、不回退受控响应、不重试模型业务决策。缺授权保留四格未验证并非零退出。
 
-已明确授权某个只读 auth 文件时，可用既有 `python scripts/accept-workflow-codex.py --scenario node-approval-handoff --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"`。先用同一命令加 `--smoke`、不同的新证据目录独立核对 `serverModel=gpt-6-luna`。该既有传输仅支持 canonical `gpt-6-luna`，这是传输／本次授权边界，不是产品模型限制；不复制、刷新或修改认证，不将凭据正文写入证据。业务阶段保留真实 SDK 原生调用决策与安装宿主执行；不声称两宿主直接使用 Codex wire。专项不把烟测通过当作业务四格通过。已独立完成全仓检查时，可在交接专项或该 Codex wrapper 追加 `--native-only`，仅运行原生场景以避免重复全仓检查；可用 `--hosts omp --cases auto` 或 `--hosts pi --cases manual` 选择单格，`--cases` 默认为 `all`，仍运行所选宿主的自动／人工两模式。过滤或 native-only 始终保留完整覆盖清单中未验证项、`passed=false` 与非零退出，不单独认证整票，须与本次未受影响源码的全仓结果分别交付。
+已明确授权某个只读 auth 文件时，可用既有 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-codex --scenario node-approval-handoff --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"`。先用同一命令加 `--smoke`、不同的新证据目录独立核对 `serverModel=gpt-6-luna`。该既有传输仅支持 canonical `gpt-6-luna`，这是传输／本次授权边界，不是产品模型限制；不复制、刷新或修改认证，不将凭据正文写入证据。业务阶段保留真实 SDK 原生调用决策与安装宿主执行；不声称两宿主直接使用 Codex wire。专项不把烟测通过当作业务四格通过。已独立完成全仓检查时，可在交接专项或该 Codex wrapper 追加 `--native-only`，仅运行原生场景以避免重复全仓检查；可用 `--hosts omp --cases auto` 或 `--hosts pi --cases manual` 选择单格，`--cases` 默认为 `all`，仍运行所选宿主的自动／人工两模式。过滤或 native-only 始终保留完整覆盖清单中未验证项、`passed=false` 与非零退出，不单独认证整票，须与本次未受影响源码的全仓结果分别交付。
 
-交接专项的模型身份检查仅将 `POST /chat/completions` 计为真实 completion，并在现有 30 秒请求预算内观察在途请求完成；其他流量原样保留并单独计数，不按 HTTP 状态筛除失败。真实 completion 的错误、缺失／错误模型身份及零 completion 均拒绝通过。离线边界回归为 `NODE_APPROVAL_HANDOFF_TOOLKIT="$TOOLKIT_WT" python scripts/accept-node-approval-handoff.test.py ModelIdentityBoundary`，不代表真实模型业务通过。
+交接专项的模型身份检查仅将 `POST /chat/completions` 计为真实 completion，并在现有 30 秒请求预算内观察在途请求完成；其他流量原样保留并单独计数，不按 HTTP 状态筛除失败。真实 completion 的错误、缺失／错误模型身份及零 completion 均拒绝通过。离线边界回归为 `NODE_APPROVAL_HANDOFF_TOOLKIT="$TOOLKIT_WT" python "$TESTER/scripts/accept-node-approval-handoff.test.py" ModelIdentityBoundary`，不代表真实模型业务通过。
 
-业务补充边界接受正常回答或合法的原生 Ask 表单，不要求 assistant 必须先 stop，也不要求先 report 再 Ask。表单必须归属当前 owned Session／同一冻结、未批准 execution，且仅询问本场景已知的折扣；使用安装宿主的 HTML parser 识别字段，经 owned pane 实际填写 25 并原生 Submit，再核对透传 `formDialog` 返回与实际 Ask `toolResult.details.answers`。已回答、错误、未知或歧义字段均不重填，不 Esc、不用普通 prompt 绕过 blocked UI，也不要求模型改用文本。`node-approval-observer.mjs` 只透传记录公共 UI／事件，不提供返回值或批准结果。离线回归为 `NODE_APPROVAL_HANDOFF_TOOLKIT="$TOOLKIT_WT" python scripts/accept-node-approval-handoff.test.py`，以及 `NODE_APPROVAL_HANDOFF_OMP_PACKAGE="$OMP_PACKAGE" bun test scripts/node-approval-form.test.mjs`；后者使用真实安装的 parser／表单组件，但没有模型或原生宿主运行，不是 S2 业务证据。
+业务补充边界接受正常回答或合法的原生 Ask 表单，不要求 assistant 必须先 stop，也不要求先 report 再 Ask。表单必须归属当前 owned Session／同一冻结、未批准 execution，且仅询问本场景已知的折扣；使用安装宿主的 HTML parser 识别字段，经 owned pane 实际填写 25 并原生 Submit，再核对透传 `formDialog` 返回与实际 Ask `toolResult.details.answers`。已回答、错误、未知或歧义字段均不重填，不 Esc、不用普通 prompt 绕过 blocked UI，也不要求模型改用文本。`node-approval-observer.mjs` 只透传记录公共 UI／事件，不提供返回值或批准结果。离线回归为 `NODE_APPROVAL_HANDOFF_TOOLKIT="$TOOLKIT_WT" python "$TESTER/scripts/accept-node-approval-handoff.test.py"`，以及 `NODE_APPROVAL_HANDOFF_OMP_PACKAGE="$OMP_PACKAGE" bun test "$TESTER/scripts/node-approval-form.test.mjs"`；后者使用真实安装的 parser／表单组件，但没有模型或原生宿主运行，不是 S2 业务证据。
 
 按已批准承诺逐项组合原始事实：P20 要求双宿主两模式的真实正常成果批准后报告、来源与独立成果，并保留进度可先报告的实际证据；P30-S2 要求双宿主原生结束节点及真实 finish，不额外要求每种普通节点批准模式重复 P30。保留各场景原始失败、未完成的 manager 推进与内部子标记；某格后续 finish 未发生不能抹掉它已独立实证的 P20，也不能补出该格没有发生的 finish。过滤场景或内部 16 子标记不是整体契约结论，组合结论必须引用实际工具、公开状态、材料、身份和清理证据，不能仅重写通过标记。
 
 专项独占 OMP／Pi × auto／manual 四个环境，以真实模型自行决定成果交接。Map 显式声明必需的 `order` 文件输入，Run 提交实际订单文件，报价节点通过 `type=run` 消费同一命名绑定；公开定义在模型启动前预检。`cargo test --manifest-path backend/Cargo.toml --test workflow_start handoff_order_requires_a_declared_map_input_before_manager_preparation -- --nocapture` 通过实际后端 HTTP 验证漏声明时 manager 准备 `order` 被 409 拒绝且未就绪，再经公开 Map 输入保存与新 Run 验证声明后可绑定真实订单、在折扣仍为 null 时完成输入准备，且无节点派发／模型请求；它只锁定夹具输入前置，不认证 P20／P30。输入准备的业务前提是数量、单价和本地范围明确，折扣可为 null，识别缺项属于报价节点的工作；不能把最终报价所需折扣误作开始讨论的前提。业务先缺折扣，观察真实问题报告在未批准时保存；用户只补充25%折扣，不指定工具或顺序。独立字面预期为7件、单价1200分、实付6300分，核对实际 `quote.json`、命名输出、原生 approve 先于正常 report、真实批准回执与公开来源。人工模式观察完整原生问题、可见选中 Yes、UI 实际 true 返回及公开 manual 事实；自动模式无确认，来源为 auto。原生结束 Chat 等待用户提供发票抬头，没有节点批准／报告职责；其他工作完成后，真实 manager 显式 finish，结束 Chat 仍 running、未批准且无报告。随后作 91 秒单调观察，覆盖 60 秒成果批准＋30 秒 HTTP 预算及 1 秒余量。
 
-每格保留原生 SessionManager 历史、模型实际请求与返回身份、工具调用／结果、透传 HTTP、独立预期、真实材料、公开 Run、源码／锁文件／产物／安装身份、原始与清理错误。单宿主仅诊断；任一检查失败、coverage 缺失或清理失败，整体不得通过。入口顺序运行本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器检查，以及 toolkit typecheck／test／check:integrations 和受影响 node docks；配对 dock 使用本次安全壳，绝不用生产后端执行关机回归。CLI 安全自测为 `NODE_APPROVAL_HANDOFF_TOOLKIT="$TOOLKIT_WT" python scripts/accept-node-approval-handoff.test.py`，只证明 fail-closed、旧证据保护、绝对路径和无模型产品限制，不证明真实模型遵从。
+每格保留原生 SessionManager 历史、模型实际请求与返回身份、工具调用／结果、透传 HTTP、独立预期、真实材料、公开 Run、源码／锁文件／产物／安装身份、原始与清理错误。单宿主仅诊断；任一检查失败、coverage 缺失或清理失败，整体不得通过。入口顺序运行本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器检查，以及 toolkit typecheck／test／check:integrations 和受影响 node docks；配对 dock 使用本次安全壳，绝不用生产后端执行关机回归。CLI 安全自测为 `NODE_APPROVAL_HANDOFF_TOOLKIT="$TOOLKIT_WT" python "$TESTER/scripts/accept-node-approval-handoff.test.py"`，只证明 fail-closed、旧证据保护、绝对路径和无模型产品限制，不证明真实模型遵从。
 
 ### 发布 V1 与非 V2 节点职责专项（S2／S3）
 
 ```sh
-python scripts/accept-node-approval-v1.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-node-approval-v1 --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"
 ```
 
 所有路径必须显式绝对，证据目录必须不存在。生产后端必须来自参与 worktree 的独立绝对 `CARGO_TARGET_DIR/debug`，不使用协调仓或旧产物。依赖按两仓既有 frozen lock 准备，Bun 1.4.4；paths 声明 `herdr`、`omp_package`、`pi_package`、`omp_state_extension`、`pi_state_extension`、`wayfinder`、`wayfinder_skills`、`pi_extensions`、`codebase_memory_mcp`、`chrome`，可选 `native_shell`。只读原生扩展与安装目录，不读取其 settings、models、历史或认证。模型 JSON 沿用 `provider/model/baseUrl/apiKeyEnv`，仅消费明确授权变量，不限制产品模型。
 
-用户已经明确授权某个 auth 文件时，复用 `scripts/accept-workflow-codex.py --scenario node-approval-v1 --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"`；先用同入口 `--smoke` 和另一个新证据目录检查真实返回身份。该传输只支持 canonical `gpt-6-luna`，每个实际 `serverModel` 必须匹配；不复制、刷新或修改 auth，不把传输烟测当业务验收。HTTP 200 的 `error`／`response.failed` 终帧保留白名单错误类别和请求结构计数，不记录原文；无终帧的超时保留已观察到的帧数与 SDK 状态，不推断上游错误或重发请求。
+用户已经明确授权某个 auth 文件时，复用 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-codex --scenario node-approval-v1 --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"`；先用同入口 `--smoke` 和另一个新证据目录检查真实返回身份。该传输只支持 canonical `gpt-6-luna`，每个实际 `serverModel` 必须匹配；不复制、刷新或修改 auth，不把传输烟测当业务验收。HTTP 200 的 `error`／`response.failed` 终帧保留白名单错误类别和请求结构计数，不记录原文；无终帧的超时保留已观察到的帧数与 SDK 状态，不推断上游错误或重发请求。
 
 独占发布副本保留所有 node 的真实 Task、Suite、初始 Skill、宿主与业务职责，只重定位物理位置、传输及存储。两个 V1 Run 分别由 OMP／Pi 原生管理者协调，内部编写者／优化者仍使用原发布的混合宿主；不会将节点全改为管理者宿主。新 request 由真实模型生产，真实 Bun 创建与保存；保存只接收 baseline 和三份明确命名正文。完整 Bot／目标／新 revision、实际文件字节、原生确认真实返回及管理者显式 complete／finish 交叉核对，不能由成功文字或 Schema 代替。其余四张非 V2 发布 Map 也分别由 OMP、Pi 管理者独立执行。五张 Map 共十格；按管理者宿主分别记录 22 个发布节点的 S2 和 S3，加上两个宿主各自的 P31／P35，共 92 项。outer 中嵌套的 V1 子 Run 不能替代独立顶层 V1 格。Tibo 只读真实公开页面，临时目录调查仅指词典重定位的独占目录，不扫描用户 TEMP 或部署环境。两个调查节点没有命名输出约定，按各自保存的报告正文和真实来源验收；目录报告须给出项目绝对路径及 branch。静默观察保留所属 Session 的已接受 heartbeat 原始 wire 索引，不将其计为业务推进；其他写入仍拒绝，同时核对公开 Run、报告和待处理报告不变。
 
 页面专项 `node-approval-v1-browser.mjs` 读取上述真实定义与真实 Run，逐节点比较独立字面模式、当前配置、冻结模式和实际来源，并保留截图／公开 JSON；不新增通用控件保存用例、不通过 HTTP 代原生批准。打开当前节点编辑器会以 `POST .../nodes/edit` 读取草稿；只接受当前 Map／node 的纯 `{id}` 查询，不把保存或其他写请求豁免为观察。打包页与业务判据分开收证；页面清理缺 Chrome 退出确认时不得继续派发。原生 Yes 只能作用于本次 owned pane，必须看到选中项并核对原始 UI true 返回；原生 Ask 业务问题不能通过取消表单或强迫工具顺序规避。外层创建 Task 可核对原生表单控件之前展示的完整候选，选项与默认值不充当授权；比较原生表单返回的选项值与 Ask 工具返回的可读标签，不将二者按裸字符串对比。单请求容量下，由真实 manager 逐个派发 V1 就绪节点（含嵌套 V1），不改发布依赖或模型并发。业务输入只供给当前 Run 及其真实子 Run；任一实际节点已失败时，本格不能以 retry 补齐原执行的覆盖，立即保留该节点、报告和当前公开事实，不继续等待整格超时。仍 running 的节点不按失败处理。顶层 V1、外层创建、修订和规划场景在各格独占的 MCP runtime/cache 中先索引参与 worktree 并核对 ready 与源码根，再启动业务；不修改共享索引配置。透明代理保留 manager collect 的原有 91 分钟原生传输预算，不按普通请求的 330 秒截断已开始的响应。规划场景通过公开 HTTP 准备和读回两个职责不同的隔离 Bot／Task，只规划并验证 `inspect → summarize` 的 `findings` 绑定，不运行生成的 Map。原生 Yes 前核对实际完整候选字节，不把目录中同字节的额外 proposal 文件都必须由该 actor 再次 read 当作批准前提；必要材料的完整消费仍按本 execution 的真实命名输入另行核对。
 
-入口依次保存本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器与 toolkit typecheck／完整 test／check:integrations、受影响 node-report／nested-role docks 的原始日志。paired dock 使用本次安全关机壳与本 worktree 元数据，不以生产后端执行关机回归。每次独占 HOME／APPDATA／XDG、原生存储、Herdr、动态数值回环及进程，保留两仓源码／锁文件／产物／安装身份、真实业务判断与原始／清理错误；确认所属进程退出后才能清理。完成后作 91 秒单调观察，覆盖 60 秒成果批准＋30 秒 HTTP 预算及 1 秒余量。缺依赖／授权、任一仓检查失败、单宿主、缺 coverage 或清理失败均非零且保持未验证，不回退受控模型、不重跑历史副作用、不改 V2 协议。原生资源窗口需与全仓检查分离时可显式追加 `--native-only`（直接入口及 Codex wrapper 均支持），只采集本次 native／页面证据，整票仍 `passed=false` 且非零，不替代两仓完整检查。在本 worktree 运行 `python scripts/accept-node-approval-v1.test.py` 验证选择器、覆盖清单及 CLI 拒绝边界；`python scripts/node_approval_v1_matrix.test.py` 通过实际本地子进程验证并发限额、按格归属、共享失败止发和清理。`python scripts/node-approval-v1-behavior.test.py` 验证完成／拒绝与对应 execution 的真实 HTTP 形状、页面候选归属、业务输入和 Ask 引用边界。这些本地检查不认证原生业务。
+入口依次保存本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器与 toolkit typecheck／完整 test／check:integrations、受影响 node-report／nested-role docks 的原始日志。paired dock 使用本次安全关机壳与本 worktree 元数据，不以生产后端执行关机回归。每次独占 HOME／APPDATA／XDG、原生存储、Herdr、动态数值回环及进程，保留两仓源码／锁文件／产物／安装身份、真实业务判断与原始／清理错误；确认所属进程退出后才能清理。完成后作 91 秒单调观察，覆盖 60 秒成果批准＋30 秒 HTTP 预算及 1 秒余量。缺依赖／授权、任一仓检查失败、单宿主、缺 coverage 或清理失败均非零且保持未验证，不回退受控模型、不重跑历史副作用、不改 V2 协议。原生资源窗口需与全仓检查分离时可显式追加 `--native-only`（直接入口及 Codex wrapper 均支持），只采集本次 native／页面证据，整票仍 `passed=false` 且非零，不替代两仓完整检查。在本 worktree 运行 `python "$TESTER/scripts/accept-node-approval-v1.test.py"` 验证选择器、覆盖清单及 CLI 拒绝边界；`python "$TESTER/scripts/node_approval_v1_matrix.test.py"` 通过实际本地子进程验证并发限额、按格归属、共享失败止发和清理。`python "$TESTER/scripts/node-approval-v1-behavior.test.py"` 验证完成／拒绝与对应 execution 的真实 HTTP 形状、页面候选归属、业务输入和 Ask 引用边界。这些本地检查不认证原生业务。
 
 V1 入口及 Codex wrapper 支持 `--cases v1|outer|revision|planning|investigation`；例如 `--hosts pi --cases planning --native-only` 只选择 Pi 管理者的规划格。过滤调用保留全部 92 项，未选项不认证，整票仍非零。静态页和两仓检查只在父入口运行一次；每格独立进程、定义、后端、原生存储、模型流量和清理证据。汇总只认本次格子的宿主、case 和具名证据，不导入旧 ledger。Codex 矩阵的新证据目录放在两个 worktree 外或其 `.scratch/` 下，避免把在途证据误记成源码变更。
 
 默认 `--jobs 1`。确有两个上游并发请求容量时，直接入口使用 `--jobs 2` 并在模型配置显式设置 `maxConcurrentRequests: 2`；Codex wrapper 使用 `--jobs 2 --model-capacity 2`。每个活动格最多占用一个上游 completion 槽，查询与非模型操作不占用它；不从 CPU 数量推断模型容量。Codex 格有独立 terminal 状态，认证丢失共享；普通业务或单格 HTTP 400 不重试、不污染兄弟格。确认共享资源失效或清理不安全时停止派发新格，在途格保留各自的结果。CLI／并发的离线测试不启动真实模型，不能证明 92 项业务通过。
 
-传输离线验证：`python scripts/workflow_completion_transport.test.py` 使用回环 HTTP 检查在途请求、隔离故障和退出；`WORKFLOW_PI_PACKAGE="$PI_PACKAGE" python scripts/workflow-codex-completion.test.py` 使用测试自有凭据、安装 SDK 和截断在 fetch 的响应。HTTP 非成功时仅归档固定错误类别与转换后请求的结构计数；HTTP 200 后失败另记首帧、终止帧、事件计数和 SDK 结果。二者都不是业务交接；例如 manager 的 `409 output-missing` 应保留在该 execution 的业务证据里，不归为模型超时。
+传输离线验证：`python "$TESTER/scripts/workflow_completion_transport.test.py"` 使用回环 HTTP 检查在途请求、隔离故障和退出；`WORKFLOW_PI_PACKAGE="$PI_PACKAGE" python "$TESTER/scripts/workflow-codex-completion.test.py"` 使用测试自有凭据、安装 SDK 和截断在 fetch 的响应。HTTP 非成功时仅归档固定错误类别与转换后请求的结构计数；HTTP 200 后失败另记首帧、终止帧、事件计数和 SDK 结果。二者都不是业务交接；例如 manager 的 `409 output-missing` 应保留在该 execution 的业务证据里，不归为模型超时。
 
 ### 批准持久化、失败与执行隔离（S1）
 
@@ -370,7 +380,7 @@ V1 入口及 Codex wrapper 支持 `--cases v1|outer|revision|planning|investigat
 从参与的 herdr-bot worktree 根运行：
 
 ```sh
-python scripts/accept-node-approval-failures.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-node-approval-failures --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"
 ```
 
 路径均为显式绝对路径，证据目录必须不存在。使用本 worktree 生产后端及旁置的 `herdr-paths`、`herdr-fixture`、`examples/safe_shutdown_shell.exe`，本次页面及独立绝对 `CARGO_TARGET_DIR`；两仓预装 frozen-lock 依赖和 Bun 1.4.4。paths 声明只读 `herdr`、`omp_package`、`pi_package`、`omp_state_extension`、`pi_state_extension`，不能指向用户会话数据。本专项机械路径可显式提供非秘密模型 JSON `{"mode":"controlled-native-failures"}`：受控 provider 仅提供工具指令，真实安装宿主执行原生确认、文件写入及报告；不要求外部模型凭据，也不声称真实模型选择。若使用真实模型，JSON 沿用 `provider/model/baseUrl/apiKeyEnv` 格式，只从显式授权变量读取凭据，不发现或刷新认证，实际请求及返回身份须匹配声明模型。不安装宿主、不回退模型、不重试业务决定。模型 transport 直接绑定 49152–65535 的数值回环端口，只在请求前的实际地址占用碰撞时重新分配；不依赖本机 `port=0` 的系统范围。最终身份核对仅将 `POST /chat/completions` 计为模型请求，其他流量保留原始 wire 证据并单独计数，不把无关 GET 错归因为模型失败；先在既有 30 秒请求预算内观察原生标题与 manager 的在途模型请求结束，再检查每条真实响应；不把尚在途当作失败，不跳过错误或重发模型请求。
@@ -381,21 +391,21 @@ python scripts/accept-node-approval-failures.py --herdr-bot-worktree "$HERDR_BOT
 
 `workflow-codex-completion.mjs` 的 `content-invalid` 保留原拒绝条件，另输出固定 `constraint`：`sdk-content`、`decision-consistency`、`usage`、`delivery-cap` 或 `serialization`。只附完成标志、白名单 stopReason、内容／工具形状的布尔或计数、合法的 outputTokens／deliveryCap；`usageInvalidMask` 的五个位依次对应 input、output、cacheRead、cacheWrite、totalTokens。wrapper 再按固定字段／枚举及数值范围过滤，不透传任意文本、参数、调用 ID、异常、headers 或凭据。一次请求、`maxRetries=0`、无 fallback 与原协议拒绝语义不变；成功结果不增加诊断字段。
 
-离线分支验证：显式设置 `WORKFLOW_PI_PACKAGE` 为已安装 Pi 包路径，运行 `python scripts/workflow-codex-completion.test.py CodexContentDiagnostics`。该分区以字面 SDK 返回覆盖拒绝及成功分支，使用测试拥有的假凭据和仅拦截该 adapter models import 的 fixture，禁止 fetch；它不调用实际模型、不读取用户认证，也不替代原生验收或既有真实 SDK 受控传输回归。
+离线分支验证：显式设置 `WORKFLOW_PI_PACKAGE` 为已安装 Pi 包路径，运行 `python "$TESTER/scripts/workflow-codex-completion.test.py" CodexContentDiagnostics`。该分区以字面 SDK 返回覆盖拒绝及成功分支，使用测试拥有的假凭据和仅拦截该 adapter models import 的 fixture，禁止 fetch；它不调用实际模型、不读取用户认证，也不替代原生验收或既有真实 SDK 受控传输回归。
 
 两入口可用 `--cases timeout` 或 `--cases unavailable`（也支持四个条件的逗号列表，默认 `all`）配合 `--hosts pi --native-only` 分别收集缺失场景。每次独立启动 wrapper 才创建独立 transport／配置／端口／新证据目录；失败决定在该次调用保持 terminal，不重发或重置。证据列出完整八项中的 `selectedCases`／`missingCases`；`selectedCasesPassed` 仅表示所选原生场景，部分场景或缺全仓检查仍 `passed=false`、退出非零，不认证整票。无效、空白或重复选择在创建证据与模型资源前拒绝。
 
-真实模型可经 `python scripts/accept-workflow-codex.py --scenario node-approval-failures --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"` 运行：只读显式授权认证文件，沿用原生 Codex adapter，逐请求记录实际 `serverModel=gpt-6-luna`，不复制或刷新凭据。可追加 `--native-only` 分离原生资源窗口；该诊断保持非零且不认证全仓检查，必须另外保存两仓完整检查结果。
+真实模型可经 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-codex --scenario node-approval-failures --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"` 运行：只读显式授权认证文件，沿用原生 Codex adapter，逐请求记录实际 `serverModel=gpt-6-luna`，不复制或刷新凭据。可追加 `--native-only` 分离原生资源窗口；该诊断保持非零且不认证全仓检查，必须另外保存两仓完整检查结果。
 
 无 UI 使用受控 provider 制造机械故障：先确认原生 node 进程退出，再以同一真实 session 的安装宿主 print/JSON 模式执行实际 `approve`，保留 `hasUI=false`、原生结果、provider 请求及进程退出；真实后端执行、材料、之后新进程恢复和原生继续工作均不替换。headless 期间只临时替换独占 models registry 中已选 provider 的 endpoint／fixture key，不把 session 切换到另一个机械 model。headless 进程退出后，在关闭机械 provider 前逐字节恢复原 registry（异常也恢复），再走正常公开恢复，因此继续工作实际使用原授权模型及 UI；该 headless 请求仍明确是受控机械证据，不能按其保留的 model ID 冒充真实模型调用。其余 No／Esc／超时也可由显式机械 provider 选择工具，但原生确认结果从不受控。任何受控路径均不冒充真实模型选择或用不可用替代 UI 拒绝。每个场景清理原始错误与清理错误独立保留，确认所属进程退出后归档。
 
-入口顺序记录本仓 build／后端／前端／浏览器与 toolkit typecheck／完整 test／check:integrations 及 `native-node-report.test.ts`、`node-report-contract.test.ts`。paired dock 强制本次安全关机壳和本 worktree 元数据，生产后端只用于隔离业务；suite 的证据不代替八项专项。源码／锁／产物／宿主身份入证，源码在原生运行期间变化、单宿主、任一检查失败、缺授权／宿主／coverage 或清理失败均非零且不认证整票。原生／Chrome 资源窗口独立时可追加 `--native-only` 只收集原生矩阵；它保留完整八项覆盖但整票 `passed=false` 且非零，不跳过认证所需全仓检查。离线回归显式设置 `WORKFLOW_PI_PACKAGE` 为已安装 Pi 包路径后运行 `python scripts/accept-node-approval-failures.test.py`：验证 CLI fail-closed／部分覆盖／旧证据保护，以及真实安装 Pi 通过字面本地 provider 进行 headless→原 session 恢复后回到原 endpoint；不读取用户认证、不调用外部模型，不替代专项业务验收。
+入口顺序记录本仓 build／后端／前端／浏览器与 toolkit typecheck／完整 test／check:integrations 及 `native-node-report.test.ts`、`node-report-contract.test.ts`。paired dock 强制本次安全关机壳和本 worktree 元数据，生产后端只用于隔离业务；suite 的证据不代替八项专项。源码／锁／产物／宿主身份入证，源码在原生运行期间变化、单宿主、任一检查失败、缺授权／宿主／coverage 或清理失败均非零且不认证整票。原生／Chrome 资源窗口独立时可追加 `--native-only` 只收集原生矩阵；它保留完整八项覆盖但整票 `passed=false` 且非零，不跳过认证所需全仓检查。离线回归显式设置 `WORKFLOW_PI_PACKAGE` 为已安装 Pi 包路径后运行 `python "$TESTER/scripts/accept-node-approval-failures.test.py"`：验证 CLI fail-closed／部分覆盖／旧证据保护，以及真实安装 Pi 通过字面本地 provider 进行 headless→原 session 恢复后回到原 endpoint；不读取用户认证、不调用外部模型，不替代专项业务验收。
 
 ### 双宿主批准隔离、恢复、并发与嵌套（S2）
 
-从参与 worktree 根运行 `python scripts/accept-node-approval-lifecycle.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。路径须显式绝对，证据目录须不存在；使用本 worktree 生产后端、旁置 herdr-paths／herdr-fixture／safe_shutdown_shell、本次静态页、独立绝对 CARGO_TARGET_DIR 和既有 Bun 1.4.4 frozen-lock 依赖。入口同时构建并复用现有 `--example recovery_herdr_proxy`，仅透明记录后端转发给本次安装 Herdr 的真实 argv，不启用其故障标志；原生诊断分离运行时先单独构建该 example。paths 沿用只读宿主／官方状态扩展安装路径；实际模型配置沿用 provider/model/baseUrl/apiKeyEnv，不发现认证、安装宿主、替换模型决定或自动重试。
+从参与 worktree 根运行 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-node-approval-lifecycle --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。路径须显式绝对，证据目录须不存在；使用本 worktree 生产后端、旁置 herdr-paths／herdr-fixture／safe_shutdown_shell、本次静态页、独立绝对 CARGO_TARGET_DIR 和既有 Bun 1.4.4 frozen-lock 依赖。入口同时构建并复用现有 `--example recovery_herdr_proxy`，仅透明记录后端转发给本次安装 Herdr 的真实 argv，不启用其故障标志；原生诊断分离运行时先单独构建该 example。paths 沿用只读宿主／官方状态扩展安装路径；实际模型配置沿用 provider/model/baseUrl/apiKeyEnv，不发现认证、安装宿主、替换模型决定或自动重试。
 
-显式授权只读 auth 文件时可复用 `python scripts/accept-workflow-codex.py --scenario node-approval-lifecycle --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"`，沿用 canonical gpt-6-luna／实际 serverModel 核对和 NativeCompletionTransport；不复制或刷新认证。`--native-only` 仅供诊断，缺全仓检查仍非零。两入口可用 `--cases persistence`、`nested-auto`、`nested-manual`、`lifecycle` 的互异逗号列表（默认 `all`）隔离独立分区；完整默认仍为两宿主×四分区，保留 selected／missing case 和每项原始结果，部分成功不认证整票、始终非零。实际 completion 失败后不通过同一 terminal transport 启动剩余宿主或重试决定；未尝试宿主明确保留未验证。
+显式授权只读 auth 文件时可复用 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-codex --scenario node-approval-lifecycle --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"`，沿用 canonical gpt-6-luna／实际 serverModel 核对和 NativeCompletionTransport；不复制或刷新认证。`--native-only` 仅供诊断，缺全仓检查仍非零。两入口可用 `--cases persistence`、`nested-auto`、`nested-manual`、`lifecycle` 的互异逗号列表（默认 `all`）隔离独立分区；完整默认仍为两宿主×四分区，保留 selected／missing case 和每项原始结果，部分成功不认证整票、始终非零。实际 completion 失败后不通过同一 terminal transport 启动剩余宿主或重试决定；未尝试宿主明确保留未验证。
 
 专项持有各自独占 Herdr、HOME／APPDATA／XDG、真实 Session、定义、动态高位数值回环、进程句柄和证据。P3/P14 实际关闭并确认 node 进程退出、合法恢复同一 Chat、比较原生业务历史／HTTP；修改 Map 后仍由原 execution 冻结人工模式打开真实 UI，合法 retry 才消费新自动模式。之后另实际重启后端，核对持久批准与冻结模式，旧身份不得接管旧 Run。P10 比较真实普通 node、同 Task 独立 Chat、根 manager、无关联 Chat、其他 Run／node、旧执行与嵌套双角色的实际模型工具目录、零业务参数调用、原生身份和公开拒绝，不编辑 Run 或制造身份。宿主可能加入 i/intent 或保留 additionalProperties，不把该 schema 外形当业务契约。多余身份参数分区由明确标注的 controlled 机械 provider 驱动实际安装宿主／adapter／业务 guard：`toolkit/scripts/node-approval-identity-fault.ts` 复用既有 RPC 与 public switch_session，打开本次真实历史的逐字副本并核对原生 Session，保留真实参数／返回、两 Run 读回与实际 HTTP，验证拒绝或剥离均不能选择另一个执行。它不冒充实际模型选择、P14 恢复成功或新产品 CLI；正常模型角色、批准、恢复与嵌套仍为真实模型，其他票的 malformed/dock 覆盖不重复认领。共享确认 driver 接受显式 Chat，不临时改写主 worker，错误恢复关联在终止／恢复进程或模型调用前经公开 execution.chat 拒绝。进程归属由实际 public `session_start` 的 Session／PID 与 Windows 实际安装 argv／存活句柄交叉核对，不以“操作前后多一个 PID”推测身份；原生 manager 已合法派发的同一新 Run 节点按真实公开事实观察，不重复派发后把拒绝冒充成功。
 
@@ -407,19 +417,19 @@ P11/P24 保持原生确认真实在途，各2秒预算内完成公开查询、�
 
 可用原入口的重复 `--combine <原入口evidence.json绝对路径>` 合成分次证据，不传模型配置、不发送模型请求。仍显式提供两个 worktree、backend、paths、`--hosts omp,pi` 及新 evidence-dir；不能过滤 cases。合成核对原始前后源码、角色／运行指引、产物、当前安装宿主、真实模型身份、原始 case 索引及进程清理，保留原失败标记和文件哈希；重复成功 case 拒绝。只有完整八格和七项承诺加本次完整检查都满足才通过；`--native-only` 合成仍非零，仅作证据诊断。宿主或执行源码变化后的旧原生结果保留但不能自动复用。未执行的 nested／persistence／material_change 方法修改仅在原始源码 companion 字节哈希匹配、其余 AST（含默认值／装饰器／注解）完全一致时允许复用相应分区；原入口未执行的 combine_native 同理。缺少原始源码或任何已执行部分不同均拒绝复用。合成时可额外提供 `--checks-from <原入口evidence.json绝对路径>`：仅复用原先全部成功的仓库检查阶段，核对相同产物、宿主、隔离路径、命令选择及未变化的产品／锁文件／测试源码；仅本票三个 Python 验收文件及报告文档可不同，本票设施测试始终重新运行。旧原生 case 的失败不被改写或复用为成功；明确归属某宿主的模型传输失败会排除该宿主，其他此前已完成且独立清理成功的宿主可保留原证据；无法归属的传输失败或清理失败仍拒绝合成。输出保留旧报告哈希、原结果、排除的宿主及逐项复用来源。该选项不能与 `--native-only` 合用，也不能绕过原生完整矩阵。
 
-每个 coverage 保存独立预期、原生 UI／历史／工具返回、实际文件、HTTP／公开读回与进程退出，原始和清理失败分开。入口一次顺序执行本仓 build／完整后端／前端／浏览器与 toolkit typecheck／完整 test／check:integrations／node-report及nested-role具名 docks；paired dock 只用本次安全壳，生产后端仅用于隔离专项。toolkit baseline 通过显式 OMP_BASELINE_RECORD_ROOT 解析既有 oracle，不改 baseline 或锁文件；全仓测试 worker 由实际 CPU／可用内存按每原生文件2GiB预算决定，不将非canonical参数的执行冒称宿主 scope 晋级。单宿主、缺依赖／授权／coverage、任一检查或清理失败均非零。`python scripts/accept-node-approval-lifecycle.test.py` 的离线部分验证公开 CLI fail-closed／旧证据保护、显式 Chat 路由及原生 observer 协议。单独的 `CollectRegistrationFixture` 使用实际安装 Pi、隔离生产后端和本地机械 provider：先建立 running 内层节点，再保持真实 collect 在途，核对登记／目录观察返回后进度报告仍可保存并释放 collect。显式设置 `NODE_APPROVAL_LIFECYCLE_FIXTURE_TOOLKIT`、`NODE_APPROVAL_LIFECYCLE_FIXTURE_BACKEND`、`NODE_APPROVAL_LIFECYCLE_FIXTURE_PATHS`、`NODE_APPROVAL_LIFECYCLE_FIXTURE_EVIDENCE`（两个参与 worktree 的现有产物／隔离依赖及不存在的新证据目录），运行 `python scripts/accept-node-approval-lifecycle.test.py CollectRegistrationFixture`；未提供依赖时该设施用例跳过，不能据此认证票据。默认专项检查会显式提供这些配置。该机械设施回归不声明真实模型判断或任何 P 分区通过，不能替代真实专项。
+每个 coverage 保存独立预期、原生 UI／历史／工具返回、实际文件、HTTP／公开读回与进程退出，原始和清理失败分开。入口一次顺序执行本仓 build／完整后端／前端／浏览器与 toolkit typecheck／完整 test／check:integrations／node-report及nested-role具名 docks；paired dock 只用本次安全壳，生产后端仅用于隔离专项。toolkit baseline 通过显式 OMP_BASELINE_RECORD_ROOT 解析既有 oracle，不改 baseline 或锁文件；全仓测试 worker 由实际 CPU／可用内存按每原生文件2GiB预算决定，不将非canonical参数的执行冒称宿主 scope 晋级。单宿主、缺依赖／授权／coverage、任一检查或清理失败均非零。`python "$TESTER/scripts/accept-node-approval-lifecycle.test.py"` 的离线部分验证公开 CLI fail-closed／旧证据保护、显式 Chat 路由及原生 observer 协议。单独的 `CollectRegistrationFixture` 使用实际安装 Pi、隔离生产后端和本地机械 provider：先建立 running 内层节点，再保持真实 collect 在途，核对登记／目录观察返回后进度报告仍可保存并释放 collect。显式设置 `NODE_APPROVAL_LIFECYCLE_FIXTURE_TOOLKIT`、`NODE_APPROVAL_LIFECYCLE_FIXTURE_BACKEND`、`NODE_APPROVAL_LIFECYCLE_FIXTURE_PATHS`、`NODE_APPROVAL_LIFECYCLE_FIXTURE_EVIDENCE`（两个参与 worktree 的现有产物／隔离依赖及不存在的新证据目录），运行 `python "$TESTER/scripts/accept-node-approval-lifecycle.test.py" CollectRegistrationFixture`；未提供依赖时该设施用例跳过，不能据此认证票据。默认专项检查会显式提供这些配置。该机械设施回归不声明真实模型判断或任何 P 分区通过，不能替代真实专项。
 
 ### 发布 V2 双宿主原生与页面专项（P34／P35 V2）
 
 从参与的 herdr-bot worktree 根运行：
 
 ```sh
-python scripts/accept-node-approval-v2.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-node-approval-v2 --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"
 ```
 
 路径必须显式绝对，证据目录必须不存在。使用本 worktree 的独立绝对 `CARGO_TARGET_DIR/debug/herdr-bot.exe`，旁置本次 `herdr-paths`、`herdr-fixture` 与 `examples/safe_shutdown_shell.exe`；两仓 frozen-lock 依赖及 Bun 1.4.4。paths 除原生设施的 `herdr`、`omp_package`、`pi_package`、两宿主 `*_state_extension` 外，须显式声明原发布 Suite 的 `wayfinder`、`wayfinder_skills`、`pi_extensions`、`codebase_memory_mcp` 、包含 chrome.exe 的 `chrome`，以及已安装 Windows 原生 Bash 可执行文件 `native_shell`（也可显式 `--shell-path`）。不继承 PATH 中的 WSL bash：Linux loopback 及盘符语义不能替代本 Windows 服务／文件。模型启动前，由所选 Bash 实际读取独占探针文件并访问同一生产后端 `/api/tasks`；可执行文件存在本身不是环境相通证据。预检核实原始 grill-with-docs、grilling、domain-modeling 和 writing-for-agents 指针实际存在，不复制 Skill 兼容别名、不改其正文。Suite 与初始 Skill 不删除，MCP 使用已有隔离 runtime/cache/allowed-root 设施，不接用户 daemon。每宿主只需一次可在原生历史中关联调用与成功返回的只读 `list_projects`，空列表有效；不创建索引或扩大 allowed-root。Task 的 `thinking=default` 仍是合法的沿用 Agent 默认值，无须出现在显式级别列表。以原生 session_start 的 PID、已观测的安装宿主 CLI 进程及原生历史 ID 交叉验证宿主，`agentName` 不代表宿主类型。阻塞状态说明不触发业务确认。模型沿用 `provider/model/baseUrl/apiKeyEnv`，不发现凭据、不安装宿主、不回退受控成功、不重试业务决定。
 
-已明确授权只读 auth 文件时，使用既有 `scripts/accept-workflow-codex.py --scenario node-approval-v2 --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"`；先以另一个新证据目录加 `--smoke` 核对实际 `serverModel=gpt-6-luna`。这仅是该传输的授权模型边界，不是产品限制；不复制、刷新或修改认证。临时 worktree 的历史 baseline 依赖可按 toolkit 指引显式设置 `OMP_BASELINE_RECORD_ROOT`，不改 baseline 或锁文件。
+已明确授权只读 auth 文件时，使用既有 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-codex --scenario node-approval-v2 --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"`；先以另一个新证据目录加 `--smoke` 核对实际 `serverModel=gpt-6-luna`。这仅是该传输的授权模型边界，不是产品限制；不复制、刷新或修改认证。临时 worktree 的历史 baseline 依赖可按 toolkit 指引显式设置 `OMP_BASELINE_RECORD_ROOT`，不改 baseline 或锁文件。
 
 Codex 非成功响应仅记录固定错误类别和请求形状（数量、长度及工具调用／结果匹配布尔），不保存不可信错误正文、任意 code／param 或请求正文；分类不改变单次 POST、终止失败和禁止补发的语义。两个宿主可分别使用新独占 transport，避免一个终止失败掩盖另一宿主的独立诊断；单宿主结果不构成整票通过。
 
@@ -429,7 +439,7 @@ Codex 非成功响应仅记录固定错误类别和请求形状（数量、长�
 
 `node-approval-v2-browser.mjs` 使用本次真实打包页面：逐项消费四个发布职责、实际发起 Run、在选中节点的执行事实、适用报告及累计 outputs 区域对照独立 HTTP 的执行 ID、冻结模式、批准来源、报告 ID／正文和 output ID／地址，不重复通用编辑场景。Chrome profile、宿主会话、HOME／APPDATA／XDG、定义、进程、数值高位回环端口和材料全部独占；保留实际 Chrome 进程句柄退出及 profile 关联 utility 退出确认，清理错误与原始错误分开。完成后 91 秒单调窗口覆盖 60 秒成果批准＋30 秒 HTTP 预算及 1 秒余量。
 
-入口顺序执行本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器，以及 toolkit typecheck／完整 test／check:integrations 和 native-node-report、node-report-contract、nested-role-completion docks。配对 dock 只使用本次安全关机壳和本 worktree 元数据。任一检查失败、宿主／coverage／真实授权缺失、源码变化或清理失败都保持未通过并非零；单宿主及 `NODE_APPROVAL_HANDOFF_OMP_PACKAGE="$OMP_PACKAGE" python scripts/accept-node-approval-v2.test.py` 的窄回归通过不替代专项；`OMP_PACKAGE` 显式指向已安装 OMP 包。该入口同时经共享父类配置和安装宿主 `Settings.loadReadOnly().getShellConfig()` 检查 YAML 优先级，并检查本次真实 Esc／匹配 Ask call 的一次权限澄清边界，不将其当作四节点业务完成。仅调整验收设施、compiled/frontend/locks及实际产物未变时，可按既有 `--native-only` 约定另起新独占原生／页面窗口；其 `nativeCoveragePassed` 只表示本轮双宿主覆盖，`passed=false` 且退出非零，不认证全仓。必须与实际已完成的九项检查日志及两轮源码／锁／产物兼容证据分别交付，不能把旧失败入口说成成功，也不复用旧原生覆盖。不调用 V1、不迁移其材料、不认领 V1 验收，也不要求 V1 先通过。
+入口顺序执行本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器，以及 toolkit typecheck／完整 test／check:integrations 和 native-node-report、node-report-contract、nested-role-completion docks。配对 dock 只使用本次安全关机壳和本 worktree 元数据。任一检查失败、宿主／coverage／真实授权缺失、源码变化或清理失败都保持未通过并非零；单宿主及 `NODE_APPROVAL_HANDOFF_OMP_PACKAGE="$OMP_PACKAGE" python "$TESTER/scripts/accept-node-approval-v2.test.py"` 的窄回归通过不替代专项；`OMP_PACKAGE` 显式指向已安装 OMP 包。该入口同时经共享父类配置和安装宿主 `Settings.loadReadOnly().getShellConfig()` 检查 YAML 优先级，并检查本次真实 Esc／匹配 Ask call 的一次权限澄清边界，不将其当作四节点业务完成。仅调整验收设施、compiled/frontend/locks及实际产物未变时，可按既有 `--native-only` 约定另起新独占原生／页面窗口；其 `nativeCoveragePassed` 只表示本轮双宿主覆盖，`passed=false` 且退出非零，不认证全仓。必须与实际已完成的九项检查日志及两轮源码／锁／产物兼容证据分别交付，不能把旧失败入口说成成功，也不复用旧原生覆盖。不调用 V1、不迁移其材料、不认领 V1 验收，也不要求 V1 先通过。
 
 ## 节点报告共享保存／通知回归
 
@@ -447,7 +457,7 @@ Codex 非成功响应仅记录固定错误类别和请求形状（数量、长�
 
 ## Chief 跨仓入口与生命周期专项
 
-`python scripts/accept-chief-entry.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"` 是 P7/P29/P30 的独立验收入口。从显式 Herdr worktree 根运行，所有路径须为绝对路径，证据目录必须不存在；Python 3.11+。使用本 worktree 构建的页面、生产后端及旁置 `herdr-paths`、`herdr-fixture`，独立绝对 `CARGO_TARGET_DIR`。两仓依赖按各自 frozen lock 安装，Bun 1.4.4。入口不安装宿主、不读用户认证、不回退模型、不重试业务决策。
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-chief-entry --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"` 是 P7/P29/P30 的独立验收入口。从显式 Herdr worktree 根运行，所有路径须为绝对路径，证据目录必须不存在；Python 3.11+。使用本 worktree 构建的页面、生产后端及旁置 `herdr-paths`、`herdr-fixture`，独立绝对 `CARGO_TARGET_DIR`。两仓依赖按各自 frozen lock 安装，Bun 1.4.4。入口不安装宿主、不读用户认证、不回退模型、不重试业务决策。
 
 隔离 paths TOML 使用已有 Rust 路径解析器，声明只读 `herdr`、`omp_package`、`pi_package`、`omp_state_extension`、`pi_state_extension`（后两项是具体官方扩展文件）、`chrome`（含 chrome.exe 的安装目录），以及交付固定扩展所需根。模型配置使用既有真实模型设施的 `provider/model/baseUrl/apiKeyEnv` JSON，model 严格为 `gpt-6-luna`，密钥仅来自显式授权的环境变量；返回 model 身份必须同为 `gpt-6-luna`。也可沿用下文 `NativeCompletionTransport` 与 `workflow-codex-completion.mjs`：仅在用户明确授权某个 auth 文件后，以已安装 Pi 原生 Codex provider 只读消费，不复制、刷新或修改认证文件；回环配置中的 apiKeyEnv 仅是独占传输标记。先独立烟测并检查真实 `serverModel`，再将真实决策送入本入口，由原生 OMP/Pi 执行工具；不证明两宿主直接使用 Codex provider 的 wire 合规性。adapter 通过 Node 的安装包解析定位该 Pi 声明的 pi-ai（含嵌套 npm 布局），使用 Node 22.19.0 或满足宿主要求的更新版本。缺授权、依赖或任一宿主证据均非零，不自动发现用户 auth store，不以受控响应替代真实模型。
 
@@ -455,7 +465,7 @@ P7 使用交付固定扩展清单的实际源码副本及独占 endpoint／model
 
 `frontend/browser-tests/chief/chiefEntryAcceptance.spec.ts` 独占 P29/P30 的 S1/S2 场景。两个真实 browser context 同时从普通/专用入口发起不同 zone/Task，真实外部 CLI 门闩在登记前保持启动未完成，再叠加公开并发调用；仅一个 202、唯一公开权威和 qualify 胜者。P30 显式配置 10 秒在线、30 秒离线保留，沿用生产 5 秒扫描；真实单调时间观察离线（16 秒预算）和移除（46 秒预算），跨浏览器核对保留期不可另建、心跳恢复、超期可创建及明确注销。登记移除和页面反馈不证明旧进程结束，也不新增产品等待策略。浏览器的外部 Herdr 与原生引用受控，不能充当 P7 原生模型证据。
 
-定向反馈：`npm --prefix frontend run test:browser:build -- chiefEntryAcceptance.spec.ts --workers=1`；CLI 安全回归：设置 `CHIEF_ENTRY_TOOLKIT` 为参与 toolkit worktree 后运行 `python scripts/accept-chief-entry.test.py`。后者只证明缺依赖 fail-closed、拒绝相对路径及不覆盖旧证据，不证明业务通过。完整专项逐项记录原始错误/清理错误、源码与锁文件/安装身份、HTTP、配置阈值与实际观察；退出并确认所属进程结束后才清理。
+定向反馈：`npm --prefix frontend run test:browser:build -- chiefEntryAcceptance.spec.ts --workers=1`；CLI 安全回归：设置 `CHIEF_ENTRY_TOOLKIT` 为参与 toolkit worktree 后运行 `python "$TESTER/scripts/accept-chief-entry.test.py"`。后者只证明缺依赖 fail-closed、拒绝相对路径及不覆盖旧证据，不证明业务通过。完整专项逐项记录原始错误/清理错误、源码与锁文件/安装身份、HTTP、配置阈值与实际观察；退出并确认所属进程结束后才清理。
 
 完成检查仍分别运行本仓 `npm --prefix frontend run build`、`cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --bin herdr-paths --example safe_shutdown_shell`、`node scripts/test-backend.mjs`、`npm --prefix frontend test`、`npm --prefix frontend run test:browser:build`；toolkit 顺序运行 `bun run typecheck`、`bun run test`、`bun run check:integrations` 和 `bun test tests/harness-dock/chief-role.test.ts`。配对 dock 的 `HERDR_BOT_BINARY` 必须是本次 `safe_shutdown_shell.exe`、`HERDR_BOT_METADATA` 为本次 worktree 元数据，不能以生产后端执行关机回归。全局回归、单宿主或 CLI fail-closed 通过均不代替双宿主专项成功。
 
@@ -475,13 +485,13 @@ P7 使用交付固定扩展清单的实际源码副本及独占 endpoint／model
 
 ## Chief Task 双宿主原生验收
 
-`python scripts/accept-chief-task.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"` 拥有 P8、P9(Task)、P10(Task)、P11、P13。Python 3.11+，从显式 Herdr worktree 根运行；路径均绝对、证据目录不存在。复用入口专项的 paths、实际模型配置、Cargo provenance 与 installed-host 检查；不安装宿主、不读用户 Chat、不发现凭据、不回退或重试业务决策。两仓 frozen 依赖须已存在，toolkit 的既有隔离 OMP 18.5.0 dock 安装也须已准备好。
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-chief-task --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"` 拥有 P8、P9(Task)、P10(Task)、P11、P13。Python 3.11+，从显式 Herdr worktree 根运行；路径均绝对、证据目录不存在。复用入口专项的 paths、实际模型配置、Cargo provenance 与 installed-host 检查；不安装宿主、不读用户 Chat、不发现凭据、不回退或重试业务决策。两仓 frozen 依赖须已存在，toolkit 的既有隔离 OMP 18.5.0 dock 安装也须已准备好。
 
 独占 Herdr 使用 `headless_cols=200`、`headless_rows=220`，使完整事实与 Yes/No 同时可见；这只改变测试拥有的虚拟终端尺寸，不改变产品 20 秒确认预算。终轮按原生 assistant `stopReason=stop` 观察，再独立断言业务行为，不把模型复述测试标记当作验收条件。含糊需求可由真实原生 Ask 表单或普通回答澄清：先保留实际目标／要求问题，再由用户 Esc 放弃尚未知晓字段的表单并转向另一需求；不代填未知业务信息，也不把等待表单误判为模型未响应。后续用户输入先以 10 秒预算观察 chief 原生 ready，再只提交一次并用 `prompt --wait --until working --until blocked --timeout 10000` 证明本次活动；Herdr 写入成功不是模型已接纳，stalled 不补发或补 Enter，失败前保留屏幕。一次方向键只发送一次，再以 5 秒观察预算等实际选项重绘，不把写入按键成功当作已选中；不延长产品确认时限。启动结果按句检查是否存在未经否定的业务完成声明，保留“不表示业务已完成”等正确边界表述。真实 GPT-6-luna 自行决定工具：独立字面 Bot.when 与名称误导候选区分按适用范围选择；含糊、无匹配、已知匹配三轮均保留原生历史及工具结果。先提出初稿，用户修正 zone 与内部审计/禁止发布要求，再经实际原生 UI 核对最终完整预览。拒绝、Esc 取消、真实 20 秒超时、批准期间 Bot 改目标及 zone 改绑分别观察没有委派/新 Tab；每次工具结束后的 61 秒窗口覆盖 20 秒确认＋30 秒 HTTP 预算、10 秒在线＋30 秒保留＋5 秒维护扫描。用户明确请求新操作后才再预览，不自动重试。批准案例核对单次 preview ID 提交、公开委派事实、原生独立 Chat/cwd/完整输入、真实 Task 来源及无新增 Run；执行者未收到 RELEASE，chief 已返回启动结果并处理下一输入。业务哨兵逐阶段保持不变。
 
-不可用确认复用 `tests/harness-dock/chief-delegation.test.ts` 的两个既有 Task headless case，明确标注为受控 provider 的原生协议证据，不重复认领模型职责；设置 `WORKFLOW_PROMPT_EVIDENCE_DIR` 保留原生输出和历史。CLI 安全检查：`CHIEF_TASK_TOOLKIT="$TOOLKIT_WT" python scripts/accept-chief-task.test.py`，仅证明缺依赖/错误模型 fail-closed、绝对路径与旧证据保护，不算专项业务通过。
+不可用确认复用 `tests/harness-dock/chief-delegation.test.ts` 的两个既有 Task headless case，明确标注为受控 provider 的原生协议证据，不重复认领模型职责；设置 `WORKFLOW_PROMPT_EVIDENCE_DIR` 保留原生输出和历史。CLI 安全检查：`CHIEF_TASK_TOOLKIT="$TOOLKIT_WT" python "$TESTER/scripts/accept-chief-task.test.py"`，仅证明缺依赖/错误模型 fail-closed、绝对路径与旧证据保护，不算专项业务通过。
 
-明确授权某个 auth 文件时，可用现有 `scripts/accept-workflow-codex.py --scenario chief-task --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR" --node "$NODE" --bun "$BUN"`。它只读指定凭据，不刷新/复制/写入证据；实际返回 `serverModel` 必须为 `gpt-6-luna`。独立 `--smoke` 先核对身份。传输保留真实模型决策与原生工具，不证明宿主直接使用 Codex wire。
+明确授权某个 auth 文件时，可用现有 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-codex --scenario chief-task --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR" --node "$NODE" --bun "$BUN"`。它只读指定凭据，不刷新/复制/写入证据；实际返回 `serverModel` 必须为 `gpt-6-luna`。独立 `--smoke` 先核对身份。传输保留真实模型决策与原生工具，不证明宿主直接使用 Codex wire。
 
 完成检查仍分别顺序执行本仓 frontend build、当前 worktree 的 `herdr-bot`/`herdr-fixture`/`herdr-paths`/`safe_shutdown_shell` build、`node scripts/test-backend.mjs`、frontend test 和完整 `test:browser:build`；toolkit 使用 Bun 1.4.4 的 typecheck/test/check:integrations 及受影响 chief dock。配对 dock 的 `HERDR_BOT_BINARY` 必须指向本次安全壳，metadata 指向本 worktree。单宿主、清理失败、缺任何真实依赖或 coverage 项均非零且保持未验证。原始失败与进程退出确认独立保留，不以删除目录代替清理，也不沿用源码变更前的证据。
 
@@ -499,17 +509,17 @@ P7 使用交付固定扩展清单的实际源码副本及独占 endpoint／model
 
 ## Chief Map 与能力创建跨仓专项
 
-从显式 Herdr worktree 根运行 `python scripts/accept-chief-map.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。所有路径必须绝对，证据目录必须不存在。模型配置、只读授权 Codex adapter／`NativeCompletionTransport` 和返回身份要求沿用上文入口专项；只允许 GPT-6-luna，不自动发现认证或重试模型决策。后端旁置当前 worktree 的 `herdr-paths`，页面与后端均须由参与源码构建。
+从显式 Herdr worktree 根运行 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-chief-map --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。所有路径必须绝对，证据目录必须不存在。模型配置、只读授权 Codex adapter／`NativeCompletionTransport` 和返回身份要求沿用上文入口专项；只允许 GPT-6-luna，不自动发现认证或重试模型决策。后端旁置当前 worktree 的 `herdr-paths`，页面与后端均须由参与源码构建。
 
 `chief_map_native_acceptance.py` 独占 P9 的 Map 修正、P10 的 Map 原生确认、P12 的 manager／node 位置与内部管理关系、P14/P15 的完整创建能力选择与否决后授权、P16 的创建阶段批准和结果后无新业务。每个宿主／场景独占 Herdr、HOME／APPDATA／XDG、定义、存储、动态回环端口和原生会话；复用进程句柄退出确认与原始错误／清理错误分别保留。创建目标使用交付的完整 Task＋Bot／Map 创建定义，保留节点 Task 的真实 Suite／Skill／宿主和原有审批，只将物理位置、模型传输和存储移至独占根；原生 MCP 必须支持既有隔离 selectors，不能接入账户 daemon。
 
-测试独占部署还加载 `scripts/chief-ui-observer.mjs` 的副本：仅透传观察安装宿主公开 `ui.confirm` 的原始参数、原始返回／异常与真实 abort 时刻，不选择工具、不修改确认内容或结果、不代用户批准。每条观察原子发布；专项把实际原生消息内的完整 JSON 与 HTTP 预览及提交载荷分别比较，观察缺失不能通过。观察器按公开 UI 自有方法 descriptor 保留真实函数，避免 OMP scoped Proxy 的转发闭包递归；`node --test scripts/chief-ui-observer.test.mjs` 只证明透传机制，不代替原生验收。专项通过公开 `terminal session control --cols 2048 --rows 2000` 调整本例独占 terminal，让完整 Map 原生确认与 Yes/No 按钮可见，不裁剪实际载荷。原生键选择和真实历史仍独立保留。
+测试独占部署还加载 `scripts/chief-ui-observer.mjs` 的副本：仅透传观察安装宿主公开 `ui.confirm` 的原始参数、原始返回／异常与真实 abort 时刻，不选择工具、不修改确认内容或结果、不代用户批准。每条观察原子发布；专项把实际原生消息内的完整 JSON 与 HTTP 预览及提交载荷分别比较，观察缺失不能通过。观察器按公开 UI 自有方法 descriptor 保留真实函数，避免 OMP scoped Proxy 的转发闭包递归；`node --test "$TESTER/scripts/chief-ui-observer.test.mjs"` 只证明透传机制，不代替原生验收。专项通过公开 `terminal session control --cols 2048 --rows 2000` 调整本例独占 terminal，让完整 Map 原生确认与 Yes/No 按钮可见，不裁剪实际载荷。原生键选择和真实历史仍独立保留。
 
 P15 的四种输入均先取得真实匹配复用建议，再分别仅否决、明确创建 Task、明确创建 Map、放弃；不能用本来没有复用候选的场景冒充否决边界。P16 分别保留实际阶段候选的拒绝／受阻返回，以及真实成功创建后无新业务的场景。成功案例只走所选既有创建流程需要的真实逐阶段正文／保存批准、独立原生报告批准和交接；核对实际新 Task＋完整 Bot 或多节点 Map，不追加创建产品的完整质量验收。创建观察预算为 `20 × --timeout` 秒（默认 3600 秒），与生产等待策略无关；拒绝／受阻不能冲抵成功创建后的授权边界。
 
 原生确认预算 20 秒、请求预算 30 秒；拒绝／取消／超时／陈旧批准及创建结果后观察 46 秒，超过实际 10 秒在线＋30 秒保留＋5 秒维护上界。实际生产预算不改写为测试重试策略。`tests/harness-dock/chief-map-unavailable.test.ts` 是明确标注的受控 provider／peer、真实安装宿主无 UI 机械故障用例，不证明真实模型业务选择；其原生 2 秒预算使用真实进程时钟。其它业务场景须有 GPT-6-luna 返回身份、实际历史、完整工具／HTTP 及公开 Run 事实，不能用 dock 或全局套件结果冲抵。
 
-`CHIEF_MAP_TOOLKIT="$TOOLKIT_WT" python scripts/accept-chief-map.test.py` 仅验证 CLI 的缺依赖／错误模型 fail-closed、拒绝相对路径与不覆盖旧证据。过滤单宿主不能通过整体双宿主覆盖。两仓仍分别完成票据要求的完整构建／后端／前端／浏览器及 Bun typecheck／test／check:integrations，配对 dock 必须使用本次安全关机壳与 worktree 元数据，不能用生产后端运行关机回归。
+`CHIEF_MAP_TOOLKIT="$TOOLKIT_WT" python "$TESTER/scripts/accept-chief-map.test.py"` 仅验证 CLI 的缺依赖／错误模型 fail-closed、拒绝相对路径与不覆盖旧证据。过滤单宿主不能通过整体双宿主覆盖。两仓仍分别完成票据要求的完整构建／后端／前端／浏览器及 Bun typecheck／test／check:integrations，配对 dock 必须使用本次安全关机壳与 worktree 元数据，不能用生产后端运行关机回归。
 
 ## Chief 报告持久化与资格回归
 
@@ -529,7 +539,7 @@ P15 的四种输入均先取得真实匹配复用建议，再分别仅否决、�
 
 ## Chief 双宿主报告专项
 
-从参与的 Herdr worktree 运行 `python scripts/accept-chief-reports.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。全部依赖使用显式绝对路径；证据目录必须不存在。先 frozen-lock 安装两仓依赖，以独立绝对 `CARGO_TARGET_DIR` 构建当前页面、生产后端、`herdr-fixture`、`herdr-paths` 与 `safe_shutdown_shell`。Bun 为 1.4.4；已有 baseline 依赖可用 `OMP_BASELINE_RECORD_ROOT` 定位，Pi 可显式设置 `PI_CLI`／`PI_NODE`。入口不安装宿主、不发现用户认证、不回退模型或重试业务决策。经单独授权的只读 Codex 传输可复用 `accept-workflow-codex.py --scenario reports`，沿用其显式 `--auth-file` 安全边界；先 `--smoke` 核对实际 `serverModel=gpt-6-luna`，不得把回环传输称为两宿主直接 Codex wire 合规。
+从参与的 Herdr worktree 运行 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-chief-reports --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。全部依赖使用显式绝对路径；证据目录必须不存在。先 frozen-lock 安装两仓依赖，以独立绝对 `CARGO_TARGET_DIR` 构建当前页面、生产后端、`herdr-fixture`、`herdr-paths` 与 `safe_shutdown_shell`。Bun 为 1.4.4；已有 baseline 依赖可用 `OMP_BASELINE_RECORD_ROOT` 定位，Pi 可显式设置 `PI_CLI`／`PI_NODE`。入口不安装宿主、不发现用户认证、不回退模型或重试业务决策。经单独授权的只读 Codex 传输可复用 `accept-workflow-codex.py --scenario reports`，沿用其显式 `--auth-file` 安全边界；先 `--smoke` 核对实际 `serverModel=gpt-6-luna`，不得把回环传输称为两宿主直接 Codex wire 合规。
 
 P18 在当前 chief 存在时分别运行普通／实际 chief 委派的嵌套 Map，真实双角色工具继续向父 manager 报告，内部报告继续向自己的 manager 报告。P20 引用并实际执行既有 `native-chief-report` 的双宿主批准／拒绝／取消／超时／不可用及完整预览用例。新增 `chief-report-backend-faults` 用真实隔离 journal 目的地目录造成保存失败、受控外部 Herdr 明确拒绝，以及代理在实际后端响应后断开 TCP，核对原生结果及公开不可变事实；不是伪造后端成功响应。P36 执行既有 node 原生确认与公开报告门禁，双宿主真实通知拒绝后保存不撤销，观察46秒不新增报告／通知。P37 执行现有集成声明和 import-boundary 检查，并保留源码／锁文件／产物／安装宿主身份；源码审查仍需确认后端 files/report_delivery 唯一持久权威、扩展 common 共享确认与请求，不新增接线快照测试。
 
@@ -539,26 +549,26 @@ P18 在当前 chief 存在时分别运行普通／实际 chief 委派的嵌套 M
 
 ## Chief 双宿主人工恢复专项
 
-从参与的 Herdr worktree 根运行 `python scripts/accept-chief-recovery.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。路径必须绝对，证据目录必须不存在；依赖、页面、生产后端与 Cargo depfile 均核对参与 worktree。另以同一独立绝对 `CARGO_TARGET_DIR` 构建 `cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --bin herdr-paths --example safe_shutdown_shell --example recovery_herdr_proxy`。后者是验收专用外部 CLI 记录／故障代理，正常时透传到显式安装的 Herdr，仅由独占标记文件制造通知明确拒绝；不进入产品或正常部署。
+从参与的 Herdr worktree 根运行 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-chief-recovery --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。路径必须绝对，证据目录必须不存在；依赖、页面、生产后端与 Cargo depfile 均核对参与 worktree。另以同一独立绝对 `CARGO_TARGET_DIR` 构建 `cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --bin herdr-paths --example safe_shutdown_shell --example recovery_herdr_proxy`。后者是验收专用外部 CLI 记录／故障代理，正常时透传到显式安装的 Herdr，仅由独占标记文件制造通知明确拒绝；不进入产品或正常部署。
 
 `chief_recovery_native_acceptance.py` 独占 P23/P24/P25/P26/P27/P34/P35：分别观察通知失败、chief 创建／新进程恢复／重新登记、真实后端重启和时间流逝；真实 GPT-6-luna 在原发送方明确请求后选择原报告重发，完整原生预览、再次批准／拒绝和原 ID／正文逐项核对。故障代理只在实际后端提交之后持有／丢弃原响应，不伪造保存或接收成功；持久接收已可公开读回后、模型 admission 前终止所属原生进程。新 chief 不迁移旧上下文、不自动重播；用户明确查看才实际读取和呈现。重复／并发重发、丢失回执、更换 chief 和真实后端重启后核对原接收记录、最多一次处理授权及无新通知。独立 Chat 与直接 Map manager 分别新进程恢复原关联，恢复前后核对历史／模型请求，观察无初始输入重放、新委派或 Run；同 Task 的另一实际 Chat 恢复后仍无资格。改内容的原 ID 重发须拒绝，新内容的独立原生确认被拒绝时不保存／发送，旧记录保持原样。
 
 每个新 chief 先接收一次无业务内容的用户就绪请求，等待原生历史实际持久化后才开始生命周期观察；新会话仍不包含旧报告 ID、正文或原委派上下文。无自动行为观察通过公开历史枚举实际 Session，逐个以 `GET /api/chief/delegations?sessionId=...` 读取关联，同时比较 Chat 身份集合与 Run；不使用不存在的无身份全局委派列表。原生 OMP 的字符串 `i` 仅作为宿主 intent 元数据记录，重发业务参数仍严格只含原 `id`，实际 HTTP 另行严格核对；已终止进程的 unregister 允许明确 `404 unknown-session`（后端重启后的内存登记可已不存在），其它错误仍失败。原报告预览按完整 JSON 对象比较，不把键顺序当内容差异；恢复前后和静默窗口的无业务模型调用观察使用同一计数边界，仅排除安装 OMP 无工具的独立标题／标题卡请求（其系统指引分别以 `You name coding-agent sessions.`／`You head coding-agent session titles with a small card.` 开始）；带业务工具、普通系统指引或 Pi 请求仍全部计入，仍保存并检查所有请求的实际模型身份；正常终止所属原生进程前，以既有30秒请求预算等待已在途请求完成，避免测试自身取消独立标题请求，不重试或忽略失败，所有用户／assistant／tool 业务消息必须保持不变。每个无自动行为窗口实际观察46秒，覆盖45秒隔离服务启动、30秒原生启动／请求、20秒确认，以及10秒在线＋30秒离线保留＋5秒维护完整上界；这些是测试观察预算，不是产品等待／重试策略。所有原生历史、确认原始参数／决定、HTTP、外部 CLI 调用、真实模型返回身份、源码／锁文件／产物／安装宿主身份及原始错误／清理错误保留在本次独占证据。HOME／APPDATA／XDG、定义、存储、原生会话、数值回环端口和 Herdr 均独占；持有进程句柄确认结束后才交还资源，删除目录不能替代退出。
 
-模型配置沿用上文公开真实模型传输。用户单独授权的只读 Codex provider 可使用 `python scripts/accept-workflow-codex.py --scenario recovery --hosts omp,pi ... --auth-file "$AUTHORIZED_AUTH"`，先 `--smoke` 核对实际 `serverModel=gpt-6-luna`；不发现、复制、改写或自动刷新用户认证，不回退或重试业务决策。它是实际工具决策的传输适配，不是两宿主直接 Codex wire 合规证据。入口实际执行依赖拥有的四份原生协议 dock，但受控 provider／HTTP／Herdr 只证明机制，不能冲抵本专项真实模型及双宿主矩阵。单宿主诊断、缺任一依赖／能力／证据或清理失败均不能整体通过。
+模型配置沿用上文公开真实模型传输。用户单独授权的只读 Codex provider 可使用 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-codex --scenario recovery --hosts omp,pi ... --auth-file "$AUTHORIZED_AUTH"`，先 `--smoke` 核对实际 `serverModel=gpt-6-luna`；不发现、复制、改写或自动刷新用户认证，不回退或重试业务决策。它是实际工具决策的传输适配，不是两宿主直接 Codex wire 合规证据。入口实际执行依赖拥有的四份原生协议 dock，但受控 provider／HTTP／Herdr 只证明机制，不能冲抵本专项真实模型及双宿主矩阵。单宿主诊断、缺任一依赖／能力／证据或清理失败均不能整体通过。
 
 可用两个独占证据目录分别运行 `--hosts omp` 与 `--hosts pi` 并行诊断；每次仍保持单宿主内的重启／接收因果顺序，单宿主入口退出非零且不能称整体通过。聚合必须核对两份宿主 `evidence.json` 全部七项 verified、各自 passed/cleanupErrors、实际模型身份与机械检查退出状态及同一源码／产物身份；不能仅看过滤后的进程退出码。`business-stderr.log` 按时间、host、阶段 started/completed 与已验证 coverage 实时 flush，最终 JSON 仍独立输出；宿主根证据记录准确失败。外部 CLI 记录在 `external-cli/calls/*.json` 以独占临时文件写完后 rename 发布，避免并发进程交错 JSONL 或读到半条记录。
 
-CLI 安全与故障代理定向回归：`CHIEF_RECOVERY_TOOLKIT="$TOOLKIT_WT" python scripts/accept-chief-recovery.test.py`、`python scripts/chief_recovery_faults.test.py`；前者只证明 fail-closed／绝对路径／不覆盖旧证据，后者只证明原响应提交后的门闩和丢失行为。另设置 `CHIEF_RECOVERY_PROXY` 为本次 `recovery_herdr_proxy.exe`、`HERDR_FIXTURE` 为本次 `herdr-fixture.exe`，运行 `python scripts/chief_recovery_cli.test.py`，检查初始业务输入逐字透传、只拒绝 chief 报告通知、解除显式故障后原通知逐字透传。完成仍分别运行两仓要求的完整构建、后端／前端／浏览器及 Bun 1.4.4 typecheck／test／check:integrations；配对 dock 只使用本次安全关机壳与本次元数据，生产 `--backend` 不替代安全壳执行关机回归。全局套件不替代专项。
+CLI 安全与故障代理定向回归：`CHIEF_RECOVERY_TOOLKIT="$TOOLKIT_WT" python "$TESTER/scripts/accept-chief-recovery.test.py"`、`python "$TESTER/scripts/chief_recovery_faults.test.py"`；前者只证明 fail-closed／绝对路径／不覆盖旧证据，后者只证明原响应提交后的门闩和丢失行为。另设置 `CHIEF_RECOVERY_PROXY` 为本次 `recovery_herdr_proxy.exe`、`HERDR_FIXTURE` 为本次 `herdr-fixture.exe`，运行 `python "$TESTER/scripts/chief_recovery_cli.test.py"`，检查初始业务输入逐字透传、只拒绝 chief 报告通知、解除显式故障后原通知逐字透传。完成仍分别运行两仓要求的完整构建、后端／前端／浏览器及 Bun 1.4.4 typecheck／test／check:integrations；配对 dock 只使用本次安全关机壳与本次元数据，生产 `--backend` 不替代安全壳执行关机回归。全局套件不替代专项。
 ## Chief 存活旧进程与交接专项
 
-从参与的 Herdr worktree 根运行 `python scripts/accept-chief-authority.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。显式绝对路径、独占新证据目录、当前源码构建产物及隔离 roots 的要求与入口专项相同。模型严格使用 GPT-6-luna 并核对实际返回身份；授权只读 Codex provider 可沿用 `accept-workflow-codex.py --scenario authority`（先单独 `--smoke`），不发现用户凭据、不刷新认证、不回退或重试业务决策。
+从参与的 Herdr worktree 根运行 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-chief-authority --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$GPT6_LUNA_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"`。显式绝对路径、独占新证据目录、当前源码构建产物及隔离 roots 的要求与入口专项相同。模型严格使用 GPT-6-luna 并核对实际返回身份；授权只读 Codex provider 可沿用 `accept-workflow-codex.py --scenario authority`（先单独 `--smoke`），不发现用户凭据、不刷新认证、不回退或重试业务决策。
 
 `chief_authority_native_acceptance.py` 独占 P31：两宿主分别保留旧 chief 真实进程与持有的 Windows 句柄；旧原生进程实际收到已提交报告通知并发起 `/receive` 时，在透明 HTTP 传输边界将该真实请求暂挂（最多18秒，短于原生20秒 admission预算），移除原登记并发起新 chief 后释放。真实后端必须拒绝旧原生接收，公开 receipt 仍为空；已提交的外部输入仍保留 `notification.status=submitted`，不能解释成已撤回或可靠接收。之后显式要求原发送者报告另一份新的独立结果，真实新 chief 必须获得持久 receipt 并呈现。此场景不重发同ID，不重复认领恢复专项的去重矩阵。
 
 旧进程迟到登记、Task／Map 的旧预览提交及实际原生派发均须拒绝；当前权威始终属于新 chief。新 chief 再分别经实际原生完整预览与批准执行有效 Task／Map 派发，公开读回真实 Chat／根 Run；只读 Map 夹具显式使用 `report_policy: manual`，允许 manager 按正常流程管理节点并保留阶段审批，但不自动向 chief 报告；不把“禁止全部节点执行”与执行 Map 的有效请求混用。UI 观察复用只透传的 `chief-ui-observer.mjs`，不替模型选择工具或伪造结果；观察目录和环境变量须在独占 Herdr 服务启动前设置，确保其原生子进程实际继承。证据保留竞争单调时序、旧进程持续存活、原生历史、完整确认输入/结果、HTTP、来源/锁文件/产物/安装宿主身份及报告/接收事实。
 
-静默观察为46秒，覆盖实际10秒在线＋30秒保留＋5秒维护上界；配置、启动/请求/确认预算与原始失败、清理失败分别记录。所有 HOME／APPDATA／XDG、定义、持久化、动态数值回环端口、Herdr 和原生会话均独占；结束时关闭所属服务并以持有进程句柄确认退出，不以删目录代替。任何宿主/能力/模型/清理缺证据均非零，单宿主或 `CHIEF_AUTHORITY_TOOLKIT="$TOOLKIT_WT" python scripts/accept-chief-authority.test.py` 的CLI安全检查不算P31通过。
+静默观察为46秒，覆盖实际10秒在线＋30秒保留＋5秒维护上界；配置、启动/请求/确认预算与原始失败、清理失败分别记录。所有 HOME／APPDATA／XDG、定义、持久化、动态数值回环端口、Herdr 和原生会话均独占；结束时关闭所属服务并以持有进程句柄确认退出，不以删目录代替。任何宿主/能力/模型/清理缺证据均非零，单宿主或 `CHIEF_AUTHORITY_TOOLKIT="$TOOLKIT_WT" python "$TESTER/scripts/accept-chief-authority.test.py"` 的CLI安全检查不算P31通过。
 
 两仓完成检查仍分别执行票据要求的完整 frontend build、当前后端/fixture/paths/安全壳构建、`node scripts/test-backend.mjs`、`npm --prefix frontend test`、`npm --prefix frontend run test:browser:build`，以及Bun 1.4.4的 `bun run typecheck`、`bun run test`、`bun run check:integrations` 和受影响 `native-chief-receipt-backend`／`native-chief-reception` dock。独立绝对 `CARGO_TARGET_DIR`；dock 的 `HERDR_BOT_BINARY` 只能指向本次 `safe_shutdown_shell.exe`、元数据指向参与源码，真实专项则使用生产后端。完整回归或受控dock仅证明其实际范围，不替代双宿主真实模型专项。
 
@@ -606,15 +616,15 @@ Task API 的旧 `extensions` 字段（包括空数组）必须拒绝；固定扩
 
 ## 首批 Suite 原生发现与实现命令
 
-`python scripts/accept-initial-suites.py` 拥有 P11 的探索 OMP 集合目录／探索 Pi 逐技能／实现 OMP 集合目录、P42 实际 `hyper-auto-coding` 注册及无任务调用，以及 P44 两仓完整交付清单和原生公开入口一致性。独立字面名称与来源清单不从装配器重算；真实 `pi.getCommands()` 包含手动调用的翻译技能，不能用模型提示中的较窄集合替代。入口、隔离依赖根、明确 Git 基线、构建命令、进程清理和证据含义见[首批 Suite 原生验收](../initial-suite-native-acceptance.md)。`python scripts/accept-initial-suites.test.py` 检查 S3 外来后端拒绝，以及原生验收独立来源 oracle 对 Wayfinder 自有目录和场景副本的直接子技能发现、动态新增与场景隔离；不固定配置纯文字快照，也不等于 S4 通过。两个目标 OMP Suite 只声明 Wayfinder 自有技能目录及各自 `dependent-skills/<suite-id>`；探索 Pi 的九个外部技能逐项引用探索副本，保留原 18 个名称。原生验收不再需要原 Matt Pocock／翻译仓库根。缺宿主能力或实际发现均保留非零和未验证；不安装、不提权、不读取用户凭据，不重跑其他票的资源/MCP/生命周期矩阵来冒充本票成功。
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-initial-suites` 拥有 P11 的探索 OMP 集合目录／探索 Pi 逐技能／实现 OMP 集合目录、P42 实际 `hyper-auto-coding` 注册及无任务调用，以及 P44 两仓完整交付清单和原生公开入口一致性。独立字面名称与来源清单不从装配器重算；真实 `pi.getCommands()` 包含手动调用的翻译技能，不能用模型提示中的较窄集合替代。入口、隔离依赖根、明确 Git 基线、构建命令、进程清理和证据含义见[首批 Suite 原生验收](../initial-suite-native-acceptance.md)。`python "$TESTER/scripts/accept-initial-suites.test.py"` 检查 S3 外来后端拒绝，以及原生验收独立来源 oracle 对 Wayfinder 自有目录和场景副本的直接子技能发现、动态新增与场景隔离；不固定配置纯文字快照，也不等于 S4 通过。两个目标 OMP Suite 只声明 Wayfinder 自有技能目录及各自 `dependent-skills/<suite-id>`；探索 Pi 的九个外部技能逐项引用探索副本，保留原 18 个名称。原生验收不再需要原 Matt Pocock／翻译仓库根。缺宿主能力或实际发现均保留非零和未验证；不安装、不提权、不读取用户凭据，不重跑其他票的资源/MCP/生命周期矩阵来冒充本票成功。
 
 ## OMP Suite 四语言 LSP 真实验收
 
-`python scripts/test-real-herdr-suite-lsp.py` 拥有 P37/P38 的 S4 专项；S1 缺程序声明反馈由 `frontend/browser-tests/suites/suiteLsp.spec.ts` 覆盖，S2/S3 生成产物由 `backend/tests/suites/suite_omp_lsp.rs` 补充。后两者不替代真实服务启动。先构建当前 worktree 后端；四种服务、相关语言运行环境及 OMP／Herdr 必须已经安装好，runner 不安装、不提权、不修改 PATH，不用源码 CLI／SDK 或 Pi 替代已交付的 OMP 入口。
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-real-herdr-suite-lsp` 拥有 P37/P38 的 S4 专项；S1 缺程序声明反馈由 `frontend/browser-tests/suites/suiteLsp.spec.ts` 覆盖，S2/S3 生成产物由 `backend/tests/suites/suite_omp_lsp.rs` 补充。后两者不替代真实服务启动。先构建当前 worktree 后端；四种服务、相关语言运行环境及 OMP／Herdr 必须已经安装好，runner 不安装、不提权、不修改 PATH，不用源码 CLI／SDK 或 Pi 替代已交付的 OMP 入口。
 
 ```powershell
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
-python scripts/test-real-herdr-suite-lsp.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-real-herdr-suite-lsp `
   --herdr 'C:/installed/herdr/herdr.exe' `
   --omp-package 'D:/node_modules/@oh-my-pi/pi-coding-agent' `
   --backend 'backend/target/debug/herdr-bot.exe' `
@@ -639,13 +649,13 @@ python scripts/test-real-herdr-suite-lsp.py `
 
 ## OMP Suite 技能真实消费验收
 
-`python scripts/test-real-herdr-suite-skills.py` 专项覆盖 P5/P6/P7/P8/P10/P15 的 OMP 技能场景，必须先构建当前 worktree 的 herdr-bot 后端。它经公开 Task／Chat HTTP → 真实 Herdr → **现有全局安装的 OMP** 正常交付入口运行，不直接调用源码 CLI、SDK 或替代 MCP manager。依赖均须预先具备，runner 不改全局安装或 PATH、不提权、不修改开发者模式；不修改 OMP 源码、不构建或部署新的宿主。`--omp-package` 只声明已有安装包，不替换实际入口。Windows PTY 会从注册表重建 PATH，单独给父进程添加 PATH 前缀或放置另一份构建产物不能可靠指定宿主。runner 保留 OS 实际进程的 ExecutablePath 与 CommandLine，结合原有安装入口／包身份及实际技能消费核对运行身份；版本或文件哈希本身不能证明 Herdr 实际运行了所声明的安装。
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-real-herdr-suite-skills` 专项覆盖 P5/P6/P7/P8/P10/P15 的 OMP 技能场景，必须先构建当前 worktree 的 herdr-bot 后端。它经公开 Task／Chat HTTP → 真实 Herdr → **现有全局安装的 OMP** 正常交付入口运行，不直接调用源码 CLI、SDK 或替代 MCP manager。依赖均须预先具备，runner 不改全局安装或 PATH、不提权、不修改开发者模式；不修改 OMP 源码、不构建或部署新的宿主。`--omp-package` 只声明已有安装包，不替换实际入口。Windows PTY 会从注册表重建 PATH，单独给父进程添加 PATH 前缀或放置另一份构建产物不能可靠指定宿主。runner 保留 OS 实际进程的 ExecutablePath 与 CommandLine，结合原有安装入口／包身份及实际技能消费核对运行身份；版本或文件哈希本身不能证明 Herdr 实际运行了所声明的安装。
 
 验收检查现有 `--config` 对 `skills` 的高优先级局部覆盖：每次启动从所选集合重新取得有效直接子技能，生成最终名称 `includeSkills` 白名单，七个已有 `enable*` 来源开关均为 `false`、`ignoredSkills` 为 `[]`，有效名称为空时 `enabled: false`。核对原生最终可用列表及真实源路径，而不是要求默认目录完全未被扫描；不得把扫描行为与最终技能列表隔离混为一谈。原生 MCP、LSP、agent、扩展和项目指令不因技能覆盖而关闭。
 
 ```powershell
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
-python scripts/test-real-herdr-suite-skills.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-real-herdr-suite-skills `
   --herdr 'C:/installed/herdr/herdr.exe' `
   --omp-package 'D:/node_modules/@oh-my-pi/pi-coding-agent' `
   --backend 'backend/target/debug/herdr-bot.exe'
@@ -661,12 +671,12 @@ runner 隔离 HOME／APPDATA／XDG、agent 配置与会话、命名 Herdr server
 
 ## OMP Suite 原生 MCP 真实消费验收
 
-`python scripts/test-real-herdr-suite-mcp.py` 覆盖 Suite 契约 P17/P19/P20/P21/P22/P46 的 OMP MCP 场景。先构建当前 worktree 后端，使用实际安装的 Herdr 与 PATH 上的打包 OMP；不安装依赖、不修改 PATH、不替换 agentDir、不运行源码 CLI 或 SDK 组装。它复用技能专项的独占 HOME／APPDATA／XDG、配置、会话、命名 Herdr server、动态回环模型／后端和进程清理设施，但不认领所选技能验收。MCP 夹具只充当外部服务器，实际读取独立声明目录的字面文件；原生发现、优先级、完整 manager 与工具执行仍是实际交付宿主。先经公开 HTTP 发起原生管理 Chat（空 Task 固定 prompt、初始输入 `/mcp help`），在成功场景观察外部夹具初始化及原生界面后，用原生 Esc／Ctrl+U 退出帮助或补全并清空管理输入，再通过 Herdr 原生 agent 交互提交一次 MCP 读取指示；不承担初始化文本的终端粘贴传输验收，不重试业务提交、不补发 Enter。此等待和管理交互仅是测试前置条件，不写入产品启动路径；`unreachable` 独立验证产品没有全部就绪门禁。
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-real-herdr-suite-mcp` 覆盖 Suite 契约 P17/P19/P20/P21/P22/P46 的 OMP MCP 场景。先构建当前 worktree 后端，使用实际安装的 Herdr 与 PATH 上的打包 OMP；不安装依赖、不修改 PATH、不替换 agentDir、不运行源码 CLI 或 SDK 组装。它复用技能专项的独占 HOME／APPDATA／XDG、配置、会话、命名 Herdr server、动态回环模型／后端和进程清理设施，但不认领所选技能验收。MCP 夹具只充当外部服务器，实际读取独立声明目录的字面文件；原生发现、优先级、完整 manager 与工具执行仍是实际交付宿主。先经公开 HTTP 发起原生管理 Chat（空 Task 固定 prompt、初始输入 `/mcp help`），在成功场景观察外部夹具初始化及原生界面后，用原生 Esc／Ctrl+U 退出帮助或补全并清空管理输入，再通过 Herdr 原生 agent 交互提交一次 MCP 读取指示；不承担初始化文本的终端粘贴传输验收，不重试业务提交、不补发 Enter。此等待和管理交互仅是测试前置条件，不写入产品启动路径；`unreachable` 独立验证产品没有全部就绪门禁。
 
 ```powershell
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
 foreach ($scenario in @('central', 'precedence', 'empty', 'full', 'unreachable')) {
-  python scripts/test-real-herdr-suite-mcp.py `
+  python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-real-herdr-suite-mcp `
     --herdr 'C:/installed/herdr/herdr.exe' `
     --omp-package 'D:/node_modules/@oh-my-pi/pi-coding-agent' `
     --backend 'backend/target/debug/herdr-bot.exe' --scenario $scenario
@@ -683,11 +693,11 @@ foreach ($scenario in @('central', 'precedence', 'empty', 'full', 'unreachable')
 每次输出独占 Temp 的 `evidence.json`，保留实际模型请求／结果、HTTP、MCP wire／连接次数、原生终端管理报告、源码 revision／diff／文件及产物哈希。MCP 夹具在初始化前等待 runner 持有真实 Windows 进程句柄，独立 watcher 持续观察，包括宿主退出时可能出现的晚到 reconnect；停止所属服务后清理并确认每个所属进程退出；来不及观察就已被宿主终止的晚到 PID，单独记录 Windows `OpenProcess` 的 `ERROR_INVALID_PARAMETER`（87）作为该 PID 已不存在的独立证据，访问拒绝等其他错误仍失败。原始验证失败与清理失败分别记录；缺实际依赖或任一能力不满足均非零，不 skip。回环确定模型只证明宿主协议与执行机制，不证明真实模型的自主业务遵循。此专项不要求技能目录链接权限，不替代非空技能专项、页面验收或 Pi MCP 场景。
 ## OMP Suite 扩展包真实消费验收
 
-`python scripts/test-real-herdr-suite-extensions.py` 专项负责 P7（OMP 扩展）与 P9（OMP）的 S2/S3/S4 行为证据。先构建当前 worktree 后端，再使用已安装 Herdr 和 PATH 上正常交付的 OMP；依赖不由 runner 安装，不改系统 PATH，不读取用户凭据或启动用户 Chat：
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-real-herdr-suite-extensions` 专项负责 P7（OMP 扩展）与 P9（OMP）的 S2/S3/S4 行为证据。先构建当前 worktree 后端，再使用已安装 Herdr 和 PATH 上正常交付的 OMP；依赖不由 runner 安装，不改系统 PATH，不读取用户凭据或启动用户 Chat：
 
 ```powershell
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
-python scripts/test-real-herdr-suite-extensions.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-real-herdr-suite-extensions `
   --herdr 'C:/installed/herdr/herdr.exe' `
   --omp-package 'D:/node_modules/@oh-my-pi/pi-coding-agent' `
   --backend 'backend/target/debug/herdr-bot.exe'
@@ -705,7 +715,7 @@ P46 的扩展负例入口为 `cargo test --manifest-path backend/Cargo.toml --te
 
 ```powershell
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
-python scripts/test-real-herdr-suite-pi.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-real-herdr-suite-pi `
   --herdr 'C:/installed/herdr/herdr.exe' `
   --pi-package 'D:/node_modules/@earendil-works/pi-coding-agent' `
   --toolkit 'D:/installed/my-agent-toolkit' `
@@ -718,17 +728,17 @@ python scripts/test-real-herdr-suite-pi.py `
 
 ## Pi Suite 资源与原生 MCP 跨仓验收
 
-完整 S2/S3/S4 矩阵入口为 `python scripts/accept-suite-pi-resources.py`，显式接收两个 worktree、当前后端、隔离 paths 文件、场景和独占证据目录。覆盖集中根／相对路径／空格／不同 cwd、真实技能与扩展依赖、builtin 与 Suite MCP 同次调用、文件优先／等价／禁用／空清单，以及配置／装配拒绝和原生不可达状态。参见 [Pi 资源验收](../pi-suite-resource-acceptance.md) 的依赖、独立预期和完整复跑命令。缺真实依赖、宿主能力或清理失败非零；受控模型只验证消费机制，不证明模型自主质量，全局套件不能替代逐场景证据。
+完整 S2/S3/S4 矩阵入口为 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-resources`，显式接收两个 worktree、当前后端、隔离 paths 文件、场景和独占证据目录。覆盖集中根／相对路径／空格／不同 cwd、真实技能与扩展依赖、builtin 与 Suite MCP 同次调用、文件优先／等价／禁用／空清单，以及配置／装配拒绝和原生不可达状态。参见 [Pi 资源验收](../pi-suite-resource-acceptance.md) 的依赖、独立预期和完整复跑命令。缺真实依赖、宿主能力或清理失败非零；受控模型只验证消费机制，不证明模型自主质量，全局套件不能替代逐场景证据。
 
 ## 真实 Herdr 自动关闭验收（P22）
 
-`python scripts/test-real-herdr-close.py` 是独立的真实依赖自动验收，不在普通替身回归中隐式启动。当前入口要求 Windows、已安装的真实 Herdr / Pi、Python 3.9+、Node.js，以及已安装依赖的 toolkit checkout。先构建当前 worktree 后端。路径参数可显式传入，或使用 `--paths-file`（默认仓库 `paths.local.toml`）：缺省参数从 `herdr/herdr.exe`、`pi_package`、`pi_agent/extensions/herdr-agent-state.ts`、`toolkit` 根派生；backend 默认取当前源码的 debug 产物并尊重 `CARGO_TARGET_DIR`。显式参数优先，全部依赖参数均提供时不读取根文件。原生会话验收 `scripts/test-native-session-storage.py` 同样支持 `--paths-file`，缺省包路径使用 `pi_package`、`omp_package`。这些入口经 Rust `herdr-paths` 解析 TOML，不自行实现根引用；根可指向不同磁盘。
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-real-herdr-close` 是独立的真实依赖自动验收，不在普通替身回归中隐式启动。当前入口要求 Windows、已安装的真实 Herdr / Pi、Python 3.9+、Node.js，以及已安装依赖的 toolkit checkout。先构建当前 worktree 后端。路径参数可显式传入，或使用 `--paths-file`（默认仓库 `paths.local.toml`）：缺省参数从 `herdr/herdr.exe`、`pi_package`、`pi_agent/extensions/herdr-agent-state.ts`、`toolkit` 根派生；backend 默认取当前源码的 debug 产物并尊重 `CARGO_TARGET_DIR`。显式参数优先，全部依赖参数均提供时不读取根文件。原生会话验收 `scripts/test-native-session-storage.py` 同样支持 `--paths-file`，缺省包路径使用 `pi_package`、`omp_package`。这些入口经 Rust `herdr-paths` 解析 TOML，不自行实现根引用；根可指向不同磁盘。
 
 以下为显式参数方式：
 
 ```powershell
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
-python scripts/test-real-herdr-close.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-real-herdr-close `
   --herdr 'C:\path\to\herdr.exe' `
   --backend 'backend/target/debug/herdr-bot.exe' `
   --pi-package 'C:\path\to\node_modules\@earendil-works\pi-coding-agent' `
@@ -744,13 +754,13 @@ stdout 返回 `evidence.json` 路径和真实结果；该文件包含命令原�
 
 ## 嵌套流程真实文件消费验收
 
-独立入口 `python scripts/accept-workflow-nesting-files.py` 经本 worktree 构建的真实页面发起 Run，加载指定 toolkit worktree 的真实角色入口。toolkit 使用 Bun 1.4.4 和 frozen lock；若 typecheck 明确报告缺少已锁定的 `@typescript/typescript-win32-x64`，可在该 toolkit worktree 执行 `bun install --frozen-lockfile --linker isolated --force` 修复本地依赖链接，不替换编译器、不改锁定版本或借用其他 worktree 源码。不要用旧的普通文件交接场景、受控 provider 或最终产物替代它。入口的隔离业务定义显式声明 Pi；`--hosts declared` 保留并执行这些 Task 声明，证据只记 Pi，不外推 OMP 或双角色生命周期通过。现有真实宿主设施不提供 OMP 文件消费能力，显式 `--hosts omp` / `--hosts omp,pi` 非零并保持未验证，不能以 Pi 成功抵消。
+独立入口 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-files` 经本 worktree 构建的真实页面发起 Run，加载指定 toolkit worktree 的真实角色入口。toolkit 使用 Bun 1.4.4 和 frozen lock；若 typecheck 明确报告缺少已锁定的 `@typescript/typescript-win32-x64`，可在该 toolkit worktree 执行 `bun install --frozen-lockfile --linker isolated --force` 修复本地依赖链接，不替换编译器、不改锁定版本或借用其他 worktree 源码。不要用旧的普通文件交接场景、受控 provider 或最终产物替代它。入口的隔离业务定义显式声明 Pi；`--hosts declared` 保留并执行这些 Task 声明，证据只记 Pi，不外推 OMP 或双角色生命周期通过。现有真实宿主设施不提供 OMP 文件消费能力，显式 `--hosts omp` / `--hosts omp,pi` 非零并保持未验证，不能以 Pi 成功抵消。
 
 ```powershell
 $env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --example safe_shutdown_shell
-python scripts/accept-workflow-nesting-files.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-files `
   --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
   --toolkit $TOOLKIT_WT --hosts declared `
   --paths-file 'D:/isolated-acceptance/paths.toml' `
@@ -763,11 +773,11 @@ python scripts/accept-workflow-nesting-files.py `
 
 场景两次经真实浏览器分别提交独立业务文字和不同文件字节，运行 root → middle → leaf 命名重映射，再让子交付分别进入普通执行者及另一子流程。实际 native read 调用与对应 tool result、原生 Session/Run/执行身份、输入绑定和交付字节共同作为证据，不只比地址。根空输入与嵌套空输入执行者不得读取或猜测材料路径，可选 appendix 明确缺席。首次 leaf 执行者实际停轮等待业务 release 后，driver 原地改写已派发文件；另一次实际派发后删除输入，再明确 release，真实执行者必须保留读取错误、报告不可完成，1.25 秒窗口内不修复或重试。release 是记录在原生历史的显式业务输入，不编辑运行记录，也不替模型选择工具。
 
-证据目录必须不存在，由 runner 独占创建；HOME/APPDATA/XDG/原生存储、命名 Herdr、定义和运行目录全部隔离，页面使用独立 Chrome profile，后端只绑定动态数值回环并关闭 mDNS。持续消费 stdout/stderr，正常与失败均停止并等待所属进程；原始错误与清理错误分别保留，清理失败仍非零。保留 browser 请求与确认截图、原始 HTTP/模型请求结果、原生历史、文件原字节、只读运行事实和逐项结论；删除带凭据的临时 models.json。专用 fail-closed CLI 回归：设置 `WORKFLOW_HANDOFF_TOOLKIT=$TOOLKIT_WT` 后运行 `python scripts/accept-workflow-nesting-files.test.py`；它不证明真实消费。
+证据目录必须不存在，由 runner 独占创建；HOME/APPDATA/XDG/原生存储、命名 Herdr、定义和运行目录全部隔离，页面使用独立 Chrome profile，后端只绑定动态数值回环并关闭 mDNS。持续消费 stdout/stderr，正常与失败均停止并等待所属进程；原始错误与清理错误分别保留，清理失败仍非零。保留 browser 请求与确认截图、原始 HTTP/模型请求结果、原生历史、文件原字节、只读运行事实和逐项结论；删除带凭据的临时 models.json。专用 fail-closed CLI 回归：设置 `WORKFLOW_HANDOFF_TOOLKIT=$TOOLKIT_WT` 后运行 `python "$TESTER/scripts/accept-workflow-nesting-files.test.py"`；它不证明真实消费。
 
 ## 文件交接真实角色自动验收
 
-`python scripts/test-workflow-file-handoff.py --scenario roles` 是独立的跨仓入口，加载指定 toolkit worktree 的实际角色源码及当前 herdr-bot worktree 构建的后端。它不使用确定响应服务替代真实业务模型，也不修改用户部署。当前真实模型链路仅支持 Windows / Herdr / **Pi** 和 OpenAI-compatible chat-completions 服务；结果不外推为 OMP 真实模型通过。参数保真、严格 report 校验和真实后端落盘另由入口内调用的 `tests/harness-dock/node-report-contract.test.ts` 同时覆盖 OMP/Pi；该 dock 使用受控 provider/Herdr，不能充当模型职责遵从证据。
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-file-handoff --scenario roles` 是独立的跨仓入口，加载指定 toolkit worktree 的实际角色源码及当前 herdr-bot worktree 构建的后端。它不使用确定响应服务替代真实业务模型，也不修改用户部署。当前真实模型链路仅支持 Windows / Herdr / **Pi** 和 OpenAI-compatible chat-completions 服务；结果不外推为 OMP 真实模型通过。参数保真、严格 report 校验和真实后端落盘另由入口内调用的 `tests/harness-dock/node-report-contract.test.ts` 同时覆盖 OMP/Pi；该 dock 使用受控 provider/Herdr，不能充当模型职责遵从证据。
 
 先在两个参与源码根安装/构建依赖：toolkit 使用 Bun 1.4.4 与 `bun install --frozen-lockfile`；herdr-bot 执行 `bun install --cwd=frontend --frozen-lockfile`、`npm --prefix frontend run build` 生成本 worktree 的 `backend/static`（全后端进程检查必需）；后端使用独立的 `CARGO_TARGET_DIR` 构建 `cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture --bin herdr-bot`。临时 toolkit worktree 的 frozen baseline 依赖定位可显式设置 `OMP_BASELINE_RECORD_ROOT` 为原 toolkit 根，不能因此替换实际被测源码。按 toolkit 的测试规范协调重型运行窗口。
 
@@ -801,7 +811,7 @@ workflow_model = 'D:/isolated-acceptance/model'
 ```powershell
 $env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
 $env:OMP_BASELINE_RECORD_ROOT = 'D:/original-toolkit'
-python scripts/test-workflow-file-handoff.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-file-handoff `
   --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
   --toolkit $TOOLKIT_WT --scenario roles --paths-file 'D:/isolated-acceptance/isolated-paths.toml'
 ```
@@ -842,22 +852,22 @@ with CompletionTransport(actual_completion, pathlib.Path(EVIDENCE_DIR) / 'comple
             raise RuntimeError(f'roles acceptance failed: {result.returncode}')
 ```
 
-这里的 local-transport 值仅满足 Pi 自定义 provider 的配置要求，不是模型凭据；真实模型访问仍使用宿主公开授权能力。传输本身的 HTTP/证据保真回归为 `python scripts/workflow_completion_transport.test.py`，其中受控 completion 只验证传输，不作为角色验收结果。
+这里的 local-transport 值仅满足 Pi 自定义 provider 的配置要求，不是模型凭据；真实模型访问仍使用宿主公开授权能力。传输本身的 HTTP/证据保真回归为 `python "$TESTER/scripts/workflow_completion_transport.test.py"`，其中受控 completion 只验证传输，不作为角色验收结果。
 
-已安装 Pi 的 Codex 网页授权可通过独立入口 `python scripts/accept-workflow-codex.py --scenario revise --hosts declared --backend <当前后端> --toolkit <toolkit根> --paths-file <验收依赖TOML> --pi-package <已安装coding-agent包> --auth-file <明确授权使用的auth.json> --evidence-dir <不存在的目录> --shell-path <已安装Git Bash>` 接入既有真实业务 runner；`--scenario roles` 对应双角色，`--hosts omp,pi` 对应两个宿主分别运行。入口固定 `openai-codex/gpt-6-luna`，不继承本机默认模型、不回退其他模型。先追加 `--smoke` 单独检查一次真实文本调用，再为业务运行使用新的证据目录；烟测通过也不是业务通过。修订入口可用 `--cases task-no-materials` 等逗号分隔的顶层 case 清单做定向反馈，默认 `all` 执行完整矩阵；子集成功仅记录 `subsetPassed`，`passed` 和完整 promise 覆盖仍保持未验证，不能据此关闭票据。仅双角色入口另支持 `--hosts omp`／`--hosts pi`，用于独立运行未进入的宿主覆盖，不重试另一个宿主的失败决策；单宿主通过不能替代 `omp,pi` 完整通过，证据保留实际 `requestedHosts`。原生证据归档使用 Windows 扩展路径保全超长 Session 文件名，并拒绝合并既有目标目录；`python scripts/workflow_evidence.test.py` 检查完整字节与旧证据不被覆盖。
+已安装 Pi 的 Codex 网页授权可通过独立入口 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-codex --scenario revise --hosts declared --backend <当前后端> --toolkit <toolkit根> --paths-file <验收依赖TOML> --pi-package <已安装coding-agent包> --auth-file <明确授权使用的auth.json> --evidence-dir <不存在的目录> --shell-path <已安装Git Bash>` 接入既有真实业务 runner；`--scenario roles` 对应双角色，`--hosts omp,pi` 对应两个宿主分别运行。入口固定 `openai-codex/gpt-6-luna`，不继承本机默认模型、不回退其他模型。先追加 `--smoke` 单独检查一次真实文本调用，再为业务运行使用新的证据目录；烟测通过也不是业务通过。修订入口可用 `--cases task-no-materials` 等逗号分隔的顶层 case 清单做定向反馈，默认 `all` 执行完整矩阵；子集成功仅记录 `subsetPassed`，`passed` 和完整 promise 覆盖仍保持未验证，不能据此关闭票据。仅双角色入口另支持 `--hosts omp`／`--hosts pi`，用于独立运行未进入的宿主覆盖，不重试另一个宿主的失败决策；单宿主通过不能替代 `omp,pi` 完整通过，证据保留实际 `requestedHosts`。原生证据归档使用 Windows 扩展路径保全超长 Session 文件名，并拒绝合并既有目标目录；`python "$TESTER/scripts/workflow_evidence.test.py"` 检查完整字节与旧证据不被覆盖。
 
-此入口把原始 Chat 历史与工具 schema 映射给安装版 Pi 的原生 Codex provider，由模型直接返回 SDK `toolCall`，再由真实业务宿主执行。不再把整段会话塞入文本 prompt，也不要求模型生成包装 JSON；模型正文不会被解析或截取成工具决策。此映射仍不等于 OMP／Pi 本身直接配置了 Codex provider。每次保留纯 body 的原生请求、SDK 实际响应、服务端模型身份及工具调用 ID；历史工具结果按原调用 ID 绑定，不编造缺失结果。OAuth 只在独立子进程内读取，不进入业务 models 配置、命令行或证据；不刷新、改写用户登录文件。该子进程复用安装版 Pi 的 HTTP 调度器及已有 `PI_PROXY_OPENAI_CODEX`／HTTP 代理设置，不改全局代理或 PATH；SDK 单独调用并不会自动安装 CLI 的代理调度器。过期或距到期不足本次预算／原生刷新窗口的授权非零失败，须由用户自行恢复登录后再明确发起新一轮，不自动重试。模型响应必须具有服务端 `gpt-6-luna` 身份；Codex 不支持调用方服务端输出上限，`max_completion_tokens` 仅作为本地响应交付上限，超过时拒绝交付，不把它称为服务端计费预算。未知字段、非文本输入或缺失工具结果的历史明确拒绝，不静默丢弃。原生错误只保留固定安全类别、HTTP 状态与请求次数，不保存认证头或原始依赖错误。SDK 禁止重试，使用一次 SSE 请求；传输将模型调用、JSON 解析与失败登记串行化，模型或序列化失败后，排队请求也不再调用模型。退出传输时等待所属处理线程及其模型调用结束，清理异常保持非零；不同业务 case／宿主仍是独立覆盖项，不把继续执行另一覆盖项称为重试同一模型决策。业务证据仍需逐项满足所属票据，缺依赖、调用失败或清理失败均保持未验证。设置 `WORKFLOW_PI_PACKAGE` 为明确的安装包后运行 `python scripts/workflow-codex-completion.test.py`，验证过期授权拒绝、无凭据输出、认证文件不变，以及真实 SDK 在受控 HTTP 响应下的原生工具 schema／历史错误／调用 ID 关联；该受控外部 API 不证明有效授权或真实模型业务成功。
+此入口把原始 Chat 历史与工具 schema 映射给安装版 Pi 的原生 Codex provider，由模型直接返回 SDK `toolCall`，再由真实业务宿主执行。不再把整段会话塞入文本 prompt，也不要求模型生成包装 JSON；模型正文不会被解析或截取成工具决策。此映射仍不等于 OMP／Pi 本身直接配置了 Codex provider。每次保留纯 body 的原生请求、SDK 实际响应、服务端模型身份及工具调用 ID；历史工具结果按原调用 ID 绑定，不编造缺失结果。OAuth 只在独立子进程内读取，不进入业务 models 配置、命令行或证据；不刷新、改写用户登录文件。该子进程复用安装版 Pi 的 HTTP 调度器及已有 `PI_PROXY_OPENAI_CODEX`／HTTP 代理设置，不改全局代理或 PATH；SDK 单独调用并不会自动安装 CLI 的代理调度器。过期或距到期不足本次预算／原生刷新窗口的授权非零失败，须由用户自行恢复登录后再明确发起新一轮，不自动重试。模型响应必须具有服务端 `gpt-6-luna` 身份；Codex 不支持调用方服务端输出上限，`max_completion_tokens` 仅作为本地响应交付上限，超过时拒绝交付，不把它称为服务端计费预算。未知字段、非文本输入或缺失工具结果的历史明确拒绝，不静默丢弃。原生错误只保留固定安全类别、HTTP 状态与请求次数，不保存认证头或原始依赖错误。SDK 禁止重试，使用一次 SSE 请求；传输将模型调用、JSON 解析与失败登记串行化，模型或序列化失败后，排队请求也不再调用模型。退出传输时等待所属处理线程及其模型调用结束，清理异常保持非零；不同业务 case／宿主仍是独立覆盖项，不把继续执行另一覆盖项称为重试同一模型决策。业务证据仍需逐项满足所属票据，缺依赖、调用失败或清理失败均保持未验证。设置 `WORKFLOW_PI_PACKAGE` 为明确的安装包后运行 `python "$TESTER/scripts/workflow-codex-completion.test.py"`，验证过期授权拒绝、无凭据输出、认证文件不变，以及真实 SDK 在受控 HTTP 响应下的原生工具 schema／历史错误／调用 ID 关联；该受控外部 API 不证明有效授权或真实模型业务成功。
 
-CLI 的缺依赖 fail-closed 回归可在设置 `WORKFLOW_HANDOFF_TOOLKIT` 为参与 toolkit 根后运行 `python scripts/test-workflow-file-handoff.test.py`；它只核对非零、原始错误、无虚构 Run 与无服务启动日志，不宣称真实角色链路通过。
+CLI 的缺依赖 fail-closed 回归可在设置 `WORKFLOW_HANDOFF_TOOLKIT` 为参与 toolkit 根后运行 `python "$TESTER/scripts/test-workflow-file-handoff.test.py"`；它只核对非零、原始错误、无虚构 Run 与无服务启动日志，不宣称真实角色链路通过。
 
 通过必须同时具备两宿主 dock、真实模型链路与对应 worktree 常规检查证据。入口未取得模型、宿主缺失、行为不合预期、等待超时或清理失败均非零；缺依赖即明确未验证，不以准备完成、提示词存在或最终 completed 推断通过。正常/失败均停止所属服务与进程，分别保存原始与清理错误，不调用真实关机、不连接/关闭用户服务，不启用 LAN/mDNS。
 
 ## 嵌套原生新进程恢复验收
 
-`python scripts/accept-workflow-nesting-recovery.py` 是 P29／P32／P33 的跨仓原生专项；不重复服务端旧记录／碰撞矩阵。先按上文构建当前 worktree 静态页面、`herdr-bot`、`herdr-fixture` 与 `safe_shutdown_shell`，使用独立绝对 `CARGO_TARGET_DIR`。toolkit 使用 Bun 1.4.4、当前 worktree 依赖与角色源码；已有安装版 OMP、Pi、Herdr 和两宿主只读官方状态扩展必须可用，不安装、不修改 PATH、不读取用户认证。授权模型声明及公开 CompletionTransport 的格式、能力和证据限制沿用“文件交接真实角色自动验收”；不能用受控 provider 代替真实模型。公开 completion 传输可用结构化 schema 固定 `content: string` 与 `tool_calls: [{name: string, arguments: object}]`，只约束序列化格式、不预选业务动作；原始请求／结构化结果仍须保留，错误不重试。原生 OMP 的 SessionManager.open 需要 await，且 JSONL 可以先有 title 元数据再有 session 头；读取真实身份时不能假定第一行就是 Session。原生关闭可以追加真实 `session_exit` 元数据，因此同时保留关闭前历史和确认进程退出后的恢复基线；Resume 前后完整 branch 仍须逐项相等，不能过滤业务消息掩盖重放。
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-recovery` 是 P29／P32／P33 的跨仓原生专项；不重复服务端旧记录／碰撞矩阵。先按上文构建当前 worktree 静态页面、`herdr-bot`、`herdr-fixture` 与 `safe_shutdown_shell`，使用独立绝对 `CARGO_TARGET_DIR`。toolkit 使用 Bun 1.4.4、当前 worktree 依赖与角色源码；已有安装版 OMP、Pi、Herdr 和两宿主只读官方状态扩展必须可用，不安装、不修改 PATH、不读取用户认证。授权模型声明及公开 CompletionTransport 的格式、能力和证据限制沿用“文件交接真实角色自动验收”；不能用受控 provider 代替真实模型。公开 completion 传输可用结构化 schema 固定 `content: string` 与 `tool_calls: [{name: string, arguments: object}]`，只约束序列化格式、不预选业务动作；原始请求／结构化结果仍须保留，错误不重试。原生 OMP 的 SessionManager.open 需要 await，且 JSONL 可以先有 title 元数据再有 session 头；读取真实身份时不能假定第一行就是 Session。原生关闭可以追加真实 `session_exit` 元数据，因此同时保留关闭前历史和确认进程退出后的恢复基线；Resume 前后完整 branch 仍须逐项相等，不能过滤业务消息掩盖重放。
 
 ```powershell
-python scripts/accept-workflow-nesting-recovery.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-recovery `
   --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
   --toolkit $TOOLKIT_WT --hosts omp,pi `
   --paths-file 'D:/isolated-acceptance/paths.toml' `
@@ -872,16 +882,16 @@ python scripts/accept-workflow-nesting-recovery.py `
 
 只读原生观察扩展仅记录 session_start／before_agent_start 的 PID、Session、cwd 和原生文件，不授予角色、不制造工具结果。证据包含两仓 revision／修改及锁文件身份、安装入口／二进制哈希、模型身份（无密钥）、原始用户授权、实际模型／HTTP 流量、原生历史、文件字节、前后记录哈希及持有的 OS 进程句柄退出确认。HOME／APPDATA／XDG／原生存储／命名 Herdr／定义与运行数据均独占，关闭 mDNS，持续消费 stdout／stderr；成功失败均停止并等待所属进程，原始与清理错误分开保留。任何宿主、模型、角色能力或清理失败都非零且未验证，不把启动成功、配置存在或最终状态当通过。
 
-`WORKFLOW_HANDOFF_TOOLKIT=<实际 toolkit worktree> python scripts/accept-workflow-nesting-recovery.test.py` 只验证 CLI 缺依赖时保留错误、双宿主未验证且不启动服务；不替代原生专项。常规检查仍按票据分别执行 workflow_dispatch、完整后端、前端、toolkit workflow-chat／相关原生 dock、typecheck 和全量入口。
+`WORKFLOW_HANDOFF_TOOLKIT=<实际 toolkit worktree> python "$TESTER/scripts/accept-workflow-nesting-recovery.test.py"` 只验证 CLI 缺依赖时保留错误、双宿主未验证且不启动服务；不替代原生专项。常规检查仍按票据分别执行 workflow_dispatch、完整后端、前端、toolkit workflow-chat／相关原生 dock、typecheck 和全量入口。
 
 ## 嵌套 manager 双角色真实验收
 
-`python scripts/accept-workflow-nesting-roles.py` 经本 worktree 后端、指定 toolkit 的实际角色入口、已安装 Herdr 和真实授权模型，观察嵌套 manager 的内部 `run`／`collect` 与外层 `report`。入口不安装宿主、不读用户认证、不改全局 PATH，不启用 LAN／mDNS，也不执行关机。
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-roles` 经本 worktree 后端、指定 toolkit 的实际角色入口、已安装 Herdr 和真实授权模型，观察嵌套 manager 的内部 `run`／`collect` 与外层 `report`。入口不安装宿主、不读用户认证、不改全局 PATH，不启用 LAN／mDNS，也不执行关机。
 
 先按上文构建本 worktree 静态页和后端，在 toolkit 安装缺失的 frozen 依赖。依赖根文件必须显式指定，提供 `herdr`、`pi_package`、`omp_package`、`pi_agent`、`omp_agent`；后两者分别仅只读使用 `extensions/herdr-agent-state.ts` 和 `extensions/herdr-omp-agent-state.ts`，不读取同目录的认证或配置。模型声明沿用本页的独立 `model.json`（`provider`、`model`、`baseUrl`、`apiKeyEnv`），密钥仅从显式环境名获取。公开 CompletionTransport 也可作为真实模型的文本传输，但不证明原生 provider wire 合规性。HOME／APPDATA／XDG、原生历史、业务和运行目录、命名 Herdr server、动态数值回环端口均为本次独占。
 
 ```powershell
-python scripts/accept-workflow-nesting-roles.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-roles `
   --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
   --toolkit $TOOLKIT_WT --hosts omp,pi `
   --paths-file 'D:/isolated-acceptance/paths.toml' `
@@ -893,17 +903,17 @@ python scripts/accept-workflow-nesting-roles.py `
 
 每次 manual 外报由原生 UI 展示完整载荷，driver 核对选中 Yes 后提交 Enter，并记录确认前无该次报告 HTTP、确认后请求与预览载荷一致；聊天文字和业务批准不作发送批准。旧执行的确认框明确取消后，须没有该会话的 report HTTP。入口在内部未完成、内部全完成但未 finish、finish 后、进展 false、最终 true、父 manager 显式验收后分别检查公开事实。检查实际文件字节、原生历史／三工具／双指引，以及真实 Herdr 的目标 Tab 精确关闭、内部保留 Tab 不级联关闭；不凭最终 completed 或 observer 身份授予授权。
 
-`--evidence-dir` 必须不存在。原生运行状态使用原子创建的独占短 Temp 根，避免 Windows 已安装宿主的命名管道／存储路径长度限制；退出后完整复制到证据目录的逐宿主子目录，原始短根保留且记录为 `nativeRoot`，不把临时目录删除当作进程退出。成功或失败均保留 `evidence.json`、逐宿主独占子目录、两仓源码 revision／修改身份、锁文件／二进制／已安装宿主身份、模型／HTTP 原始请求结果、用户输入、原生历史、文件字节和分开的清理错误。模型配置在退出时删除。缺模型、宿主、能力、清理失败或行为不符均非零且未验证，不 skip，不重试业务或模型决策。`python scripts/accept-workflow-nesting-roles.test.py` 仅检查缺授权模型时的 CLI fail-closed 行为，不能代替真实专项通过。
+`--evidence-dir` 必须不存在。原生运行状态使用原子创建的独占短 Temp 根，避免 Windows 已安装宿主的命名管道／存储路径长度限制；退出后完整复制到证据目录的逐宿主子目录，原始短根保留且记录为 `nativeRoot`，不把临时目录删除当作进程退出。成功或失败均保留 `evidence.json`、逐宿主独占子目录、两仓源码 revision／修改身份、锁文件／二进制／已安装宿主身份、模型／HTTP 原始请求结果、用户输入、原生历史、文件字节和分开的清理错误。模型配置在退出时删除。缺模型、宿主、能力、清理失败或行为不符均非零且未验证，不 skip，不重试业务或模型决策。`python "$TESTER/scripts/accept-workflow-nesting-roles.test.py"` 仅检查缺授权模型时的 CLI fail-closed 行为，不能代替真实专项通过。
 
 ## 共享 Bot 指南材料的启用检查
 
-真实模型修订专项为 `python scripts/accept-workflow-nesting-revise.py --backend <本 worktree 后端> --toolkit <toolkit worktree> --hosts declared --paths-file <独占依赖配置> --model-config <专用授权模型声明> --evidence-dir <不存在的独占目录>`；依赖声明、混合宿主／双宿主行为、四次 Task／Map 有／无材料矩阵、专属 Task 配对、修订负例及证据边界见[独立修订验收运行说明](../revise-bot-guides.md#真实模型跨仓修订验收)。设置 `WORKFLOW_HANDOFF_TOOLKIT` 后运行 `python scripts/accept-workflow-nesting-revise.test.py` 仅验证缺后端／模型时非零、覆盖保持未验证且不启动宿主，不替代真实业务通过。
+真实模型修订专项为 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-revise --backend <本 worktree 后端> --toolkit <toolkit worktree> --hosts declared --paths-file <独占依赖配置> --model-config <专用授权模型声明> --evidence-dir <不存在的独占目录>`；依赖声明、混合宿主／双宿主行为、四次 Task／Map 有／无材料矩阵、专属 Task 配对、修订负例及证据边界见[独立修订验收运行说明](../revise-bot-guides.md#真实模型跨仓修订验收)。设置 `WORKFLOW_HANDOFF_TOOLKIT` 后运行 `python "$TESTER/scripts/accept-workflow-nesting-revise.test.py"` 仅验证缺后端／模型时非零、覆盖保持未验证且不启动宿主，不替代真实业务通过。
 
 独立修订入口为 `revise-bot-guides`，公开定义／五节点材料接线检查为 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch revise_bot_guides`，安全进程烟测为 `python scripts/check-revise-bot-guides.py --target-dir <本 worktree 独立 target>`。调用接口、稳定专属 Task `task-revise-bot-baseline-v1`（22 配对 owner）、原位切换及证据边界见[独立修订运行说明](../revise-bot-guides.md)；不强制修改目标 Task.prompt，旧独立入口及无关 Map 不变。
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch shared_business` 经公开定义保存／读取、预检和实际受控宿主派发，使用真实临时 baseline／text／handoff，核对材料直接绑定、不注入正文或三份能力指南、Task／Map 两类目标三字段一次保存、完整读回及真实 stale revision 拒绝。此入口不以提示词快照证明模型遵循职责；P40–P45 的真实创建／修订与六个既有 Task 的独立 Chat／workflow 配对验收仍分别归 21／22，外层修改归 24。材料协议、稳定 Task ID 与所有权见[共同业务材料契约](../business-materials.md)。完成前仍执行一次 `node scripts/test-backend.mjs`，使用当前 worktree 静态页面及独立 CARGO_TARGET_DIR，不运行用户业务或生产迁移。
 
-创建链真实业务矩阵入口为 `python scripts/accept-workflow-nesting-create.py`，必须显式提供 `--backend`、`--toolkit`、`--hosts declared`（或完整 `omp,pi`）、`--paths-file`、`--model-config` 和独占 `--evidence-dir`。安装依赖、独立业务技能根、完整复跑命令及证据边界见[真实创建与配对验收](../create-bot-wrapper.md#真实创建与配对验收入口)。缺构建与重复证据目录的 CLI 回归为 `WORKFLOW_HANDOFF_TOOLKIT=$TOOLKIT_WT python scripts/accept-workflow-nesting-create.test.py`；该回归不认领真实模型、混合宿主或保存安全通过。
+创建链真实业务矩阵入口为 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-create`，必须显式提供 `--backend`、`--toolkit`、`--hosts declared`（或完整 `omp,pi`）、`--paths-file`、`--model-config` 和独占 `--evidence-dir`。安装依赖、独立业务技能根、完整复跑命令及证据边界见[真实创建与配对验收](../create-bot-wrapper.md#真实创建与配对验收入口)。缺构建与重复证据目录的 CLI 回归为 `WORKFLOW_HANDOFF_TOOLKIT=$TOOLKIT_WT python "$TESTER/scripts/accept-workflow-nesting-create.test.py"`；该回归不认领真实模型、混合宿主或保存安全通过。
 
 最小原生烟测可针对 Pi 的 `task-18e31d34797f1464-3`：将当前 Task.prompt 与明确的独立 Chat 委托组合为测试拥有的 `request.md`，提供字面 `source.txt`，只授权当前隔离目录的新 `text.txt`、`handoff.md`。安装版入口为 `node <pi-package>/dist/bundle/cli.js --offline --no-extensions --no-mcp --no-skills --skill <writing-for-agents/SKILL.md> --no-context-files --no-prompt-templates --no-themes --model <专用provider/model> --thinking off --mode json --print @request.md`。使用本节上文的专用模型配置或公开 CompletionTransport，隔离 HOME／APPDATA／XDG／PI_CODING_AGENT_DIR 与原生 sessions；传输的公开 completion 上下文必须覆盖整个子进程等待期，不能先退出宿主调用再留后台线程访问已失效桥接。HTTP handler 线程不继承宿主 completion 调用上下文；将请求排队交给拥有该上下文的主线程执行，再把结果返回 handler，避免 `Missing session/run/name`。测试不读取用户凭据，不复用用户 Chat，也不启动 daemon。
 
@@ -913,7 +923,7 @@ python scripts/accept-workflow-nesting-roles.py `
 
 ## 创建 Task＋Bot 外层真实兼容验收
 
-`python scripts/accept-workflow-nesting-outer.py --backend <本 worktree herdr-bot.exe> --toolkit <toolkit worktree> --hosts declared --paths-file <专用已安装依赖声明> --model-config <明确授权模型声明> --evidence-dir <不存在的独占目录>` 拥有 Task 创建者／既有 Task.prompt 优化者的独立 Chat 与实际外层 workflow 配对，以及旧两个独立创建入口兼容和未迁移 Map 范围保持。运行方式、完整 Suite/MCP 隔离、独立业务全文确认与报告发送确认、父子真实交接及证据边界见[包装能力运行说明](../create-bot-wrapper.md#真实外层与旧独立入口验收)。必须保留声明宿主，不能将原混合宿主改成单一 Pi 迁就 runner；`--hosts omp,pi` 要求两套完整场景各自通过。它不认领六共享 Task 独立配对或规划选择，也不能由组件、受控 provider、最终 completed 或全局回归代替。CLI fail-closed 回归设置 `OUTER_ACCEPTANCE_TOOLKIT` 后执行 `python scripts/accept-workflow-nesting-outer.test.py`；它仅验证拒绝边界，不是专项真实业务通过。
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-outer --backend <本 worktree herdr-bot.exe> --toolkit <toolkit worktree> --hosts declared --paths-file <专用已安装依赖声明> --model-config <明确授权模型声明> --evidence-dir <不存在的独占目录>` 拥有 Task 创建者／既有 Task.prompt 优化者的独立 Chat 与实际外层 workflow 配对，以及旧两个独立创建入口兼容和未迁移 Map 范围保持。运行方式、完整 Suite/MCP 隔离、独立业务全文确认与报告发送确认、父子真实交接及证据边界见[包装能力运行说明](../create-bot-wrapper.md#真实外层与旧独立入口验收)。必须保留声明宿主，不能将原混合宿主改成单一 Pi 迁就 runner；`--hosts omp,pi` 要求两套完整场景各自通过。它不认领六共享 Task 独立配对或规划选择，也不能由组件、受控 provider、最终 completed 或全局回归代替。CLI fail-closed 回归设置 `OUTER_ACCEPTANCE_TOOLKIT` 后执行 `python "$TESTER/scripts/accept-workflow-nesting-outer.test.py"`；它仅验证拒绝边界，不是专项真实业务通过。
 
 ## softlink（符号链接）手动验收
 
@@ -940,7 +950,7 @@ try {
 从参与的 Herdr worktree 根运行：
 
 ```sh
-python scripts/accept-node-approval-report.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-node-approval-report --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"
 ```
 
 所有路径必须绝对，证据目录不得存在。`CARGO_TARGET_DIR` 必须为本 worktree 独占绝对目录，`--backend` 指向其中的 `debug/herdr-bot.exe`。先在两个参与 worktree 以 Bun 1.4.4 frozen-lock 准备依赖；入口不安装宿主、不扫描凭据或读取用户 Chat。paths 显式声明已安装 `herdr`、`omp_package`、`pi_package`、`omp_state_extension`、`pi_state_extension`。机械场景的 model-config 必须显式为 `{"mode":"controlled","scope":"ticket-10-native-mechanics"}`；它只授权受控 provider 选择工具，不证明真实模型判断。真实模型职责使用其独立专项，不以本入口结果替代。
@@ -949,7 +959,7 @@ python scripts/accept-node-approval-report.py --herdr-bot-worktree "$HERDR_BOT_W
 
 专项复用既有原生安装、SessionManager、独占 Herdr、透传 UI observer 和外部 CLI recorder。两宿主真实 TUI 的 Yes 选中画面、确认原文、原生返回、公开 Run／报告、manager 原生输入、完整 HTTP 与外部调用分别留证。覆盖两模式无报告／无产物批准、批准前后四类自由报告、报告与批准正交、真实 Windows deny-delete 持久化故障、重复与实际重叠调用、chief 原生委派／报告确认。并发用例通过两个实际 native approve 到达透传 HTTP 门闩再共同放行，5 秒仍只有一个到达时保持失败，不能用串行重复补足。存储故障按独占记录内容定位，不固定临时文件名。并发到达与放行时间使用 `time.perf_counter()` 高分辨率单调时钟，避免 Windows 粗粒度时钟把先后事件记成同刻；第二宿主进程在原生历史的真实 cwd 启动并核对 switch 未取消。chief 使用交付的 connect-bot 扩展与独占后端配置真实登记，公开 current 达到 registered 后才请求委派，不伪造登记事件。
 
-无自动行为窗口用单调时钟观察 46 秒，超过 30 秒请求及 10 秒在线＋30 秒保留＋5 秒维护上界；不修改产品确认／超时／重试策略。每项 coverage 独立输出字面预期、原始证据和 verified 状态；部分宿主、任何检查／覆盖缺失或清理失败均非零，原始错误与清理错误分开保留。CLI 自测 `python scripts/accept-node-approval-report.test.py` 仅证明 fail-closed 与旧证据保护，不代替 S2。
+无自动行为窗口用单调时钟观察 46 秒，超过 30 秒请求及 10 秒在线＋30 秒保留＋5 秒维护上界；不修改产品确认／超时／重试策略。每项 coverage 独立输出字面预期、原始证据和 verified 状态；部分宿主、任何检查／覆盖缺失或清理失败均非零，原始错误与清理错误分开保留。CLI 自测 `python "$TESTER/scripts/accept-node-approval-report.test.py"` 仅证明 fail-closed 与旧证据保护，不代替 S2。
 
 ## 网络护栏与手动验收
 

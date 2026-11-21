@@ -1,6 +1,16 @@
 # Initial Suite native acceptance
 
-`python scripts/accept-initial-suites.py` owns P11's exploration OMP directory-set,
+黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+
+```powershell
+$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
+$BOT = 'E:/Developer/myhub/herdr-bot'
+$env:HERDR_BOT_WORKTREE = $BOT
+```
+
+验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-initial-suites` owns P11's exploration OMP directory-set,
 exploration Pi explicit-skill and implementation OMP directory-set scenarios, P42's actual
 `hyper-auto-coding` command, and P44's complete two-repository delivery manifest
 and public-entrypoint consistency. The approved interfaces are isolated
@@ -26,7 +36,7 @@ Set-Location $HERDR_BOT_WT
 bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-paths
-python scripts/accept-initial-suites.test.py
+python "$TESTER/scripts/accept-initial-suites.test.py"
 ```
 
 Supply a **dependency-only** paths file. Each root is an existing read-only
@@ -65,7 +75,7 @@ be ancestors of their respective current source revisions. This evidence is not
 a new workflow scheduling gate or a claim that unrelated checks passed.
 
 ```powershell
-python scripts/accept-initial-suites.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-initial-suites `
   --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
   --herdr-bot-base "$HERDR_BOT_BEFORE_SUITES" --toolkit-base "$TOOLKIT_BEFORE_SUITES" `
   --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `

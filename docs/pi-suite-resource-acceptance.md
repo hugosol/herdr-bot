@@ -1,6 +1,16 @@
 # Pi Suite resources and native MCP acceptance
 
-`python scripts/accept-suite-pi-resources.py` owns the Pi resource/MCP matrix at
+黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+
+```powershell
+$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
+$BOT = 'E:/Developer/myhub/herdr-bot'
+$env:HERDR_BOT_WORKTREE = $BOT
+```
+
+验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-resources` owns the Pi resource/MCP matrix at
 S2 (public HTTP), S3 (deployment/startup), and S4 (native agents launched by real
 Herdr). It also consumes the same selected declaration with installed OMP as a
 cross-host resource control; that does not replace OMP's separately owned tests.
@@ -45,7 +55,7 @@ arguments must match what the installed PATH launchers actually load. There is
 no fallback to another worktree, installed toolkit or user deployment.
 
 ```powershell
-python scripts/accept-suite-pi-resources.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-resources `
   --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
   --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
   --paths-file "$ISOLATED_PATHS" --scenario all --evidence-dir "$EVIDENCE_DIR"
@@ -101,7 +111,7 @@ The runner's S3 fail-closed regression does not launch agents:
 
 ```powershell
 $env:SUITE_ACCEPTANCE_TOOLKIT = $TOOLKIT_WT
-python scripts/accept-suite-pi-resources.test.py
+python "$TESTER/scripts/accept-suite-pi-resources.test.py"
 ```
 
 From the herdr-bot worktree, record each result separately:

@@ -1,5 +1,15 @@
 # 为既有目标包装完整 Bot
 
+黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+
+```powershell
+$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
+$BOT = 'E:/Developer/myhub/herdr-bot'
+$env:HERDR_BOT_WORKTREE = $BOT
+```
+
+验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+
 公开能力为 `create-bot-wrapper` Bot，唯一目标是 `create-bot-wrapper.json` Map。使用现有 scheduler 的定义读取、Run 预检与发起入口，或由外层 Map 的节点引用这个 Bot；不增加产品入口。它与旧的“创建 Task＋Bot”流程不同：目标必须已经存在，不能由本流程新建、修改或执行。仅选定外层 `create-bot-task-workflow--bc-61ce48b80a4c.json` 已改为调用此能力，其他 Map 不自动替换；独立 `create-bot-task` 和 `create-bot` Bot 的职责及 Task 绑定保持原样。本文件不表示用户部署已迁移。
 
 ## 创建分支表示的交付边界
@@ -109,12 +119,12 @@ Task 创建者归 24；通用优化者按业务分支划分覆盖，24 负责 Ta
 
 ## 真实外层与旧独立入口验收
 
-`python scripts/accept-workflow-nesting-outer.py` 是外层兼容专项，唯一拥有 Task 创建者／通用优化者的 Task.prompt 直接保存分支的独立 Chat 与实际外层 workflow 配对，以及旧 `create-bot-task`／`create-bot` 独立入口。它不重跑包装能力六个共享 Task 的独立配对，不认领规划选择，也不把定义接线回归当业务通过。
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-outer` 是外层兼容专项，唯一拥有 Task 创建者／通用优化者的 Task.prompt 直接保存分支的独立 Chat 与实际外层 workflow 配对，以及旧 `create-bot-task`／`create-bot` 独立入口。它不重跑包装能力六个共享 Task 的独立配对，不认领规划选择，也不把定义接线回归当业务通过。
 
 先按[测试指引](agents/testing.md)构建当前 worktree 的页面、`herdr-bot`、`herdr-fixture`、`herdr-paths` 和 `safe_shutdown_shell`，使用独立绝对 `CARGO_TARGET_DIR`；toolkit 使用其 worktree 的 Bun 1.4.4/frozen lock。依赖必须已安装。依赖文件是专用 `[roots]` TOML：`herdr`、`pi_package`、`omp_package`、`pi_agent`、`omp_agent`、`wayfinder`、`wayfinder_skills`、`pi_extensions`、`codebase_memory_mcp`；agent 根只读取明确的 Herdr 状态扩展，不读取用户认证或 settings。`native_shell` 可显式指向已安装的 Git Bash。不要使用用户业务 paths 或默认同级 checkout。源 Suite／固定扩展保持选择与职责，仅在独占部署中重定位其资源、connect-bot/workflow-chat 的回环端点及 model-cost 存储；授权验收模型另追加为 `probe`，不会覆盖原模型映射。
 
 ```powershell
-python scripts/accept-workflow-nesting-outer.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-outer `
   --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
   --toolkit $TOOLKIT_WT --hosts declared `
   --paths-file 'D:/isolated-acceptance/outer-paths.toml' `
@@ -130,16 +140,16 @@ python scripts/accept-workflow-nesting-outer.py `
 
 独占 HOME/APPDATA/XDG/原生存储、命名 Herdr、业务定义和运行目录；只用动态数值回环、关闭 mDNS，不执行真实关机。Suite 的真实 codebase-memory-mcp 保留，但可选 UI 关闭；已安装二进制必须支持公开 `CBM_RUNTIME_DIR`，并使用测试拥有的 owner-private runtime、cache 和 allowed-root，绝不连接用户 daemon。正常与失败均停止、等待并确认所有所属进程退出（包含脱离 stdio 客户端的所属 MCP daemon），原始验证错误和清理错误分开记录；隔离 credential-bearing models 文件会移除。回环 HTTP observer 对真实 Task `PUT` 与读取／创建请求一样原样转发方法、正文和状态，不自行代替服务返回；本地传输回归只证明透明转发，不充当优化业务通过。原生 turn 失败时另用公开 `herdr agent read` 保存所属 pane 的真实近期终端，原错误与捕获错误分别保留；不补发 prompt、Enter 或改变业务状态。缺任何宿主、授权模型、必要 Suite 能力、隔离或清理条件均保持未验证且非零。
 
-PowerShell 中先设置 `$env:OUTER_ACCEPTANCE_TOOLKIT = $TOOLKIT_WT`，再执行 `python scripts/accept-workflow-nesting-outer.test.py`；这是 CLI fail-closed 回归，仅证明缺后端不宣称通过、已有证据不可覆盖；不证明上述真实业务已通过。运行说明描述可复跑入口及其边界，不是当前部署的成功声明；结果仅以实际本次逐覆盖项证据为准。
+PowerShell 中先设置 `$env:OUTER_ACCEPTANCE_TOOLKIT = $TOOLKIT_WT`，再执行 `python "$TESTER/scripts/accept-workflow-nesting-outer.test.py"`；这是 CLI fail-closed 回归，仅证明缺后端不宣称通过、已有证据不可覆盖；不证明上述真实业务已通过。运行说明描述可复跑入口及其边界，不是当前部署的成功声明；结果仅以实际本次逐覆盖项证据为准。
 ## 真实创建与配对验收入口
 
-`python scripts/accept-workflow-nesting-create.py` 使用实际授权模型、已安装 Herdr 与 OMP／Pi，经公开独立 Chat、Run 和定义 HTTP 入口验收。`--hosts declared` 保留共享 Task 的实际混合宿主：表达优化者为 Pi，三个指南编写者和独立通用替换者为 OMP；创建图两脚本节点没有 Chat。不得为适配 runner 全改 Pi。`--hosts omp,pi` 另对两宿主各执行完整矩阵，任一失败不可由另一成功抵消。此入口不安装宿主、不改全局 PATH、不读取用户认证，不连接现有 Chat 或 daemon。
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-create` 使用实际授权模型、已安装 Herdr 与 OMP／Pi，经公开独立 Chat、Run 和定义 HTTP 入口验收。`--hosts declared` 保留共享 Task 的实际混合宿主：表达优化者为 Pi，三个指南编写者和独立通用替换者为 OMP；创建图两脚本节点没有 Chat。不得为适配 runner 全改 Pi。`--hosts omp,pi` 另对两宿主各执行完整矩阵，任一失败不可由另一成功抵消。此入口不安装宿主、不改全局 PATH、不读取用户认证，不连接现有 Chat 或 daemon。
 
 ```powershell
 $env:CARGO_TARGET_DIR = 'D:/isolated-build/create-acceptance-target'
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --example safe_shutdown_shell
-python scripts/accept-workflow-nesting-create.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-create `
   --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
   --toolkit $TOOLKIT_WT --hosts declared `
   --paths-file 'D:/isolated-dependencies/create-paths.toml' `
@@ -162,7 +172,7 @@ paths 文件为验收专属 TOML，`[roots]` 明确声明已安装的 `herdr`、
 
 证据目录必须不存在，由 runner 独占创建。HOME／APPDATA／XDG、原生存储、临时目录、命名 Herdr、业务定义和运行目录均隔离，动态数值回环后端关闭 mDNS。原生存储使用额外独占短路径避免 Windows 历史文件长路径，结束后将不含凭据的副本归档到证据目录。持续消费 stdout／stderr，成功与失败均停止并等待所属进程，分别保存原错误和清理错误。证据包括两仓根／revision／修改身份、锁文件／产物身份、已安装宿主／OS 进程、原始输入／批准、模型与工具结果、HTTP、原生历史、实际文件字节、只读运行事实和逐覆盖项结论。缺真实依赖、模型授权、实际消费或清理成功时非零，所有未完成项保持未验证。
 
-CLI fail-closed 回归：设置 `WORKFLOW_HANDOFF_TOOLKIT=$TOOLKIT_WT`，运行 `python scripts/accept-workflow-nesting-create.test.py`。它只检查缺构建／重复证据目录不会变成成功或启动服务，不证明实际业务矩阵通过。真实矩阵结果以运行保存的原始证据为准，本使用说明本身不宣称通过。
+CLI fail-closed 回归：设置 `WORKFLOW_HANDOFF_TOOLKIT=$TOOLKIT_WT`，运行 `python "$TESTER/scripts/accept-workflow-nesting-create.test.py"`。它只检查缺构建／重复证据目录不会变成成功或启动服务，不证明实际业务矩阵通过。真实矩阵结果以运行保存的原始证据为准，本使用说明本身不宣称通过。
 
 ## 验证入口与证据边界
 
