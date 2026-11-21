@@ -328,7 +328,7 @@ Pi Suite 使用原生 `--no-skills` 和逐项 `--skill`，不关闭 builtin MCP�
 
 ### 宿主适用配置与集中 MCP
 
-Pi Suite 必须明确保存顶层 `codemode: "on"` 或 `"only"`。勾选 **Codemode only** 保存 `only`，取消保存明确的 `on`，不表示关闭 codemode 或继承全局 only。Pi 独有 `prompts` 与 `codemode`，OMP 独有 `lsp`；另一宿主的字段即使为空也拒绝，不静默跳过。编辑器只显示当前 harness 的配置；不再接受旧 `agents`、宿主键资源对象或嵌套 `pi` 字段。
+Pi Suite 必须明确保存顶层 `codemode: "on"` 或 `"only"`。勾选 **Codemode only** 保存 `only`，取消保存明确的 `on`，不表示关闭 codemode 或继承全局 only。Pi 独有 `prompts` 与 `codemode`，OMP 独有 `lsp` 与 `dap`；另一宿主的字段即使为空也拒绝，不静默跳过。编辑器只显示当前 harness 的配置；不再接受旧 `agents`、宿主键资源对象或嵌套 `pi` 字段。
 
 MCP 连接仍由维护者在集中文件编辑，界面只选择 ID，不新增 MCP 编辑平台或进程 manager。例如 `mcp_file` 内容：
 
@@ -348,6 +348,31 @@ MCP 的 `command` 支持 `${roots.name}`；`./`、`../` 等路径式命令及 `c
 
 配置引用或资源发布失败拒绝本次启动；有效但不可达的服务器由 OMP 显示连接中／未连接等原生状态。Herdr 接受 Chat 不表示 MCP 已可用，不增加“所有服务器就绪”门禁。实际交付入口的专项自动验收见[原生 MCP 测试指引](agents/testing.md#omp-suite-原生-mcp-真实消费验收)。
 
+### OMP Suite 调试器（DAP）
+
+集中定义由 `[suites].dap_file` 指定，默认 `meta-data/dap.json`。维护者编辑文件，OMP Suite 仅保存 `dap: ["codelldb"]` 引用；Pi 不接受 `dap`。列表只显示调试器名称，展开详情查看完整语言、说明和原生配置。语言来自 `config.languages`，是适配器声明，不是逐语言实测保证。旧 OMP Suite 省略 `dap` 等同空数组；交付的「代码实现 · OMP」（`code-implementation-omp`）选择 CodeLLDB，使用前需配置本机 `roots.codelldb`。其他 Suite 不自动勾选。
+
+```json
+{"adapters":{"codelldb":{"name":"CodeLLDB","description":"Windows x64 Rust；PDB 下 enum 显示有限。","config":{"command":"${roots.codelldb}/extension/adapter/codelldb.exe","args":[],"connectMode":"stdio","languages":["c","cpp","rust","zig"],"launchDefaults":{"stopOnEntry":true,"sourceLanguages":["rust"]}}}}}
+```
+
+`name`、`description` 是目录展示信息，只有 `config` 进入 OMP 原生 `dap.json`。适配器 `command` 支持 `${roots.*}`，带 `./`、`../`、`.\\`、`..\\` 的路径以**集中 DAP 文件父目录**解析；绝对路径保持原意，裸命令由 PATH 查找。参数及 launch/attach defaults 保持原生语义，不猜测哪些字符串是路径，也不展开原生 `${port}`。使用绝对路径或明确根引用可避免 Chat cwd 改变带来的歧义。
+
+每次发起或需要新进程的来源 Task 恢复重新装配所选定义，在本次独占目录生成 `dap.json`，通过 `--plugin-dir` 注入；没有 LSP 声明时也生效。有 LSP 时共用同一插件目录。不会写入项目或用户配置，不修改原生覆盖优先级，也不是调试器白名单。集中定义删除后保留失效引用供显式修正；保存、选用与装配重新校验，不静默丢弃。
+
+**已配置不等于调试可用。** OMP 默认开放 `debug`（`debug.enabled: true`），Suite 不负责开启或关闭该工具。文件存在不能证明运行库完整、协议兼容或目标含调试符号；运行期失败由 OMP 报告，不自动下载安装或修改 PATH。不选调试器只是不追加配置，原生调试能力仍保留。
+
+#### Windows Rust / CodeLLDB 安装与使用
+
+1. 从 [CodeLLDB v1.12.3 发布页](https://github.com/vadimcn/codelldb/releases/tag/v1.12.3) 下载完整 `codelldb-win32-x64.vsix`，不是 bootstrap 包。按 ZIP 解压，保留整个 `extension` 目录及其 LLDB、DLL 和脚本，不要只复制 exe。
+2. 在本机根配置 `[roots]` 中设置 `codelldb = 'E:/实际解压目录'`，使 `${roots.codelldb}/extension/adapter/codelldb.exe` 指向真实程序。`paths.example.toml` 仅给出注释示例，不代表已安装。修改根配置后重启服务。
+3. 打开 OMP Suite，选择 CodeLLDB 并保存。使用该 Suite 发起新的 Chat（已有进程不热更新）。
+4. 用带调试符号的 Rust 构建产物，例如 `cargo build` 后的 `target/debug/app.exe`。明确让 OMP 使用 `adapter: "codelldb"`，以该 exe 为 `program`，在源码设置断点，再继续、单步和读取变量；不是以 `.rs` 文件充当可执行程序。
+
+配置链路的定向检查为 `cargo test --manifest-path backend/Cargo.toml --test suites --test suite_assembly dap_`；真实页面选择、详情、保存刷新和失效引用修复由 `npm --prefix frontend run test:browser:build -- suiteDap.spec.ts --workers=1` 验证。两者不启动 CodeLLDB，不能代替下面的原生调试验收。
+
+交付配置覆盖 `args: []` 与 `connectMode: "stdio"`：CodeLLDB 不传端口参数时使用 stdio，不能保留 OMP 默认 `--port 0` 却按 stdio 连接。`launchDefaults.terminal: "console"` 使用内部控制台，避免无交互终端的 OMP 调试会话尝试附着 Windows 控制台而失败。Rust MSVC 的 PDB 可用，但 enum 解码存在限制。本次交付支持范围为 Windows x64 CodeLLDB/Rust；目录虽可声明其他适配器，未因此验证其他语言，也未接入 Java。验收需实际命中源码断点、单步并读取预期变量；目录显示、路径存在和启动受理均不替代该证据。
+
 ### Task 单 Suite 选择与引用保护
 
 Task 编辑第二步提供 **Suite（至多一个）** 单选，只提供当前 agent 兼容的 Suite 和“不选 Suite”。多个 Task 可以引用同一个 Suite；引用保存为 Task 的可选 `suite` 字符串（稳定 Suite ID），不复制 Suite 内容。`null` 或省略表示明确不选，数组、多选、不存在的 ID、空字符串或不兼容的选择会被直接 HTTP 拒绝。
@@ -360,7 +385,7 @@ Task 编辑第二步提供 **Suite（至多一个）** 单选，只提供当前 
 
 `GET /api/tasks` 的 `options.suites` 提供当前 Suite 定义，`options.mcp` 提供集中 ID 清单；Task POST/PUT 的 `suite` 字段与读取字段一致。引用校验失败返回 `400 task-suite-invalid` 和具体原因。读取失效 Task 本身仍成功，以便保留并显式修正引用。
 
-公开 HTTP 入口：`GET /api/suites` 返回 `{suites, mcp, fixedExtensions}`（`mcp` 为集中 ID 清单，`fixedExtensions` 为只读固定目录，条目含 `id`、`label`、`agent`、`kind: "fixed"`、解析后的 `entrypoint` 和 `roles`，角色值为 `standalone`／`manager`／`node`）；`POST /api/suites` 创建；`GET /api/suites/{id}` 返回 `{suite}`；`PUT /api/suites/{id}` 修改同一 ID；`DELETE /api/suites/{id}` 删除。创建、更新与删除成功均返回相同的 `{suites, mcp, fixedExtensions}` 列表形状。保存请求体使用上例的单个 Suite 对象，不接受查询参数或未知字段，删除不接受请求体。错误以 JSON `code` / `message` 返回；只有成功写入权威文件才显示已保存。
+公开 HTTP 入口：`GET /api/suites` 返回 `{suites, mcp, dap, fixedExtensions}`（`mcp` 为集中 ID 清单，`dap` 为调试器详情数组，每项含 `id`、`name`、`description`、原生 `config`；`fixedExtensions` 为只读固定目录，条目含 `id`、`label`、`agent`、`kind: "fixed"`、解析后的 `entrypoint` 和 `roles`，角色值为 `standalone`／`manager`／`node`）；`POST /api/suites` 创建；`GET /api/suites/{id}` 返回 `{suite}`；`PUT /api/suites/{id}` 修改同一 ID；`DELETE /api/suites/{id}` 删除。创建、更新与删除成功均返回相同的 `{suites, mcp, dap, fixedExtensions}` 列表形状。保存请求体使用上例的单个 Suite 对象，不接受查询参数或未知字段，删除不接受请求体。错误以 JSON `code` / `message` 返回；只有成功写入权威文件才显示已保存。
 
 定义管理的可复跑隔离验收为 `cargo test --manifest-path backend/Cargo.toml --test suites` 与 `npm --prefix frontend run test:browser:build -- suites.spec.ts --workers=1`。Task 引用完整性验收为 `cargo test --manifest-path backend/Cargo.toml --test suite_references` 与 `npm --prefix frontend run test:browser:build -- suiteReferences.spec.ts --workers=1`，覆盖单选及复用、集中引用失效后的读回／保存／启动拒绝、删除保护及受控并发请求；启动负例使用独占 Herdr 记录夹具确认没有外部启动调用，不宣称原生资源消费通过。浏览器用例独占临时配置、声明、动态回环端口和后端进程，真实操作页面并独立读取文件；包含外部修改及实际进程重启，不需要用户凭据或原生 agent 启动。它们证明定义管理和模式持久化，不证明原生 agent 已消费资源。
 

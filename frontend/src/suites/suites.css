@@ -65,6 +65,19 @@
 .suites-choice input { width: 18px; height: 18px; flex: none; accent-color: var(--suite-ink); }
 .suites-extensions { min-width: 0; }
 .suites-extension-path { display: block; color: var(--nier-resource); font-family: var(--nier-code-font); font-size: 12px; line-height: 1.65; margin-top: 3px; overflow-wrap: anywhere; }
+.suites-dap-row { position: relative; border-top: 1px solid var(--suite-line); }
+.suites-dap-row .suites-choice { margin-inline-end: 4.5rem; }
+.suites-dap-row summary { position: absolute; inset: 0 0 auto auto; min-height: 44px; align-content: center; padding-inline: 4px; cursor: pointer; }
+.suites-dap-row summary:focus-visible { outline: 2px solid var(--suite-accent); outline-offset: 3px; }
+.suites-dap-detail { margin-bottom: 12px; padding: 12px; background: var(--suite-ground); overflow-wrap: anywhere; }
+.suites-dap-detail p { margin: 0 0 12px; }
+.suites-dap-detail dl { margin: 0; }
+.suites-dap-detail dt { color: var(--suite-muted); font-size: 13px; }
+.suites-dap-detail dd { margin: 0; }
+.suites-dap-detail dd + dt { margin-top: 8px; }
+.suites-dap-detail pre { white-space: pre-wrap; margin-bottom: 0; }
+.suites-dap-missing { width: 100%; margin: 0; }
+.suites-panel .suites-primary:disabled { color: var(--suite-muted); background: var(--suite-raised); border-color: var(--suite-line); }
 .suites-section fieldset { margin-top: 16px; }
 .suites-section fieldset > legend { color: var(--nier-detail-label); font-size: 13px; font-weight: 600; }
 .suites-danger { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; }

@@ -41,7 +41,7 @@ test('P3 manages an unreferenced Suite through the main interface and authoritat
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.getByRole('button', { name: '创建 Suite', exact: true }).click()
   await expect(fixed).toBeVisible()
-  expect(Object.keys(catalog).sort()).toEqual(['fixedExtensions', 'mcp', 'suites'])
+  expect(Object.keys(catalog).sort()).toEqual(['dap', 'fixedExtensions', 'mcp', 'suites'])
   await expect(page.getByRole('group', { name: 'OMP 共享可选扩展', exact: true })).toHaveCount(0)
   await expect(page.getByRole('checkbox', { name: /connect-bot/ })).toHaveCount(0)
   await page.getByLabel('Suite ID', { exact: true }).fill('review-tools')
@@ -53,7 +53,7 @@ test('P3 manages an unreferenced Suite through the main interface and authoritat
   await page.getByLabel('LSP 声明（JSON）', { exact: true }).fill('{"rust":{"command":"rust-analyzer","fileTypes":["rs"]}}')
   await page.getByLabel('catalog-search', { exact: true }).check()
   await page.getByRole('button', { name: '保存 Suite', exact: true }).click()
-  const expected = { id: 'review-tools-omp', name: '评审工具 · OMP', harness: 'omp', skills: ['${roots.skills}/review-collection', '../shared/research'], extensions: ['${roots.toolkit}/extensions/review'], lsp: { rust: { command: 'rust-analyzer', fileTypes: ['rs'] } }, mcp: ['catalog-search'] }
+  const expected = { id: 'review-tools-omp', name: '评审工具 · OMP', harness: 'omp', skills: ['${roots.skills}/review-collection', '../shared/research'], extensions: ['${roots.toolkit}/extensions/review'], lsp: { rust: { command: 'rust-analyzer', fileTypes: ['rs'] } }, mcp: ['catalog-search'], dap: [] }
   await expect(list.getByRole('button', { name: '评审工具 · OMP · review-tools-omp', exact: true })).toBeVisible()
   expect(JSON.parse(fs.readFileSync(definitions, 'utf8'))).toEqual({ suites: [expected] })
   expect(fs.readFileSync(mcp, 'utf8')).toBe(catalogBytes)
@@ -105,7 +105,7 @@ test('P4 re-reads and restarts from the same externally maintained Suite authori
   await page.getByRole('button', { name: '外部独立定义 · OMP · external-tools-omp', exact: true }).click()
   await expect(page.getByLabel('OMP 技能集合目录（每行一个路径）', { exact: true })).toHaveValue('../skills/independent')
   expect(fs.readFileSync(definitions, 'utf8')).toBe(external)
-  const edited = { id: 'external-tools-omp', name: '手工修改后的定义 · OMP', harness: 'omp', skills: ['../skills/changed'], extensions: [], lsp: { rust: { command: 'manual-rust-analyzer' } }, mcp: [] }
+  const edited = { id: 'external-tools-omp', name: '手工修改后的定义 · OMP', harness: 'omp', skills: ['../skills/changed'], extensions: [], lsp: { rust: { command: 'manual-rust-analyzer' } }, mcp: [], dap: [] }
   const revised = JSON.stringify({ suites: [edited] })
   fs.writeFileSync(definitions, revised)
   await page.getByRole('button', { name: '重新读取 Suite', exact: true }).click()
@@ -135,7 +135,7 @@ test('extension paths and central MCP choices remain independent across Suite id
   const firstPi = ['${roots.browser_extensions}/shared.ts', '../source packages/pi-entry.ts']
   const secondPi = ['../second source/pi-entry.ts']
   const omp = ['../omp native package', '../omp source/entry.ts']
-  const ompSuite = { id: 'first-omp', name: 'first · OMP', harness: 'omp', skills: [], extensions: omp, lsp: {}, mcp: ['search'] }
+  const ompSuite = { id: 'first-omp', name: 'first · OMP', harness: 'omp', skills: [], extensions: omp, lsp: {}, mcp: ['search'], dap: [] }
   const firstPiSuite = { id: 'first-pi', name: 'first · Pi', harness: 'pi', skills: [], extensions: firstPi, prompts: [], mcp: ['search'], codemode: 'on' }
   const secondPiSuite = { id: 'second-pi', name: 'second · Pi', harness: 'pi', skills: [], extensions: secondPi, prompts: [], mcp: [], codemode: 'on' }
   fs.mkdirSync(authority, { recursive: true })

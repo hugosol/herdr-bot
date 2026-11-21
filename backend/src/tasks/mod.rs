@@ -372,7 +372,7 @@ impl Tasks {
     }
 
     pub(crate) fn validate_suite(&self, task: &Task) -> Result<(), TaskError> {
-        self.files.with(&[self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
+        self.files.with(&self.suites.selection_scope(), |access| {
             self.suites.resolve_selection(access, task.env.suite.as_deref(), task.agent).map(|_| ())
         }).map_err(TaskError::Unreadable)?
     }
@@ -385,7 +385,7 @@ impl Tasks {
     }
 
     pub(crate) fn resolve_environment_suite(&self, task: &Task) -> Result<Option<crate::suites::Suite>, TaskError> {
-        self.files.with(&[self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
+        self.files.with(&self.suites.selection_scope(), |access| {
             self.suites.resolve_selection(access, task.env.suite.as_deref(), task.agent)
         }).map_err(TaskError::Unreadable)?
     }
@@ -487,7 +487,8 @@ impl Tasks {
 
     /// Read, validate, mutate and publish under one shared resource scope.
     fn change(&self, change: impl FnOnce(&FileAccess, &mut Vec<Task>) -> Result<(), TaskError>) -> Result<Vec<Task>, TaskError> {
-        self.files.with(&[self.storage_file.clone(), self.suites.definition_file.clone(), self.suites.mcp_file.clone(), self.metadata_file.clone()], |access| {
+        let [suite_file, mcp_file, dap_file] = self.suites.selection_scope();
+        self.files.with(&[self.storage_file.clone(), suite_file, mcp_file, dap_file, self.metadata_file.clone()], |access| {
             access.update_json(
                 &self.storage_file,
                 |access| self.read(access).map(|tasks| TasksDocument { tasks }),

@@ -27,3 +27,6 @@ zone_parent = 'E:/Developer/bot-playground'
 # 原生会话验收还需 omp_package：填写已安装 OMP 包目录，旧记录无可确认的默认值。
 # 集中 MCP 配置引用此安装目录；按本机安装位置调整，不依赖 PATH 定位程序。
 codebase_memory_mcp = 'E:/Developer/tools/codebase-memory-mcp'
+# 选择 CodeLLDB 前配置完整 Windows x64 VSIX 解压根（其下应有 extension/adapter/codelldb.exe）。
+# 此示例路径不是已安装位置；不自动下载，也不要只复制 exe。
+# codelldb = 'E:/Developer/tools/codelldb'

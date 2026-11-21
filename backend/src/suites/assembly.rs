@@ -22,6 +22,13 @@ impl Suites {
             Suite::Omp { mcp, .. } => self.select_omp_mcp(id, mcp, roots)?,
             Suite::Pi { .. } => None,
         };
+        let (lsp, dap) = match suite {
+            Suite::Omp { lsp, dap, .. } => (
+                (!lsp.is_empty()).then_some(lsp),
+                self.select_omp_dap(id, dap, roots)?,
+            ),
+            Suite::Pi { .. } => (None, None),
+        };
         let directory = self.generated_directory.join(id);
         let assembly = directory.join(crate::chats::new_creation_id());
         let fail = |error: String| TaskError::InvalidSuite(format!(
@@ -35,6 +42,18 @@ impl Suites {
             let result = (|| {
                 let mut args = skills::assemble(access, &assembly, suite, &skills)
                     .map_err(|error| format!("技能装配失败：{error}"))?;
+                // Native plugin discovery keeps defaults and user/project precedence.
+                if let Some(lsp) = lsp {
+                    let bytes = serde_json::to_vec_pretty(&serde_json::json!({"servers": lsp}))
+                        .map_err(|error| error.to_string())?;
+                    access.create(assembly.join("lsp.json"), &bytes).map_err(|error| error.to_string())?;
+                }
+                if let Some(bytes) = &dap {
+                    access.create(assembly.join("dap.json"), bytes).map_err(|error| error.to_string())?;
+                }
+                if lsp.is_some() || dap.is_some() {
+                    args.extend(["--plugin-dir".into(), assembly.to_string_lossy().into_owned()]);
+                }
                 for entry in &extensions {
                     args.extend(["--extension".into(), entry.to_string_lossy().into_owned()]);
                 }

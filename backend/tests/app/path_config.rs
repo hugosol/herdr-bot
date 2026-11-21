@@ -46,6 +46,7 @@ fn config_load_resolves_each_source_and_keeps_a_root_snapshot() {
     assert_eq!(loaded.operations.stop.script, fixture.0.join("deployment/stop.cmd"));
     assert_eq!(loaded.static_directory, fixture.0.join("source/public"));
     assert_eq!(loaded.data_directory, fixture.0.join("deployment/state"));
+    assert_eq!(loaded.suites.dap_file, fixture.0.join("deployment/meta-data/dap.json"));
     assert_eq!(loaded.paths_file.as_deref(), Some(roots_path.as_path()));
     assert_eq!(loaded.herdr.executable, Path::new("herdr"));
     for path in [&loaded.zones.registry_file, &loaded.tasks.storage_file, &loaded.tasks.metadata_file,

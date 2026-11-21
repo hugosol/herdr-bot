@@ -141,6 +141,7 @@
       "mcp": [
         "codebase-memory-mcp"
       ],
+      "dap": ["codelldb"],
       "lsp": {
         "jdtls": {
           "args": [],

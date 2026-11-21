@@ -11,7 +11,63 @@ fn config(root: &TempDir) -> herdr_bot::Config {
     let mut config = common::config(std::path::Path::new("unused.bat"), root.path());
     config.suites.definition_file = root.path().join("definitions with spaces").join("suites.json");
     config.suites.mcp_file = root.path().join("central-mcp.json");
+    config.suites.dap_file = root.path().join("central-dap.json");
     config
+}
+
+#[tokio::test]
+async fn dap_catalog_is_read_only_and_only_omp_suites_can_select_ids() {
+    let root = TempDir::new("Suite DAP catalog");
+    let config = config(&root);
+    let server = TestServer::start(&config).await;
+    let listing = get_over_tcp(server.addr(), "/api/suites").await;
+    assert_eq!(listing.status, 200, "{}", listing.body);
+    assert_eq!(serde_json::from_str::<Value>(&listing.body).unwrap()["dap"], json!([]));
+
+    // Declaration only: the root and adapter executable are intentionally absent.
+    let native = json!({"command":"${roots.dap_fixture}/missing.exe", "languages":["rust"], "connectMode":"stdio"});
+    let definition = json!({"name":"Fixture adapter", "description":"Windows x64 fixture", "config":native});
+    let catalog = json!({"adapters":{"codelldb":definition}}).to_string();
+    fs::write(&config.suites.dap_file, &catalog).unwrap();
+    let expected = json!([{"id":"codelldb", "name":"Fixture adapter", "description":"Windows x64 fixture", "config":native}]);
+    let mut suite = json!({"id":"debug-omp", "name":"Debug · OMP", "harness":"omp", "dap":["codelldb"]});
+    for (method, url) in [("POST", "/api/suites"), ("PUT", "/api/suites/debug-omp")] {
+        let response = request_json_over_tcp(server.addr(), method, url, Some(&suite.to_string())).await;
+        assert_eq!(response.status, 200, "{}", response.body);
+        let body: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(body["dap"], expected);
+        assert_eq!(body["suites"][0]["dap"], json!(["codelldb"]));
+        suite["name"] = json!("Debug edited · OMP");
+    }
+    let stored = fs::read_to_string(&config.suites.definition_file).unwrap();
+    assert!(!stored.contains("missing.exe"), "Suite must persist only adapter IDs");
+    for choice in [json!(["unknown"]), json!(["codelldb", "codelldb"]), json!([""])] {
+        suite["dap"] = choice;
+        let response = request_json_over_tcp(server.addr(), "PUT", "/api/suites/debug-omp", Some(&suite.to_string())).await;
+        assert_eq!(response.status, 400, "{}", response.body);
+    }
+    let pi = json!({"id":"debug-pi", "name":"Debug · Pi", "harness":"pi", "codemode":"on", "dap":[]});
+    let response = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&pi.to_string())).await;
+    assert_eq!(response.status, 400, "{}", response.body);
+    assert_eq!(fs::read_to_string(&config.suites.definition_file).unwrap(), stored);
+    assert_eq!(fs::read_to_string(&config.suites.dap_file).unwrap(), catalog);
+
+    for malformed in [
+        r#"{"adapters":{"bad":{"name":"Bad","description":"Wrong type","config":{"command":"dap","languages":"rust"}}}}"#,
+        r#"{"adapters":{"bad":{"name":"Bad","description":"Duplicate ID","config":{"command":"old"}},"bad":{"name":"Bad","description":"Duplicate ID","config":{"command":"new"}}}}"#,
+    ] {
+        fs::write(&config.suites.dap_file, malformed).unwrap();
+        let response = get_over_tcp(server.addr(), "/api/suites").await;
+        assert_eq!(response.status, 500, "{}", response.body);
+        assert!(response.body.contains("DAP") && response.body.contains("bad"), "{}", response.body);
+        let response = request_json_over_tcp(server.addr(), "DELETE", "/api/suites/debug-omp", None).await;
+        assert_eq!(response.status, 500, "{}", response.body);
+        assert_eq!(fs::read_to_string(&config.suites.definition_file).unwrap(), stored);
+    }
+    fs::write(&config.suites.dap_file, &catalog).unwrap();
+    let response = request_json_over_tcp(server.addr(), "DELETE", "/api/suites/debug-omp", None).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["dap"], expected);
 }
 
 fn shared_metadata(root: &TempDir, config: &mut herdr_bot::Config) -> String {
@@ -61,7 +117,7 @@ async fn suite_paths_save_without_resources_and_fixed_catalog_preserves_roles() 
     let mut choices = [
         json!({"id":"shared-pi","name":"Shared choices · Pi","harness":"pi","codemode":"on","skills":[],"mcp":[],"prompts":[],
             "extensions":["${roots.pi_extensions}/pi-web-access/index.ts","packages with spaces/entry.ts"]}),
-        json!({"id":"shared-omp","name":"Shared choices · OMP","harness":"omp","skills":[],"mcp":[],"lsp":{},
+        json!({"id":"shared-omp","name":"Shared choices · OMP","harness":"omp","skills":[],"mcp":[],"lsp":{},"dap":[],
             "extensions":["custom-omp.ts"]}),
     ];
     for (suite, label) in choices.iter_mut().zip(["Pi", "OMP"]) {
@@ -195,7 +251,7 @@ async fn suite_harness_cannot_change_after_save() {
     let root = TempDir::new("immutable suite harness");
     let config = config(&root);
     let server = TestServer::start(&config).await;
-    let omp = json!({"id":"tools-omp","name":"Tools · OMP","harness":"omp","skills":[],"extensions":["keep.ts"],"mcp":[],"lsp":{}});
+    let omp = json!({"id":"tools-omp","name":"Tools · OMP","harness":"omp","skills":[],"extensions":["keep.ts"],"mcp":[],"lsp":{},"dap":[]});
     let saved = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&omp.to_string())).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let before = fs::read(&config.suites.definition_file).unwrap();
@@ -306,6 +362,8 @@ async fn external_authority_damage_is_not_hidden_or_overwritten() {
     fs::write(&config.suites.definition_file, literal).unwrap();
     let response = get_over_tcp(server.addr(), "/api/suites/external-omp").await;
     assert_eq!(response.status, 200, "{}", response.body);
-    assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["suite"]["name"], "Independent definition · OMP");
+    let response: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(response["suite"]["name"], "Independent definition · OMP");
+    assert_eq!(response["suite"]["dap"], json!([]));
     assert_eq!(fs::read_to_string(&config.suites.definition_file).unwrap(), literal);
 }

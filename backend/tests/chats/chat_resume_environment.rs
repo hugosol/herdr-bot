@@ -56,6 +56,7 @@ storage_file = 'tasks.json'
 metadata_file = 'options.toml'
 [suites]
 definition_file = 'suites.json'
+dap_file = 'native catalog/dap.json'
 [sessions]
 history_file = 'history.json'
 "#, herdr.executable().display())).unwrap();
@@ -161,7 +162,11 @@ fn assert_suite_args(agent: &str, args: &[Value], suite: &Path, root: &Path, rev
             json!("--no-prompt-templates"), json!(config_flag), json!(config)]
     } else {
         assert_eq!(manifest["skills"]["enabled"], false);
-        vec![json!("--no-extensions"), json!(config_flag), json!(config), json!("--extension"), json!(suite)]
+        assert!(manifest.get("debug").is_none());
+        let plugin = Path::new(config).parent().unwrap();
+        let dap: Value = serde_json::from_slice(&fs::read(plugin.join("dap.json")).unwrap()).unwrap();
+        assert_eq!(dap, json!({"adapters":{"resume-adapter":{"command":format!("adapter-{revision}"), "languages":["rust"]}}}));
+        vec![json!("--no-extensions"), json!(config_flag), json!(config), json!("--plugin-dir"), json!(plugin), json!("--extension"), json!(suite)]
     };
     expected.extend([json!("--extension"), json!(root.join(format!("{agent}-fixed-{revision}.ts"))),
         json!("--extension"), json!(root.join(format!("{agent}-b-{revision}.ts")))]);
@@ -194,8 +199,22 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
             fs::write(entry, "export default function () {}\n").unwrap();
             let label = if agent == "pi" { "Pi" } else { "OMP" };
             let mut declaration = json!({"id":format!("{id}-{agent}"),"name":format!("{id} · {label}"),"harness":agent,"extensions":[entry]});
-            if agent == "pi" { declaration["codemode"] = json!("on"); }
+            if agent == "pi" {
+                declaration["codemode"] = json!("on");
+            } else {
+                declaration["dap"] = json!(["resume-adapter"]);
+            }
             suites.push(declaration);
+        }
+        let dap_catalog = root.path().join("native catalog/dap.json");
+        let write_dap = |command: &str| {
+            fs::write(&dap_catalog, json!({"adapters":{"resume-adapter":{
+                "name":"Resume adapter", "description":"Local Rust fixture", "config":{"command":command, "languages":["rust"]}
+            }}}).to_string()).unwrap();
+        };
+        if agent == "omp" {
+            fs::create_dir(dap_catalog.parent().unwrap()).unwrap();
+            write_dap("adapter-old");
         }
         fs::write(root.path().join("suites.json"), json!({"suites":suites}).to_string()).unwrap();
         let file = native(root.path(),&herdr,agent,"native-full-identity-001");
@@ -221,6 +240,7 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
         catalog(root.path(),agent,"current",true);
         add_manager_fixed_extension(root.path(), agent);
         let panel = Panel::start(root.path(), &herdr);
+        if agent == "omp" { write_dap("adapter-current"); }
         let offset = herdr.calls().len();
         let result = post(&panel,"/api/chats/resume",json!({"sessionId":"native-full-identity-001"})).await;
         assert_eq!(result["outcome"],"restored");

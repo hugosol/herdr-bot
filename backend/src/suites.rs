@@ -7,6 +7,7 @@ mod extensions;
 mod assembly;
 mod pi;
 mod mcp_paths;
+mod dap;
 
 use std::{collections::{BTreeMap, HashSet}, io, path::PathBuf};
 
@@ -33,6 +34,8 @@ pub enum Suite {
         mcp: Vec<String>,
         #[serde(default)]
         lsp: BTreeMap<String, Value>,
+        #[serde(default)]
+        dap: Vec<String>,
     },
     Pi {
         id: String,
@@ -63,6 +66,7 @@ struct McpDocument {
 pub struct Suites {
     pub definition_file: PathBuf,
     pub mcp_file: PathBuf,
+    dap_file: PathBuf,
     pub generated_directory: PathBuf,
     files: FileStore,
 }
@@ -142,7 +146,8 @@ impl Suite {
         validate_entries("mcp", self.mcp())?;
         match self {
             Self::Pi { prompts, .. } => validate_entries("prompts", prompts)?,
-            Self::Omp { lsp, .. } => {
+            Self::Omp { lsp, dap, .. } => {
+                validate_entries("dap", dap)?;
                 if lsp.iter().any(|(id, config)| id.trim().is_empty() || !config.is_object()) {
                     return Err(SuiteError::invalid("LSP 声明必须是服务名到原生配置对象的 JSON 对象。"));
                 }
@@ -161,8 +166,12 @@ fn validate_entries(name: &str, entries: &[String]) -> Result<(), SuiteError> {
 }
 
 impl Suites {
-    pub fn new(definition_file: PathBuf, mcp_file: PathBuf, generated_directory: PathBuf) -> Self {
-        Self { definition_file, mcp_file, generated_directory, files: FileStore::default() }
+    pub fn new(definition_file: PathBuf, mcp_file: PathBuf, dap_file: PathBuf, generated_directory: PathBuf) -> Self {
+        Self { definition_file, mcp_file, dap_file, generated_directory, files: FileStore::default() }
+    }
+
+    pub(crate) fn selection_scope(&self) -> [PathBuf; 3] {
+        [self.definition_file.clone(), self.mcp_file.clone(), self.dap_file.clone()]
     }
     fn read(&self, access: &FileAccess) -> Result<Document, SuiteError> {
         let document: Document = match access.read_to_string(&self.definition_file) {
@@ -212,6 +221,9 @@ impl Suites {
         if !missing.is_empty() {
             return Err(TaskError::InvalidSuite(format!("Suite「{id}」的集中 MCP 引用失效：{}；没有删除引用或回退为空环境。", missing.join("、"))));
         }
+        if let Suite::Omp { dap, .. } = &suite {
+            self.validate_dap_references(access, id, dap).map_err(|error| TaskError::InvalidSuite(error.message))?;
+        }
         Ok(Some(suite))
     }
     fn change(&self, scopes: &[PathBuf], action: impl FnOnce(&FileAccess, &mut Vec<Suite>) -> Result<(), SuiteError>) -> Result<Vec<Suite>, SuiteError> {
@@ -230,7 +242,7 @@ impl Suites {
     }
     pub fn save(&self, id: Option<&str>, suite: Suite) -> Result<Vec<Suite>, SuiteError> {
         if id.is_some_and(|id| id != suite.id()) { return Err(SuiteError::invalid("编辑不能更改 Suite ID。")); }
-        self.change(&[self.definition_file.clone(), self.mcp_file.clone()], |access, suites| {
+        self.change(&self.selection_scope(), |access, suites| {
             let current = if let Some(id) = id {
                 let current = suites.iter_mut().find(|suite| suite.id() == id).ok_or_else(SuiteError::not_found)?;
                 if current.harness() != suite.harness() {
@@ -246,6 +258,9 @@ impl Suites {
                 if !catalog.contains_key(reference) {
                     return Err(SuiteError::invalid(format!("Suite「{}」的集中 MCP 引用失效：{reference}；请显式修正引用。", suite.id())));
                 }
+            }
+            if let Suite::Omp { dap, .. } = &suite {
+                self.validate_dap_references(access, suite.id(), dap)?;
             }
             if let Some(current) = current {
                 *current = suite;
@@ -278,26 +293,29 @@ impl Suites {
 pub(crate) struct SuiteList {
     suites: Vec<Suite>,
     mcp: Vec<String>,
+    dap: Vec<dap::CatalogEntry>,
     fixed_extensions: Vec<crate::tasks::catalog::FixedExtensionOption>,
 }
 
 /// Obtain all fallible response catalogs before a mutation can publish bytes.
 struct SuiteCatalogs {
     mcp: Vec<String>,
+    dap: Vec<dap::CatalogEntry>,
     fixed_extensions: Vec<crate::tasks::catalog::FixedExtensionOption>,
 }
 impl SuiteCatalogs {
     fn load(state: &AppState) -> Result<Self, SuiteError> {
         let mcp = state.suites.mcp_catalog()?.into_keys().collect();
+        let dap = state.suites.dap_catalog()?;
         let extensions = state.tasks.suite_extensions().map_err(|error| SuiteError {
             kind: SuiteErrorKind::Storage,
             code: error.code(),
             message: error.message(),
         })?;
-        Ok(Self { mcp, fixed_extensions: extensions })
+        Ok(Self { mcp, dap, fixed_extensions: extensions })
     }
     fn listing(self, suites: Vec<Suite>) -> SuiteList {
-        SuiteList { suites, mcp: self.mcp, fixed_extensions: self.fixed_extensions }
+        SuiteList { suites, mcp: self.mcp, dap: self.dap, fixed_extensions: self.fixed_extensions }
     }
 }
 pub(crate) fn listing(state: &AppState) -> Result<SuiteList, SuiteError> {

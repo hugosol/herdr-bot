@@ -324,6 +324,7 @@ impl Default for ZonesConfig {
 pub struct SuitesConfig {
     pub definition_file: PathBuf,
     pub mcp_file: PathBuf,
+    pub dap_file: PathBuf,
     pub generated_directory: PathBuf,
 }
 impl Default for SuitesConfig {
@@ -331,6 +332,7 @@ impl Default for SuitesConfig {
         Self {
             definition_file: PathBuf::from("meta-data/suites.json"),
             mcp_file: PathBuf::from("meta-data/mcp.json"),
+            dap_file: PathBuf::from("meta-data/dap.json"),
             generated_directory: PathBuf::from(".data/suites"),
         }
     }
@@ -716,6 +718,7 @@ impl Config {
             ("tasks.metadata_file", &mut config.tasks.metadata_file),
             ("suites.definition_file", &mut config.suites.definition_file),
             ("suites.mcp_file", &mut config.suites.mcp_file),
+            ("suites.dap_file", &mut config.suites.dap_file),
             ("suites.generated_directory", &mut config.suites.generated_directory),
             ("sessions.history_file", &mut config.sessions.history_file),
             ("scheduler.map_directory", &mut config.scheduler.map_directory),

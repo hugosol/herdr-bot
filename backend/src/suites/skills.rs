@@ -77,7 +77,7 @@ impl Suites {
 }
 
 pub(super) fn assemble(access: &FileAccess, assembly: &Path, suite: &Suite, skills: &Selection) -> Result<Vec<String>, String> {
-    let Suite::Omp { lsp, .. } = suite else {
+    let Suite::Omp { .. } = suite else {
         let mut args = vec!["--no-skills".into()];
         for directory in &skills.directories {
             args.extend(["--skill".into(), directory.to_string_lossy().into_owned()]);
@@ -100,16 +100,7 @@ pub(super) fn assemble(access: &FileAccess, assembly: &Path, suite: &Suite, skil
     }});
     access.create(&manifest, &serde_json::to_vec_pretty(&config).map_err(|error| error.to_string())?)
         .map_err(|error| error.to_string())?;
-    let mut args = vec!["--config".into(), manifest.to_string_lossy().into_owned()];
-    if !lsp.is_empty() {
-        // Native plugin discovery merges below user/project LSP files and
-        // keeps bundled defaults, unlike a native settings override.
-        let lsp = serde_json::json!({"servers": lsp});
-        access.create(assembly.join("lsp.json"), &serde_json::to_vec_pretty(&lsp).map_err(|error| error.to_string())?)
-            .map_err(|error| error.to_string())?;
-        args.extend(["--plugin-dir".into(), assembly.to_string_lossy().into_owned()]);
-    }
-    Ok(args)
+    Ok(vec!["--config".into(), manifest.to_string_lossy().into_owned()])
 }
 
 fn literal_skill_pattern(name: &str) -> String {

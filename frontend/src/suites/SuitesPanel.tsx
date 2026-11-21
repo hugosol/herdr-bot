@@ -7,21 +7,21 @@ type Harness = Suite['harness']
 type Resources = { skills: string; extensions: string; mcp: string[] }
 type Draft = {
   id: string; name: string; harness: Harness
-  omp: Resources & { lsp: string }
+  omp: Resources & { lsp: string; dap: string[] }
   pi: Resources & { prompts: string; codemode: 'on' | 'only' }
 }
 const harnessLabels = { omp: 'OMP', pi: 'Pi' } as const
 const emptyResources: Resources = { skills: '', extensions: '', mcp: [] }
 const emptyDraft: Draft = {
   id: '', name: '', harness: 'omp',
-  omp: { ...emptyResources, lsp: '{}' },
+  omp: { ...emptyResources, lsp: '{}', dap: [] },
   pi: { ...emptyResources, prompts: '', codemode: 'on' },
 }
 function draftFrom(suite: Suite): Draft {
   const { id, name, harness } = suite
   const resources = { skills: suite.skills.join('\n'), extensions: suite.extensions.join('\n'), mcp: suite.mcp }
   return suite.harness === 'omp'
-    ? { ...emptyDraft, id, name, harness, omp: { ...resources, lsp: JSON.stringify(suite.lsp, null, 2) } }
+    ? { ...emptyDraft, id, name, harness, omp: { ...resources, lsp: JSON.stringify(suite.lsp, null, 2), dap: suite.dap } }
     : { ...emptyDraft, id, name, harness, pi: { ...resources, prompts: suite.prompts.join('\n'), codemode: suite.codemode } }
 }
 const lines = (text: string) => text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
@@ -34,6 +34,9 @@ export function SuitesPanel({ active }: { active: boolean }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const missingDap = data && draft?.harness === 'omp'
+    ? draft.omp.dap.filter(id => !data.dap.some(adapter => adapter.id === id))
+    : []
 
   useEffect(() => {
     if (!active) return
@@ -80,9 +83,10 @@ export function SuitesPanel({ active }: { active: boolean }) {
         skills: [...new Set(lines(skills))], extensions: [...new Set(lines(extensions))], mcp,
       }
       if (harness === 'omp') {
+        if (missingDap.length > 0) throw new Error('请先移除失效的 DAP 引用。')
         const lsp: unknown = JSON.parse(draft.omp.lsp)
         if (lsp === null || typeof lsp !== 'object' || Array.isArray(lsp)) throw new Error('LSP 声明必须是 JSON 对象。')
-        suite = { ...common, harness, lsp: lsp as Record<string, unknown> }
+        suite = { ...common, harness, lsp: lsp as Record<string, unknown>, dap: draft.omp.dap }
       } else {
         suite = { ...common, harness, prompts: lines(draft.pi.prompts), codemode: draft.pi.codemode }
       }
@@ -110,6 +114,14 @@ export function SuitesPanel({ active }: { active: boolean }) {
       const resources = current[harness]
       const mcp = checked ? [...resources.mcp, id] : resources.mcp.filter(value => value !== id)
       return { ...current, [harness]: { ...resources, mcp } }
+    })
+  }
+
+  function changeDap(id: string, checked: boolean) {
+    setDraft(current => {
+      if (current?.harness !== 'omp') return current
+      const dap = checked ? [...current.omp.dap, id] : current.omp.dap.filter(value => value !== id)
+      return { ...current, omp: { ...current.omp, dap } }
     })
   }
 
@@ -149,14 +161,15 @@ export function SuitesPanel({ active }: { active: boolean }) {
             <span className="suites-list-meta">{harnessLabels[suite.harness]}<span>{suite.skills.length} 技能来源 · {suite.mcp.length} MCP</span></span>
           </button>)}
       </section>
-      {!draft && <section className="suites-empty" aria-label="编辑指引"><h3>选择一个场景工具集</h3><p>查看和编辑技能、宿主扩展、提示词模板及语言服务声明。</p><dl><div><dt>OMP</dt><dd>技能、扩展、LSP 与集中 MCP</dd></div><div><dt>Pi</dt><dd>技能、扩展、提示词模板与集中 MCP</dd></div></dl><p className="scope-note">选择左侧工具集，或创建 Suite。保存的是资源声明，不代表资源已经运行。</p></section>}
+      {!draft && <section className="suites-empty" aria-label="编辑指引"><h3>选择一个场景工具集</h3><p>查看和编辑技能、宿主扩展、提示词模板、语言服务及调试器配置。</p><dl><div><dt>OMP</dt><dd>技能、扩展、LSP、集中 DAP 与 MCP</dd></div><div><dt>Pi</dt><dd>技能、扩展、提示词模板与集中 MCP</dd></div></dl><p className="scope-note">选择左侧工具集，或创建 Suite。保存的是资源声明，不代表资源已经运行。</p></section>}
       {draft && <form className="suites-editor" onSubmit={event => void save(event)} aria-label="Suite 编辑">
         <fieldset disabled={busy}>
           <legend>{editing ? '查看 / 编辑 Suite' : '创建 Suite'}</legend>
           <div className="suites-toolbar suites-editor-actions">
             <span>{editing ? draft.name : '新工具集'}</span>
-            <button type="submit" className="suites-primary">保存 Suite</button>
+            <button type="submit" className="suites-primary" disabled={missingDap.length > 0} aria-describedby={missingDap.length > 0 ? 'suite-dap-missing' : undefined}>保存 Suite</button>
             <button type="button" onClick={() => { setDraft(null); setEditing(null) }}>关闭编辑</button>
+            {missingDap.length > 0 && <p className="suites-dap-missing zone-error" id="suite-dap-missing">请先移除失效的 DAP 引用。</p>}
           </div>
           <section className="suites-section" aria-label="基本信息"><h3>基本信息</h3>
           <div className="suites-field-grid">
@@ -201,6 +214,32 @@ export function SuitesPanel({ active }: { active: boolean }) {
           <p className="scope-note">保留 OMP 默认、用户及项目配置的原生优先级；Suite 不是语言服务白名单。</p>
           <textarea id="suite-lsp" className="zone-form__input" rows={6} value={draft.omp.lsp} onChange={event => setDraft({ ...draft, omp: { ...draft.omp, lsp: event.target.value } })} />
           </section>}
+          {harness === 'omp' && <fieldset className="suites-section"><legend>集中 DAP 选择</legend>
+            <p className="scope-note">仅引用集中 DAP 配置，不表示已安装或通过调试验证，也不限制 OMP 原生调试器。</p>
+            {data?.dap.length === 0 && <p>集中目录没有 DAP 定义。</p>}
+            {data?.dap.map(({ id, name, description, config }) => {
+              const { command, languages, ...otherConfig } = config
+              return <div key={id} className="suites-dap-row">
+                <label className="suites-choice"><input type="checkbox" checked={draft.omp.dap.includes(id)} onChange={event => changeDap(id, event.target.checked)} />{name}</label>
+                <details>
+                  <summary aria-label={`${name} 详情`}>详情</summary>
+                  <div className="suites-dap-detail">
+                    <p>{description}</p>
+                    <dl>
+                      <dt>声明语言</dt><dd>{languages?.join('、') || '未声明'}</dd>
+                      <dt>命令</dt><dd><code className="suites-extension-path">{command}</code></dd>
+                      {Object.keys(otherConfig).length > 0 && <>
+                        <dt>其他原生配置（JSON）</dt><dd><pre className="suites-extension-path">{JSON.stringify(otherConfig, null, 2)}</pre></dd>
+                      </>}
+                    </dl>
+                  </div>
+                </details>
+              </div>
+            })}
+            {missingDap.map(id => <label key={id} className="suites-choice zone-error">
+              <input type="checkbox" checked onChange={() => changeDap(id, false)} />{id}（失效：集中 DAP 定义不存在）
+            </label>)}
+          </fieldset>}
           <fieldset className="suites-section"><legend>集中 MCP 选择</legend>
             <p className="scope-note">仅引用集中目录；空清单表示不追加，不关闭宿主原生 MCP。</p>
             {data?.mcp.length === 0 && <p>集中目录没有 MCP 定义。</p>}

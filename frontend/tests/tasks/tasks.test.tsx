@@ -240,7 +240,7 @@ describe('Task tab：读取与展示', () => {
   it.each(['omp', 'pi'] as const)('%s 切换 Task 类型保留合法宿主、模型和 Suite，不重复展示扩展目录并保存', async (agent) => {
     const user = userEvent.setup()
     const suite = agent === 'omp'
-      ? { id: 'role-omp', name: '角色工具 · OMP', harness: 'omp', skills: [], extensions: [], mcp: [], lsp: {} }
+      ? { id: 'role-omp', name: '角色工具 · OMP', harness: 'omp', skills: [], extensions: [], mcp: [], lsp: {}, dap: ['codelldb'] }
       : { id: 'role-pi', name: '角色工具 · Pi', harness: 'pi', skills: [], extensions: [], mcp: [], prompts: [], codemode: 'on' }
     const original = { id: 'role-task', name: '角色编辑', chatName: '{chat.id}', agent,
       taskType: 'normal', model: 'deepseek-flash', thinking: 'high', skill: null, prompt: '', suite: suite.id }

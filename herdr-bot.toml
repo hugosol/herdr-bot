@@ -102,11 +102,12 @@ run_directory = '${roots.data}/workflow-runs'
 # 部署请显式填写稳定说明路径；不按管理者/node cwd 查找。详见 docs/workflow-runtime.md。
 run_instructions = '${roots.project}/docs/workflow-runtime.md'
 
-# Suite 权威定义与只读集中 MCP 目录。界面与手工编辑使用同一文件；
+# Suite 权威定义与只读集中 MCP／DAP 目录。界面与手工编辑使用同一文件；
 # 非生成产物。普通相对路径以本配置文件目录为基准；详情见 docs/usage.md。
 [suites]
 definition_file = '${roots.project}/meta-data/suites.json'
 mcp_file = '${roots.project}/meta-data/mcp.json'
+dap_file = '${roots.project}/meta-data/dap.json'
 # 每次启动独立的原生宿主配置产物；不创建技能链接，不包含认证／模型／会话副本。
 generated_directory = '${roots.suite_resources}'
 

@@ -127,6 +127,99 @@ async fn wait_finished(server: &TestServer, id: &str) {
     }).await.expect("owned Herdr commands must exit and public launch must finish");
 }
 
+#[tokio::test]
+async fn dap_launches_deliver_native_manifests_and_recheck_central_references() {
+    let root = TempDir::new("native DAP publication");
+    let herdr = common::HerdrFixture::new("native DAP Herdr");
+    let mut config = common::config(Path::new("unused.bat"), root.path());
+    config.tasks.storage_file = root.path().join("tasks.json");
+    config.zones.registry_file = root.path().join("zones.json");
+    config.suites.definition_file = root.path().join("suites.json");
+    config.suites.mcp_file = root.path().join("mcp.json");
+    config.suites.dap_file = root.path().join("catalog elsewhere/central.json");
+    config.herdr.executable = herdr.executable().to_path_buf();
+    let roots_file = root.path().join("paths.toml");
+    fs::write(&roots_file, "[roots]\nadapters = 'owned programs'\n").unwrap();
+    config.roots = herdr_bot::paths::Roots::load(&roots_file).unwrap();
+    fs::create_dir(config.suites.dap_file.parent().unwrap()).unwrap();
+    let mut rooted = json!({"command":"${roots.adapters}/codelldb.exe", "languages":["rust"],
+        "connectMode":"tcp", "args":["--port", "${port}", "./literal"],
+        "rootMarkers":["Cargo.toml"], "launchDefaults":{"program":"./target/debug/example.exe"}});
+    let relative = json!({"command":"./relative.exe", "fileTypes":[".rs"]});
+    let bare = json!({"command":"native-on-path"});
+    let catalog = |rooted: &Value| json!({"adapters":{
+        "rooted":{"name":"Rooted", "description":"Windows x64", "config":rooted},
+        "relative":{"name":"Relative", "description":"Relative path", "config":relative},
+        "bare":{"name":"Bare", "description":"PATH lookup", "config":bare},
+        "unused":{"name":"Unused", "description":"Unused root must not be resolved",
+            "config":{"command":"${roots.unavailable}/unused.exe"}}
+    }}).to_string();
+    fs::write(&config.suites.dap_file, catalog(&rooted)).unwrap();
+    let lsp = json!({"fixture-lsp":{"command":"fixture-lsp"}});
+    fs::write(&config.suites.definition_file, json!({"suites":[
+        {"id":"dap-only-omp", "name":"DAP only · OMP", "harness":"omp", "dap":["rooted", "relative", "bare"]},
+        {"id":"dap-lsp-omp", "name":"Both · OMP", "harness":"omp", "dap":["rooted", "relative", "bare"], "lsp":lsp}
+    ]}).to_string()).unwrap();
+    let server = TestServer::start(&config).await;
+    assert_eq!(post(&server, "/api/zones", json!({"id":"owned", "path":root.path()})).await.status, 200);
+    let mut outputs = Vec::new();
+    for (index, suite) in ["dap-only-omp", "dap-lsp-omp"].into_iter().enumerate() {
+        let task = save_task(&server, suite, suite).await;
+        let launch = launch_body(&server, &task).await;
+        if index == 1 {
+            rooted["command"] = json!("${roots.adapters}/updated.exe");
+            fs::write(&config.suites.dap_file, catalog(&rooted)).unwrap();
+        }
+        let accepted = post(&server, "/api/chats", launch).await;
+        assert_eq!(accepted.status, 202, "{}", accepted.body);
+        let creation: Value = serde_json::from_str(&accepted.body).unwrap();
+        wait_finished(&server, creation["id"].as_str().unwrap()).await;
+        let calls = starts(&herdr, index + 1).await;
+        let call = &calls[index];
+        let args = call["args"].as_array().unwrap();
+        assert_eq!(args.iter().filter(|arg| *arg == "--plugin-dir").count(), 1);
+        let plugin = native_argument(call, "--plugin-dir");
+        let settings: Value = serde_json::from_slice(&fs::read(native_argument(call, "--config")).unwrap()).unwrap();
+        assert!(settings.get("debug").is_none(), "Suite must not enable native debugging");
+        assert_eq!(plugin.join("lsp.json").is_file(), index == 1);
+        if index == 1 {
+            let delivered: Value = serde_json::from_slice(&fs::read(plugin.join("lsp.json")).unwrap()).unwrap();
+            assert_eq!(delivered, json!({"servers":lsp}));
+        }
+        outputs.push(plugin.join("dap.json"));
+    }
+    assert_ne!(outputs[0].parent(), outputs[1].parent());
+    for (output, command) in outputs.iter().zip(["codelldb.exe", "updated.exe"]) {
+        let delivered: Value = serde_json::from_slice(&fs::read(output).unwrap()).unwrap();
+        assert_eq!(delivered, json!({"adapters":{
+            "rooted":{"command":root.path().join("owned programs").join(command), "languages":["rust"],
+                "connectMode":"tcp", "args":["--port", "${port}", "./literal"],
+                "rootMarkers":["Cargo.toml"], "launchDefaults":{"program":"./target/debug/example.exe"}},
+            "relative":{"command":root.path().join("catalog elsewhere").join("relative.exe"), "fileTypes":[".rs"]},
+            "bare":{"command":"native-on-path"}
+        }}));
+    }
+    assert!(!root.path().join("dap.json").exists(), "do not overwrite native project configuration");
+    assert_eq!(fs::read_to_string(&config.suites.dap_file).unwrap(), catalog(&rooted));
+
+    let task = save_task(&server, "dap-only-omp", "DAP reference removed after preview").await;
+    let launch = launch_body(&server, &task).await;
+    let task_bytes = fs::read(&config.tasks.storage_file).unwrap();
+    let calls_before = herdr.calls().len();
+    fs::remove_file(&config.suites.dap_file).unwrap();
+    let update = json!({"name":"Changed", "chatName":"{task.name}", "agent":"omp", "taskType":"normal",
+        "model":"default", "thinking":"default", "skill":null, "prompt":"unchanged", "suite":"dap-only-omp"});
+    let path = format!("/api/tasks/{}", task.as_str().unwrap());
+    let response = request_json_over_tcp(server.addr(), "PUT", &path, Some(&update.to_string())).await;
+    assert_eq!(response.status, 400, "{}", response.body);
+    assert!(response.body.contains("DAP") && response.body.contains("rooted"), "{}", response.body);
+    let rejected = post(&server, "/api/chats", launch).await;
+    assert_eq!(rejected.status, 400, "{}", rejected.body);
+    assert!(rejected.body.contains("DAP") && rejected.body.contains("rooted"), "{}", rejected.body);
+    assert_eq!(herdr.calls().len(), calls_before);
+    assert_eq!(fs::read(&config.tasks.storage_file).unwrap(), task_bytes);
+}
+
 fn native_argument(call: &Value, flag: &str) -> std::path::PathBuf {
     let args = call["argv"].as_array().unwrap();
     let index = args.iter().position(|arg| arg == flag).unwrap();

@@ -431,6 +431,7 @@ pub fn config_with_countdown(
         git: herdr_bot::GitConfig::default(),
         scheduler: herdr_bot::SchedulerConfig::default(),
         suites: herdr_bot::config::SuitesConfig {
+            dap_file: working_directory.join("dap.json"),
             generated_directory: working_directory.join("generated-suites"),
             ..herdr_bot::config::SuitesConfig::default()
         },
