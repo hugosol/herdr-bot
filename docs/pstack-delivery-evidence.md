@@ -14,11 +14,13 @@ $env:HERDR_BOT_WORKTREE = $BOT
 
 ```powershell
 python "$TESTER/run.py" --herdr-bot-worktree "$BOT" check-pstack-delivery `
-  --herdr-bot-worktree $Bot --toolkit-worktree $Toolkit --evidence-dir $NewPackageEvidence
+  --toolkit-worktree $Toolkit --evidence-dir $NewPackageEvidence
 python "$TESTER/scripts/check-pstack-delivery.test.py" $Toolkit
 ```
 
 检查器不调用生成器、不联网、不启动宿主或读取用户配置；只创建指定证据目录和 `summary.json`。以 toolkit 的 `pstack-suite/manifest.json`、所有权账本和独立审查的 `delivery-closure.json` 对照实际文件；读取各文件、计算摘要，并再次从引用目标读取内容（重复目标共用本次读取）。缺失、不可读、未发布、字节漂移、来源错配和非清单路径不能靠文件名通过。`0` 仅代表包检查；`1` 保留失败明细；`2` 是用法或无法创建新证据目录。读到语义规则不等于执行过规则。确认后的本地模型输入、角色清单和 persona 是 setup 产物，不是未配置包的固定内容；Java/TLC、渲染、CLI/UI、forge 等外部前提不由离线检查认证。
+
+Suite 可增加或重新组合 extensions、skills、MCP、LSP 等资源。包检查只记录当前 `pstack-omp` 声明，不要求字段内容、资源路径、顺序或数量等于某份固定配置；包检查通过也不认证 Suite 功能完整。功能判据由[原生专项](pstack-suite-native-acceptance.md#场景和证据)承担，包括实际技能读取及来源、固定工具调用、模式切换与恢复、角色执行等。缺少相关能力时，由对应场景失败或保留未验证，不用配置相等代替行为证据。发布文件缺失、引用断裂与来源漂移仍按包完整性要求拒绝。
 
 维护者应分开记录：**生成**（S1 实际维护命令与字节/副作用）、**内容审查**（固定来源、具名适配、审查结论）、**装配**（S2 业务界面和本次实际源码的宿主结果）、**原生机制**（S3 会话、工具、端口、文件、解码和清理）以及**人工**（仅 H1/P16–P17 与 H2/P38）。两个仓库的 canonical 命令、隔离选项、安装版本、生产后端/安全壳之分和 13 专项见[跨仓原生验收](pstack-suite-native-acceptance.md)。新报告需保留每次命令、cwd、实际源和产物身份、输入及版本、退出、原始日志和已发生副作用；缺格/旧源码/过滤/外部环境缺失分别列出，不能由另一层的绿项补足。模型自主选择、评分、综合、授权遵从和输出质量不在通过范围内。
 
