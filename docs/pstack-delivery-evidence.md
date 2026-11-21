@@ -5,24 +5,26 @@
 ```powershell
 $TESTER = 'E:/Developer/myhub/herdr-bot-tester'
 $BOT = 'E:/Developer/myhub/herdr-bot'
-$env:HERDR_BOT_WORKTREE = $BOT
 ```
 
 验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
 
-从本次 herdr-bot worktree 根运行（Python 3.11+；参数必须为绝对路径，证据目录必须不存在）：
+用 Python 3.11+ 运行验证项目的包检查和检查器自测。使用绝对路径；证据目录必须不存在。
 
 ```powershell
+$Toolkit = 'C:/absolute/toolkit-worktree'
+$NewPackageEvidence = 'C:/absolute/pstack-package-evidence-new'
 python "$TESTER/run.py" --herdr-bot-worktree "$BOT" check-pstack-delivery `
   --toolkit-worktree $Toolkit --evidence-dir $NewPackageEvidence
+$env:HERDR_BOT_WORKTREE = $BOT
 python "$TESTER/scripts/check-pstack-delivery.test.py" $Toolkit
 ```
 
-检查器不调用生成器、不联网、不启动宿主或读取用户配置；只创建指定证据目录和 `summary.json`。以 toolkit 的 `pstack-suite/manifest.json`、所有权账本和独立审查的 `delivery-closure.json` 对照实际文件；读取各文件、计算摘要，并再次从引用目标读取内容（重复目标共用本次读取）。缺失、不可读、未发布、字节漂移、来源错配和非清单路径不能靠文件名通过。`0` 仅代表包检查；`1` 保留失败明细；`2` 是用法或无法创建新证据目录。读到语义规则不等于执行过规则。确认后的本地模型输入、角色清单和 persona 是 setup 产物，不是未配置包的固定内容；Java/TLC、渲染、CLI/UI、forge 等外部前提不由离线检查认证。
+包检查器不调用生成器、不联网、不启动宿主，也不读取用户配置。它创建指定证据目录，并将包检查结果写入 `summary.json`。外层 `run.py` 另写 `tester-run.json`，记录所选产品根、验证项目身份及场景退出码，不给出包检查或原生场景的结论。包检查器以 Toolkit 的 `pstack-suite/manifest.json`、所有权账本和独立审查的 `delivery-closure.json` 对照实际文件；读取各文件、计算摘要，并再次从引用目标读取内容（重复目标共用本次读取）。缺失、不可读、未发布、字节漂移、来源错配和非清单路径不能靠文件名通过。包检查器退出 `0` 仅代表包检查通过，`1` 保留失败明细，`2` 表示用法错误或无法创建新证据目录。读到语义规则不等于执行过规则。确认后的本地模型输入、角色清单和 persona 是 setup 产物，不是未配置包的固定内容；Java/TLC、渲染、CLI/UI、forge 等外部前提不由离线检查认证。
 
 Suite 可增加或重新组合 extensions、skills、MCP、LSP 等资源。包检查只记录当前 `pstack-omp` 声明，不要求字段内容、资源路径、顺序或数量等于某份固定配置；包检查通过也不认证 Suite 功能完整。功能判据由[原生专项](pstack-suite-native-acceptance.md#场景和证据)承担，包括实际技能读取及来源、固定工具调用、模式切换与恢复、角色执行等。缺少相关能力时，由对应场景失败或保留未验证，不用配置相等代替行为证据。发布文件缺失、引用断裂与来源漂移仍按包完整性要求拒绝。
 
-维护者应分开记录：**生成**（S1 实际维护命令与字节/副作用）、**内容审查**（固定来源、具名适配、审查结论）、**装配**（S2 业务界面和本次实际源码的宿主结果）、**原生机制**（S3 会话、工具、端口、文件、解码和清理）以及**人工**（仅 H1/P16–P17 与 H2/P38）。两个仓库的 canonical 命令、隔离选项、安装版本、生产后端/安全壳之分和 13 专项见[跨仓原生验收](pstack-suite-native-acceptance.md)。新报告需保留每次命令、cwd、实际源和产物身份、输入及版本、退出、原始日志和已发生副作用；缺格/旧源码/过滤/外部环境缺失分别列出，不能由另一层的绿项补足。模型自主选择、评分、综合、授权遵从和输出质量不在通过范围内。
+维护者应分开记录：**生成**（S1 实际维护命令与字节/副作用）、**内容审查**（固定来源、具名适配、审查结论）、**装配**（S2 业务界面和本次实际源码的宿主结果）、**原生机制**（S3 会话、工具、端口、文件、解码和清理）以及**人工**（仅 H1/P16–P17 与 H2/P38）。产品与 Toolkit 各自的回归命令、隔离选项、安装版本、生产后端与安全壳的用途，以及验证项目的 13 专项见[跨仓原生验收](pstack-suite-native-acceptance.md)。新报告需保留每次命令、cwd、实际源和产物身份、输入及版本、退出、原始日志和已发生副作用；缺格/旧源码/过滤/外部环境缺失分别列出，不能由另一层的绿项补足。模型自主选择、评分、综合、授权遵从和输出质量不在通过范围内。
 
 ## P4/P11 内容审查：固定来源与交付边界
 
@@ -35,21 +37,21 @@ Suite 可增加或重新组合 extensions、skills、MCP、LSP 等资源。包�
 
 ## Promise → 所有者及证据入口
 
-以下是取证路由，不是通过清单。路径 `tests/pstack/...` 与 `pstack-suite/...` 在 Toolkit；Bot 命令和测试在 herdr-bot。`13` 指[原生专项及独立场景](pstack-suite-native-acceptance.md#场景和证据)。按这张表将本轮实际原始证据附到承诺；若源或环境改变，不以旧观察替代本轮证据。人工记录必须来自操作者本人。
+以下是取证路由，不是通过清单。`check-pstack-delivery`、`accept-pstack-suite` 及验证设施自测在验证项目。P1 的产品前后端回归从 `$BOT` 运行。`tests/pstack/...`、`pstack-suite/...` 和 Toolkit 自身的检查从 `$Toolkit` 运行。`13` 指[原生专项及独立场景](pstack-suite-native-acceptance.md#场景和证据)。按这张表将本轮实际原始证据附到承诺；若源或环境改变，不以旧观察替代本轮证据。人工记录必须来自操作者本人。
 
 | Promise | Owner | 测试／审查入口与该层应保留的实际证据 |
 |---|---|---|
 | P1 | 12 | Task 选择/保存/启动的 Bot 前后端兼容性回归；公开状态与 Herdr 启动对照。 |
 | P2 | 13 | `assembly`：同名异源对照、原生目录及真实读到的技能正文。 |
 | P3 | 13 | `assembly`：原生提示、项目指令、固定 `/budget` 与状态上报。 |
-| P4 | 14 | `check-pstack-delivery.py` 实际清单/许可证/映射摘要；本页与上游归档比对。 |
+| P4 | 14 | `check-pstack-delivery` 实际清单/许可证/映射摘要；本页与上游归档比对。 |
 | P5 | 01 | `maintenance.test.ts`：有变换的构建前后快照和 stderr/退出。 |
 | P6 | 01 | `maintenance.test.ts`：具名 preview、差异、失败诊断；本次包报告带操作理由。 |
 | P7 | 01 | `maintenance.test.ts`：独立锚点/冲突输入、退出、已完成的文件效果。 |
 | P8 | 01 | `maintenance.test.ts`：独立输出、两次生成和手改对照。 |
 | P9 | 01 | `maintenance.test.ts`：一致/不一致检查前后实际文件及目录。 |
 | P10 | 01 | `maintenance.test.ts`：独立 upstream 比较和 overlay preview。 |
-| P11 | 14 | `check-pstack-delivery.py`：实际引用目标、嵌入探针摘要；本页分类与外部前提审查。 |
+| P11 | 14 | `check-pstack-delivery`：实际引用目标、嵌入探针摘要；本页分类与外部前提审查。 |
 | P12 | 01 | `maintenance.test.ts`：独立文本/二进制读取及换行边界。 |
 | P13 | 01 | `maintenance.test.ts`：成功和失败时非归属文件仍可读。 |
 | P14 | 13 | `assembly`：只读资源、调用记录、源前后指纹及本地网络对照。 |
@@ -83,7 +85,7 @@ Suite 可增加或重新组合 extensions、skills、MCP、LSP 等资源。包�
 | P42 | 11 | `video-report.test.ts`、`video-render-omp-dock.test.ts`：上游方法审查和真实 MP4/信息/解码帧。 |
 | P43 | 02 | `core-routing.test.ts` 和 `MIGRATION-BACKLOG.md` 范围审查。 |
 | P44 | 02 | `core-routing.test.ts`、`core-routing-omp-dock.test.ts`：候选/隐藏/暂缓技能区别及真实可达性。 |
-| P45 | 14 | 本轮包报告、原始运行记录和逐项证据索引；失败、未运行、H1/H2 独立标记。 |
+| P45 | 14 | 本轮包检查 `summary.json`、外层 `tester-run.json`、原始运行记录和逐项证据索引；失败、未运行、H1/H2 独立标记。 |
 | P46 | 13 | `resource-failure`：公开发起/恢复错误与实际宿主未启动、无读写/请求的对照。 |
 
 H1 的可复现 TUI 准备材料在 Toolkit `pstack-suite/README.md` 的 H1 小节，包括 marker 显示和实际退出/恢复观察。H2 由 10 提供自有测试仓库、受控结果、真实 forge 指令、预期副作用和采集/回传步骤；只运行明确获授权的测试仓，不接触生产仓库或以机械结果代签。两项在用户确认前均为未验证。

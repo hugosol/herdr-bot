@@ -5,7 +5,6 @@
 ```powershell
 $TESTER = 'E:/Developer/myhub/herdr-bot-tester'
 $BOT = 'E:/Developer/myhub/herdr-bot'
-$env:HERDR_BOT_WORKTREE = $BOT
 ```
 
 验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
@@ -559,22 +558,26 @@ Task 配置分为两组：
 从显式参与 herdr-bot worktree 根运行；这是普通实施票的专项，不增加全局最终 gate，不改变全局票序或 first-merge 依赖调度。两仓的完整检查仍分别执行，不能用专项或人工项冲抵失败回归。
 
 ```powershell
-$env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT '.scratch/cargo-target'
+$TOOLKIT_WT = 'D:/worktrees/toolkit'
+$ISOLATION_JSON = 'D:/acceptance/rust-script-installations.json'
+$NEW_EVIDENCE_DIR = 'D:/acceptance/rust-script-evidence-new'
+$env:CARGO_TARGET_DIR = Join-Path $BOT '.scratch/cargo-target'
 $env:CARGO_BUILD_JOBS = '1'
+Set-Location $BOT
 # 依赖先各自在所属根按 frozen lock 安装；Bun 1.4.4。
 npm --prefix frontend run build
 cargo build --locked --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --bin herdr-paths --example safe_shutdown_shell
 python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-rust-script-bots `
-  --herdr-bot-worktree $HERDR_BOT_WT --toolkit-worktree $TOOLKIT_WT `
+  --toolkit-worktree $TOOLKIT_WT `
   --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
-  --static-dir (Join-Path $HERDR_BOT_WT 'backend/static') `
+  --static-dir (Join-Path $BOT 'backend/static') `
   --native-entry (Join-Path $TOOLKIT_WT 'scripts/rust-script-acceptance.ts') `
   --isolation-config $ISOLATION_JSON --evidence-dir $NEW_EVIDENCE_DIR
 ```
 
 所有参数为绝对路径；证据目录必须不存在。`ISOLATION_JSON` 必须包含 `externalMode:"controlled-protocol-only"`，以及绝对安装路径 `bun`、`node`、`piCli`、`piNode`、`ompBaselineRecordRoot`、`chrome`。`piCli` 指实际安装 Pi 的 CLI JS，不是自动发现认证的启动器；`piNode` 为满足该安装 engines 的已安装 Node（Windows 已有 Node 22.19.0 可用于规避高版本退出竞态）。`ompBaselineRecordRoot` 只解析既有 baseline 的只读源码锚点，不替换本 worktree 扩展源码。先为本 toolkit worktree 准备其既有精确 OMP dock 安装，不能使用另一 worktree 的遗留产物。配置不含模型密钥，不发现用户认证、不联系正常服务；受控 provider 不是实际模型理解证据。
 
-入口拒绝错误 worktree、原生入口、静态页、缺失或过期产物及 Cargo depfile 来源不匹配；保留源码／锁文件、页面、后端／fixture／安全壳／resolver、安装宿主身份和完整参数。依次执行原 owner 03 的 P15、P23 真实页面专项、10 的 `bun test tests/harness-dock/manager-script-protocol.test.ts`，再执行两宿主生产后端业务组合。每阶段独立记录命令、cwd、stdout、stderr、退出码，不因前一阶段失败略去其余可运行阶段；旧证据不覆盖。`RUST_SCRIPT_TOOLKIT=$TOOLKIT_WT python "$TESTER/scripts/accept-rust-script-bots.test.py"` 只验证入口安全，不证明业务。
+入口拒绝错误 worktree、原生入口、静态页、缺失或过期产物及 Cargo depfile 来源不匹配；保留源码／锁文件、页面、后端／fixture／安全壳／resolver、安装宿主身份和完整参数。依次执行原 owner 03 的 P15、P23 真实页面专项、10 的 `bun test tests/harness-dock/manager-script-protocol.test.ts`，再执行两宿主生产后端业务组合。每阶段独立记录命令、cwd、stdout、stderr、退出码，不因前一阶段失败略去其余可运行阶段；旧证据不覆盖。在 PowerShell 中设置 `$env:HERDR_BOT_WORKTREE = $BOT` 和 `$env:RUST_SCRIPT_TOOLKIT = $TOOLKIT_WT`，再运行 `python "$TESTER/scripts/accept-rust-script-bots.test.py"`。该自测只验证入口安全，不证明业务。
 
 业务组合保持交付八节点 Map 的节点、依赖和材料规则，只隔离 zone 和外部编写者的 Task 绑定。实际 Rust 创建和保存均由生产 `herdr-bot` 执行；没有运行时业务解释器或独立业务 exe。manager 使用正常 OMP/Pi auto 入口、实际 run／collect／read，外部编写者只提供明确标记的受控 `abc`／`hello`／空串材料；真实 Rust 保存、完整 Bot／目标、revision、baseline／saved／handoff、execution、报告、完成记录和原生读取结果均独立读回。它不证明三编写者真实模型遵从，不能替代其既有原生验收。
 

@@ -5,7 +5,6 @@
 ```powershell
 $TESTER = 'E:/Developer/myhub/herdr-bot-tester'
 $BOT = 'E:/Developer/myhub/herdr-bot'
-$env:HERDR_BOT_WORKTREE = $BOT
 ```
 
 验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
@@ -173,6 +172,8 @@ workflow 的全部 Run 列表将根 Run 与子 Run 并列列出；Run 名称、M
 独立进程烟测（先构建当前 worktree 的静态页与安全壳，使用独立 `CARGO_TARGET_DIR`）：
 
 ```powershell
+Set-Location $BOT
+$env:CARGO_TARGET_DIR = 'D:/isolated-build/workflow-acceptance-target'
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture
 python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-local-lifecycle `
@@ -196,7 +197,8 @@ node scripts/test-backend.mjs
 受控机制回归：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_completion::`，覆盖冻结输出与增量、两类下游、缺交付及旧执行隔离、两种未 finish 门禁、最新报告验收、实际 CLI 通知拒绝及精确关闭幂等。独立安全后端运行烟测：
 
 ```powershell
-# CARGO_TARGET_DIR 须指向当前 worktree 的独立目录。
+Set-Location $BOT
+$env:CARGO_TARGET_DIR = 'D:/isolated-build/workflow-acceptance-target'
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture
 python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-nested-completion `
@@ -221,7 +223,8 @@ P29/P30 服务端契约回归：`cargo test --manifest-path backend/Cargo.toml -
 独立进程烟测（先构建当前 worktree 静态页面，使用独占 target）：
 
 ```powershell
-$env:CARGO_TARGET_DIR = '<本 worktree 独占 target 目录>'
+Set-Location $BOT
+$env:CARGO_TARGET_DIR = 'D:/isolated-build/workflow-acceptance-target'
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture
 python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-nested-retry `
@@ -241,7 +244,8 @@ P31 定向回归：`cargo test --manifest-path backend/Cargo.toml --test workflo
 独立进程烟测使用当前 worktree 的页面、安全后端与夹具，不执行真实关机：
 
 ```powershell
-$env:CARGO_TARGET_DIR = '<本 worktree 独占 target 目录>'
+Set-Location $BOT
+$env:CARGO_TARGET_DIR = 'D:/isolated-build/workflow-acceptance-target'
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture --bin herdr-bot
 python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-partial-startup `
@@ -356,7 +360,7 @@ child 的父关联发布／初始化与删除扫描在同一进程内协调；�
 
 回归入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch history_integrity:: -- --nocapture`，并保留 `map_deletion::` 的无关联、损坏记录、安全边界与迟到保存回归。新用例使用真实临时文件、Windows 独占共享拒绝及 oplock 文件打开门闩，交错扫描与已接受的 child 创建；另外在外部原生身份／初始指示门闩中拒绝父、child 两端删除，释放后独立读回关联。200ms 是受控扫描停顿后的负向观察窗口，不是业务性能或无限期保证；失败也释放门闩并等待所属请求，保留原错误及清理错误。
 
-独立进程烟测：先设置此 worktree 独占 `CARGO_TARGET_DIR`，执行 `npm --prefix frontend run build` 和 `cargo build --manifest-path backend/Cargo.toml --bin herdr-fixture --example safe_shutdown_shell`，再执行 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" check-workflow-history-integrity --target-dir <独占 CARGO_TARGET_DIR>`。入口经公开定义 revision／保存和运行 HTTP 发起隔离安全后端，验证无关联删除、child 身份等待期间双向拒绝、真实不可读关联与迟到关联保存；独立读回三份持久记录，核对宿主无停止／回滚／重试调用，正常失败均等待所属请求并停止后端、消费日志。每次在独占 Temp 留存 `http.json`、`evidence.json` 与进程输出。该证据证明 HTTP、持久化及受控宿主边界，不证明真实原生 agent 或模型质量；完整后端检查仍用 `node scripts/test-backend.mjs`。
+独立进程烟测：先将 `CARGO_TARGET_DIR` 设置为本轮独占绝对目录，再从 `$BOT` 执行 `npm --prefix frontend run build` 和 `cargo build --manifest-path backend/Cargo.toml --bin herdr-fixture --example safe_shutdown_shell`，再执行 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" check-workflow-history-integrity --target-dir $env:CARGO_TARGET_DIR`。入口经公开定义 revision／保存和运行 HTTP 发起隔离安全后端，验证无关联删除、child 身份等待期间双向拒绝、真实不可读关联与迟到关联保存；独立读回三份持久记录，核对宿主无停止／回滚／重试调用，正常失败均等待所属请求并停止后端、消费日志。每次在独占 Temp 留存 `http.json`、`evidence.json` 与进程输出。该证据证明 HTTP、持久化及受控宿主边界，不证明真实原生 agent 或模型质量；完整后端检查仍用 `node scripts/test-backend.mjs`。
 
 ### 损坏记录与 Windows 文件协调
 
@@ -382,13 +386,17 @@ child 的父关联发布／初始化与删除扫描在同一进程内协调；�
 
 嵌套管理者 Chat 的普通恢复依据持久唯一关联：子 Run 的 manager 与父 node 的同一次 execution 必须相互对应；它同时加载 manager-chat 与 node-chat，而非根据 Chat 名称、cwd 或当前选择推测角色。retry 后的旧 Chat 仍对应保留的旧 execution 与旧 child，不改绑到新执行。恢复使用明确来源 Task 的当前会话环境，不重新应用 trigger config，不新建 Run、execution 或提交业务输入；非法／不唯一的关联明确拒绝，不能以普通 manager 角色替代双角色校验。旧非嵌套记录缺少 parent／childRunId 字段仍按非嵌套历史读取，不要求迁移或增加旧业务别名。角色查找扫描 Run 记录，但只反序列化身份与角色关联字段；旧记录缺少成果批准字段不阻断任何 Chat 的恢复。JSON 无法解析或关联本身不可判定时仍拒绝恢复，不跳过记录、不推测角色。此读取方式仅用于 Chat 恢复，不迁移 Run，也不改变 workflow 操作的完整记录校验。
 
-后端专项入口（当前 worktree 的静态页面、独立 `CARGO_TARGET_DIR`；仅受控 Herdr，不连接用户会话）：
+后端专项的当前复跑入口使用本次 worktree 的静态页面、独立构建目录和受控 Herdr，不连接用户会话：
 
-```text
+```powershell
+Set-Location $BOT
+$env:CARGO_TARGET_DIR = 'D:/isolated-build/workflow-acceptance-target'
 npm --prefix frontend run build
 cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch resume_restart:: -- --nocapture
 cargo build --manifest-path backend/Cargo.toml --example safe_shutdown_shell --bin herdr-fixture
-python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-resume-restart --backend <target>/debug/examples/safe_shutdown_shell.exe --fixture <target>/debug/herdr-fixture.exe
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-resume-restart `
+  --backend "$env:CARGO_TARGET_DIR/debug/examples/safe_shutdown_shell.exe" `
+  --fixture "$env:CARGO_TARGET_DIR/debug/herdr-fixture.exe"
 node scripts/test-backend.mjs
 ```
 
@@ -450,7 +458,7 @@ manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `fi
 
 定向入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch file_consumption:: -- --nocapture`。公开 HTTP 定义／启动／派发、真实临时文件、持久记录独立读回及受控外部 Herdr 共同观察：本 Run 输入本地重命名与可选缺席、未声明／跨 Run 来源拒绝、根预检／启动已提供文件缺失与不可读拒绝、三类来源派发时的存在／缺失／真实 Windows 独占句柄拒绝、实际 junction 安全边界、旧消费者地址不随报告更新及不同 Run 隔离。原地修改后按旧绑定直接读到新字节，删除后真实读取失败；随后 300ms 窗口内记录与宿主调用不变，无补文件或搬运。该窗口不是无限期行为证明。
 
-独立运行烟测不只运行测试套件：先设本 worktree 独占 `CARGO_TARGET_DIR`，执行 `npm --prefix frontend run build` 与 `cargo build --manifest-path backend/Cargo.toml --bin herdr-fixture --example safe_shutdown_shell`，然后执行 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" check-workflow-file-consumption --target-dir <独占 CARGO_TARGET_DIR>`。runner 启动本 worktree 的安全后端壳与受控宿主，使用操作系统分配的数值回环端口及独占目录；仅预置空 Map 容器，其余 Bot、声明、node、Run、报告与派发走公开 HTTP。逐来源核对实际文件、持久事实和宿主效果，另检查根缺失／锁定拒绝与地址更新后原地删改。stdout/stderr 持续消费，成功失败均终止并等待所属后端；原始与清理错误分开保留，返回非零不冒充通过。每次打印独占证据目录，含 `evidence.json`、完整 `http.json`、日志、真实运行记录及宿主调用。
+独立运行烟测不只运行测试套件：先将 `CARGO_TARGET_DIR` 设置为本轮独占绝对目录，再从 `$BOT` 执行 `npm --prefix frontend run build` 与 `cargo build --manifest-path backend/Cargo.toml --bin herdr-fixture --example safe_shutdown_shell`，然后执行 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" check-workflow-file-consumption --target-dir $env:CARGO_TARGET_DIR`。runner 启动本 worktree 的安全后端壳与受控宿主，使用操作系统分配的数值回环端口及独占目录；仅预置空 Map 容器，其余 Bot、声明、node、Run、报告与派发走公开 HTTP。逐来源核对实际文件、持久事实和宿主效果，另检查根缺失／锁定拒绝与地址更新后原地删改。stdout/stderr 持续消费，成功失败均终止并等待所属后端；原始与清理错误分开保留，返回非零不冒充通过。每次打印独占证据目录，含 `evidence.json`、完整 `http.json`、日志、真实运行记录及宿主调用。
 
 该运行入口已用于 Windows 真实访问拒绝、三来源成功／拒绝与派发后删改机制检查；受控宿主只证明启动边界和实际初始化传参，不证明原生 Chat 已读取材料或完成业务。原生内容消费归独立真实链路专项。完整后端交付入口仍为 `node scripts/test-backend.mjs`；前端响应 schema 使用 `npm --prefix frontend test -- tests/schedulerApi.test.ts`，不以组件通过代替进程事实。不读取用户凭据、连接用户 Chat／daemon、访问 LAN／mDNS 或执行真实关机。
 
@@ -492,7 +500,12 @@ manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `fi
 规划入口仅更新两个共享 Task、两个 Bot 指南与本 Map 的交付门槛；其他 Map、旧独立能力入口、已有执行及运行实现不因此改造。根业务启动配置可待用户提供，但方案内 Map 调用节点的 manager、zone、业务输入和材料映射缺失仍阻止翻译。定义和文档检查不证明真实 agent 已遵从新指示，文件不覆盖仍是工作约定而非服务端不可变存储保证。
 定义级检查：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch plan_workflow:: -- --nocapture`。测试通过隔离服务公开读取交付的规划 Task／Bot，保存、读回原规划 Map 和混合 Task 型＋Map 型节点，保护命名来源、两节点业务绑定、依赖、报告策略与完整定义，并预检真实目标移除前后的接受／拒绝，查询无 Run、无宿主调用。这只是定义可读／可保存／服务可见的启用证据；指引内容审阅、字段存在或文本长度都不是 nesting P03 或原 P27/P28 的真实模型验收。完整实际宿主 outline → generate_map、真实文件翻译质量、用户业务确认及人工成果批准由独立真实业务入口验证：
 
+先按测试指引从 `$BOT` 构建后端。下例的 `CARGO_TARGET_DIR` 必须是本轮构建所用的绝对目录。将 Toolkit 根和依赖文件也设为本轮绝对路径。
+
 ```powershell
+$env:CARGO_TARGET_DIR = 'D:/isolated-build/workflow-handoff-target'
+$TOOLKIT_WT = 'D:/worktrees/toolkit'
+$ISOLATED_PATHS = 'D:/acceptance/planning-handoff-paths.toml'
 python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-file-handoff `
   --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
   --toolkit $TOOLKIT_WT --scenario plan-workflow --paths-file $ISOLATED_PATHS

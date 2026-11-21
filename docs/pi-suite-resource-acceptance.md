@@ -5,7 +5,6 @@
 ```powershell
 $TESTER = 'E:/Developer/myhub/herdr-bot-tester'
 $BOT = 'E:/Developer/myhub/herdr-bot'
-$env:HERDR_BOT_WORKTREE = $BOT
 ```
 
 验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
@@ -27,8 +26,11 @@ including its public path resolver. Build the current frontend, not a different
 worktree's static assets:
 
 ```powershell
-$env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
-Set-Location $HERDR_BOT_WT
+$TOOLKIT_WT = 'D:/worktrees/toolkit'
+$ISOLATED_PATHS = 'D:/acceptance/pi-resource-paths.toml'
+$EVIDENCE_DIR = 'D:/acceptance/pi-resource-run-unique'
+$env:CARGO_TARGET_DIR = Join-Path $BOT 'backend/target'
+Set-Location $BOT
 bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-paths
@@ -56,7 +58,7 @@ no fallback to another worktree, installed toolkit or user deployment.
 
 ```powershell
 python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-resources `
-  --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
+  --toolkit-worktree "$TOOLKIT_WT" `
   --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
   --paths-file "$ISOLATED_PATHS" --scenario all --evidence-dir "$EVIDENCE_DIR"
 ```
@@ -110,6 +112,7 @@ Missing centralized MCP reference coverage is intentionally not duplicated: use
 The runner's S3 fail-closed regression does not launch agents:
 
 ```powershell
+$env:HERDR_BOT_WORKTREE = $BOT
 $env:SUITE_ACCEPTANCE_TOOLKIT = $TOOLKIT_WT
 python "$TESTER/scripts/accept-suite-pi-resources.test.py"
 ```
@@ -117,6 +120,7 @@ python "$TESTER/scripts/accept-suite-pi-resources.test.py"
 From the herdr-bot worktree, record each result separately:
 
 ```powershell
+Set-Location $BOT
 node scripts/test-backend.mjs
 npm --prefix frontend test
 npm --prefix frontend run test:browser:build
@@ -127,10 +131,12 @@ all interop inputs explicitly; `HERDR_BOT_BINARY`/`HERDR_BOT_METADATA` do not se
 the separate workflow fixture's source root:
 
 ```powershell
-$env:HERDR_BOT_REPO = $HERDR_BOT_WT
-$env:HERDR_BOT_BINARY = "$HERDR_BOT_WT/backend/target/debug/examples/safe_shutdown_shell.exe"
-$env:HERDR_BOT_METADATA = "$HERDR_BOT_WT/meta-data/task-options.toml"
+Set-Location $TOOLKIT_WT
+$env:HERDR_BOT_REPO = $BOT
+$env:HERDR_BOT_BINARY = Join-Path $env:CARGO_TARGET_DIR 'debug/examples/safe_shutdown_shell.exe'
+$env:HERDR_BOT_METADATA = Join-Path $BOT 'meta-data/task-options.toml'
 # If temporary worktrees do not share the recorded sibling baseline checkouts:
+$ORIGINAL_TOOLKIT_ROOT = 'D:/sources/original-toolkit-checkout'
 $env:OMP_BASELINE_RECORD_ROOT = $ORIGINAL_TOOLKIT_ROOT
 bun install --frozen-lockfile
 bun run typecheck

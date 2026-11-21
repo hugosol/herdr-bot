@@ -5,7 +5,6 @@
 ```powershell
 $TESTER = 'E:/Developer/myhub/herdr-bot-tester'
 $BOT = 'E:/Developer/myhub/herdr-bot'
-$env:HERDR_BOT_WORKTREE = $BOT
 ```
 
 验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
@@ -17,7 +16,6 @@ $env:HERDR_BOT_WORKTREE = $BOT
 用 Bun 1.4.4 及 Python 3.11+。先将下列 PowerShell 变量中的所有路径改为本轮绝对路径，Cargo 目录必须是新建或空目录；证据目录不得存在。Windows TEMP 指向无需引号即可交给 Bun preload 的短路径（无空白），runner 在其下创建独占 Herdr、agent、Git 和发布副本；技能副本所在目录故意含空格。保留已安装宿主，不运行宿主安装、更新或修补。
 
 ```powershell
-$Bot = 'C:/absolute/herdr-bot-worktree'
 $Toolkit = 'C:/absolute/toolkit-worktree'
 $Config = 'C:/absolute/pstack-owned-installations.json'
 $Evidence = 'C:/absolute/pstack-new-evidence'
@@ -25,16 +23,15 @@ $env:CARGO_TARGET_DIR = 'C:/absolute/fresh-exclusive-pstack-cargo'
 $Backend = Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe'
 $SafeShell = Join-Path $env:CARGO_TARGET_DIR 'debug/examples/safe_shutdown_shell.exe'
 
-Set-Location "$Bot/frontend"
+Set-Location "$BOT/frontend"
 bun install --frozen-lockfile
-Set-Location $Bot
+Set-Location $BOT
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --locked --bins --example safe_shutdown_shell --example recovery_herdr_proxy
 Set-Location $Toolkit
 bun install --frozen-lockfile
-Set-Location $Bot
 python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-pstack-suite `
-  --herdr-bot-worktree $Bot --toolkit-worktree $Toolkit `
+  --toolkit-worktree $Toolkit `
   --backend $Backend --isolated-config $Config --cases all --evidence-dir $Evidence
 ```
 
@@ -63,14 +60,14 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-pstack-suite `
 沿用上面两个 worktree、已建立的冻结依赖和同一次独占 Cargo 构建。分别保留每个命令、cwd、源码 revision／锁文件和相关源码哈希、版本、退出码、原始日志及产物身份；不要让一次后续绿覆盖较早的失败。
 
 ```powershell
-Set-Location $Bot
+Set-Location $BOT
 node scripts/test-backend.mjs
 npm --prefix frontend test
 npm --prefix frontend run test:browser:build
 
 Set-Location $Toolkit
-$env:HERDR_BOT_REPO = $Bot
-$env:HERDR_BOT_METADATA = Join-Path $Bot 'meta-data/task-options.toml'
+$env:HERDR_BOT_REPO = $BOT
+$env:HERDR_BOT_METADATA = Join-Path $BOT 'meta-data/task-options.toml'
 $env:HERDR_BOT_BINARY = $SafeShell
 $env:OMP_BASELINE_RECORD_ROOT = 'C:/absolute/original-toolkit-checkout'
 $env:HARNESS_ACCEPTANCE_EVIDENCE_DIR = 'C:/absolute/owned-toolkit-check-results'
@@ -94,4 +91,4 @@ Toolkit 只对 dock 使用 safe shell，绝不将生产后端设为 `HERDR_BOT_B
 | `source-base`（P20） | 通过 Suite 装配的主 Chat 与实际独立 cwd 的 native task 分别明确读取，核对技能原路径、相对配套资源和子历史，排除 cwd 诱饵或父对话继承。 |
 | `role-lifecycle`（P24/P28/P31） | 无绑定实际进入 setup；停止 owned 会话后用原生命令目录及明确 `--confirm` 生成 A，重新公开发起并调用原生角色。再次停用、确认 B、发起且实际消费 B；通过 Herdr 发起其他 Suite 的原生默认模型作前后对照。 |
 
-`--help` 列出参数。逗号分隔的子集只用于诊断，始终非零并清楚保留缺格状态。`summary.json` 的 `passed` 仅代表所有专项格通过，不表示仓库检查、H1/H2 或真实模型质量。证据目录保留原生模型 wire、公开 HTTP 和构建页面正文、Herdr 请求、实际历史和输出；每格 `evidence.json` 给出独占短路径及所属程序退出记录。清理或取证失败不算通过。专项保留状态供复核，不访问既有会话；确认所属程序已退出后才删除本轮目录。
+`--help` 列出参数。逗号分隔的子集只用于诊断，始终非零并清楚保留缺格状态。场景的 `summary.json` 中，`passed` 仅代表所有专项格通过，不表示仓库检查、H1/H2 或真实模型质量。外层 `run.py` 的 `tester-run.json` 记录所选产品根、验证代码身份和场景退出码，不判定覆盖。证据目录保留原生模型 wire、公开 HTTP 和构建页面正文、Herdr 请求、实际历史和输出；每格 `evidence.json` 给出独占短路径及所属程序退出记录。清理或取证失败不算通过。专项保留状态供复核，不访问既有会话；确认所属程序已退出后才删除本轮目录。

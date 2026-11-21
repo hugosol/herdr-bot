@@ -5,7 +5,6 @@
 ```powershell
 $TESTER = 'E:/Developer/myhub/herdr-bot-tester'
 $BOT = 'E:/Developer/myhub/herdr-bot'
-$env:HERDR_BOT_WORKTREE = $BOT
 ```
 
 验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
@@ -17,7 +16,10 @@ $env:HERDR_BOT_WORKTREE = $BOT
 从参与的 herdr-bot worktree 执行。先按测试指引安装依赖、构建该 worktree 前端静态资源和后端。不同源码副本必须使用独立 `CARGO_TARGET_DIR`，不可传入其他 checkout 的旧可执行文件。toolkit 必须指向参与 worktree 的绝对根；其实际角色入口及配置会复制到本次专用部署，而不是修改用户配置。
 
 ```powershell
-$env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
+$TOOLKIT_WT = 'D:/worktrees/toolkit'
+$ISOLATED_PATHS = 'D:/acceptance/fan-in-paths.toml'
+$env:CARGO_TARGET_DIR = Join-Path $BOT 'backend/target'
+Set-Location $BOT
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --example safe_shutdown_shell
 python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-file-handoff `
   --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
@@ -64,17 +66,20 @@ stdout 返回 `passed` 和 `evidence.json` 路径。失败仍保存已获得的�
 
 ```powershell
 # herdr-bot，使用该 worktree 独立 CARGO_TARGET_DIR
+Set-Location $BOT
 cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- --nocapture
 node scripts/test-backend.mjs
 npm --prefix frontend test
-# runner 的缺依赖 fail-closed 回归，不代表真实业务通过
+# 验证项目的缺依赖回归，不代表真实业务通过
+$env:HERDR_BOT_WORKTREE = $BOT
 $env:WORKFLOW_HANDOFF_TOOLKIT = $TOOLKIT_WT
 python "$TESTER/scripts/test-workflow-file-handoff.test.py"
 
-# toolkit，临时 worktree 不共享默认 sibling 布局时显式指定安全壳及只读元数据
-$env:HERDR_BOT_REPO = $HERDR_BOT_WT
+# toolkit，显式指定产品安全壳及只读元数据
+Set-Location $TOOLKIT_WT
+$env:HERDR_BOT_REPO = $BOT
 $env:HERDR_BOT_BINARY = Join-Path $env:CARGO_TARGET_DIR 'debug/examples/safe_shutdown_shell.exe'
-$env:HERDR_BOT_METADATA = Join-Path $HERDR_BOT_WT 'meta-data/task-options.toml'
+$env:HERDR_BOT_METADATA = Join-Path $BOT 'meta-data/task-options.toml'
 bun test tests/workflow-chat
 bun test tests/harness-dock/node-report-contract.test.ts tests/harness-dock/node-report.test.ts tests/harness-dock/manager-state-actions.test.ts tests/harness-dock/role-guidance-rehearsal.test.ts
 bun run typecheck

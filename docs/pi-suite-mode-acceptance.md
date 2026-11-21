@@ -5,7 +5,6 @@
 ```powershell
 $TESTER = 'E:/Developer/myhub/herdr-bot-tester'
 $BOT = 'E:/Developer/myhub/herdr-bot'
-$env:HERDR_BOT_WORKTREE = $BOT
 ```
 
 验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
@@ -25,17 +24,17 @@ toolkit 必须包含工厂期 `--pi-suite-config` 通道。runner 不安装宿�
 从 **herdr-bot worktree 根**执行，变量均为显式绝对路径：
 
 ```powershell
-$HERDR_BOT_WT = (Get-Location).Path
+Set-Location $BOT
 $TOOLKIT_WT = 'D:/worktrees/toolkit'
 $ISOLATED_PATHS = 'D:/acceptance/isolated-paths.toml'
 $EVIDENCE_DIR = 'D:/acceptance/pi-mode-run-unique'
-$env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
+$env:CARGO_TARGET_DIR = Join-Path $BOT 'backend/target'
 bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
 $BACKEND_BINARY = Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe'
 python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-mode `
-  --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
+  --toolkit-worktree "$TOOLKIT_WT" `
   --backend "$BACKEND_BINARY" --paths-file "$ISOLATED_PATHS" `
   --evidence-dir "$EVIDENCE_DIR"
 ```
@@ -77,6 +76,7 @@ MCP 的 `tools/call` 还须在真实 endpoint wire 中恰出现一次，并返�
 不 skip，不自动重试业务提交。CLI 缺当前二进制的 fail-closed 回归为：
 
 ```powershell
+$env:HERDR_BOT_WORKTREE = $BOT
 $env:PI_MODE_TOOLKIT_WORKTREE = $TOOLKIT_WT
 python "$TESTER/scripts/accept-suite-pi-mode.test.py"
 ```
@@ -96,10 +96,17 @@ settings 前后值、原生历史、terminal 和所属进程退出事实。stdou
 
 ```powershell
 # herdr-bot 根；源码变更后的页面由最后一条命令重新构建。
+Set-Location $BOT
 node scripts/test-backend.mjs
 npm --prefix frontend test
 npm --prefix frontend run test:browser:build
+cargo build --manifest-path backend/Cargo.toml --bin herdr-fixture --example safe_shutdown_shell
+
 # toolkit 根；冻结依赖预先准备，临时 worktree 可按其规范设置 baseline 根。
+Set-Location $TOOLKIT_WT
+$env:HERDR_BOT_REPO = $BOT
+$env:HERDR_BOT_BINARY = Join-Path $env:CARGO_TARGET_DIR 'debug/examples/safe_shutdown_shell.exe'
+$env:HERDR_BOT_METADATA = Join-Path $BOT 'meta-data/task-options.toml'
 bun run typecheck
 bun run check:integrations
 bun run test
@@ -111,9 +118,5 @@ bun run test
 MCP 或 codemode。无来源 Task 的恢复仍保持原生发现，不套用过滤参数。
 这些 argv 检查只证明启动接线，不替代上述真实 S4 矩阵。
 
-toolkit 跨仓 regression 使用当前 herdr-bot 的安全壳而非生产关机二进制：将
-`HERDR_BOT_REPO` 指向参与根，`HERDR_BOT_BINARY` 指向该根构建的
-`backend/target/debug/examples/safe_shutdown_shell.exe`，`HERDR_BOT_METADATA` 指向
-`meta-data/task-options.toml`，并先构建同根 `herdr-fixture`。这些 interop 配置不改变本专项
-显式传入真实 backend 的启动路径。历史 baseline 的宿主版本失败不能通过改写 baseline 消除；
+Toolkit 跨仓回归使用 `$BOT` 构建的安全壳和 `herdr-fixture`，不使用生产关机二进制。上述 interop 变量只用于 Toolkit 检查，不改变原生专项的 `--backend`。历史 baseline 的宿主版本失败不能通过改写 baseline 消除；
 实际检查日志应明确区分版本缺口、依赖准备失败、产品失败和未派发检查。
