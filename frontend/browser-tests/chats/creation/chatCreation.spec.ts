@@ -92,6 +92,52 @@ function callsOfKind(kind: string): Record<string, unknown>[] {
   return (server?.herdrCalls() ?? []).filter((call) => call.kind === kind)
 }
 
+test('App 创建在默认 Space 降级后显示实际位置并等待原生 ready', async ({ page }, testInfo) => {
+  server = await startServer({
+    herdr: { behavior: { app_spaces: [{ id: 'space-default', name: 'bot-playground', tabs: [] }] } },
+  })
+  await server.stop()
+  const directory = path.dirname(server.configPath)
+  const host = path.join(directory, 'herdr', 'herdr-fixture.exe')
+  fs.writeFileSync(path.join(directory, 'herdr', 'chat-app-mode'), '')
+  let config = fs.readFileSync(server.configPath, 'utf8')
+    .replace('[herdr]', `[herdr]\nbackend = 'app'\napp_executable = '${host}'\ncore_executable = '${host}'`)
+  if (process.env.HERDR_BOT_ROUTING_STATIC !== undefined) {
+    config = config.replace(/^static_directory = .*$/m, `static_directory = '${process.env.HERDR_BOT_ROUTING_STATIC}'`)
+  }
+  fs.writeFileSync(server.configPath, config)
+  await server.restart()
+  const zones = await prepareZones(server.baseURL)
+  await prepareTask(server.baseURL)
+  await page.goto(server.baseURL)
+  const dialog = await openChatDialog(page, zones.normal, true)
+  await dialog.getByTestId('chat-input').fill('App placement business input')
+  await dialog.getByTestId('chat-create-submit').click()
+  await expect(dialog.getByTestId('chat-create-stage')).toHaveText('正在初始化输入')
+  await expect(dialog).toContainText('bot-playground（space-default）')
+  await expect(dialog).toContainText('位置回退')
+  expect(callsOfKind('core_send')).toHaveLength(0)
+  const tabs = fs.readFileSync(path.join(directory, 'herdr', 'app-tabs.jsonl'), 'utf8')
+    .trim().split('\n').map(line => JSON.parse(line))
+  expect(tabs).toHaveLength(1)
+  expect(tabs[0].space).toBe('space-default')
+  const argv = tabs[0].options.argv as string[]
+  const data = { launchId: argv[6], targetId: argv[7], agentType: 'omp', cwd: zones.normalPath, pid: 43127 }
+  await jsonPost(server.baseURL, '/api/sessions/events', { kind: 'launch_identity', sessionId: 'browser-app-native', data })
+  expect(callsOfKind('core_send')).toHaveLength(0)
+  await jsonPost(server.baseURL, '/api/sessions/events', { kind: 'launch_ready', sessionId: 'browser-app-native', data })
+  await expect(dialog.getByTestId('chat-create-success')).toHaveText('创建成功，初始指示已提交')
+  await expect(dialog).toContainText('bot-playground（space-default）')
+  const sent = callsOfKind('core_send')
+  expect(sent).toHaveLength(1)
+  expect(sent[0].terminal).toBe(tabs[0].terminal)
+  expect(sent[0].text).toBe('App placement business input')
+  const actualSpace = dialog.getByText('bot-playground（space-default）', { exact: true })
+  await actualSpace.scrollIntoViewIfNeeded()
+  await expect(actualSpace).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('app-space-fallback.png'), fullPage: true })
+})
+
 test('从普通目录与 Git 工作树对应的 zone 行发起 Chat：预览名称、阶段、成功与定位', { tag: '@time-contract' }, async ({
   page,
 }) => {

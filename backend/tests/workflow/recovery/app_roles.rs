@@ -103,7 +103,7 @@ async fn p42_app_resume_preserves_original_run_roles_and_ownership() {
         assert_eq!(result["outcome"], "unconfirmed", "{result}");
         assert_eq!(result["progress"]["conversationConfirmed"], false);
         let tab = app_tab(&herdr, 11).await;
-        assert_eq!(tab["options"]["argv"], json!([agent, if agent == "omp" {"--resume"} else {"--session"}, native]));
+        assert_eq!(tab["options"]["argv"].as_array().unwrap()[8..], [json!(agent), json!(if agent == "omp" {"--resume"} else {"--session"}), json!(native)]);
         assert_eq!(result["target"]["paneId"], tab["pane"]);
         let warnings = result["degradations"].as_array().unwrap();
         for role in ["manager-chat", "node-chat"] {
@@ -141,7 +141,7 @@ pub(super) async fn restore_app_role(server: &TestServer, herdr: &HerdrFixture, 
     let pending = tokio::spawn(async move { post_json_over_tcp(addr, "/api/chats/resume", &request).await });
     let tab = app_tab(herdr, n).await;
     let argv = tab["options"]["argv"].as_array().unwrap();
-    let agent = argv[6].as_str().unwrap();
+    let agent = argv[8].as_str().unwrap();
     assert_eq!(argv[argv.len() - 2..], [json!(if agent == "omp" {"--resume"} else {"--session"}), json!(file)]);
     assert!(argv.contains(&json!("--no-extensions")));
     assert!(!argv.contains(&json!("--model")) && !argv.contains(&json!("--thinking")));
@@ -161,7 +161,7 @@ pub(super) async fn app_role_event(server: &TestServer, tab: &Value, session: &s
     let argv = &tab["options"]["argv"];
     run_reply(post_json_over_tcp(server.addr(), "/api/sessions/events", &json!({
         "kind":kind,"sessionId":session,"data":{
-            "launchId":argv[4],"targetId":argv[5],"agentType":argv[6],"cwd":tab["options"]["folder"],"pid":43127,"sessionFile":file,
+            "launchId":argv[6],"targetId":argv[7],"agentType":argv[8],"cwd":tab["options"]["folder"],"pid":43127,"sessionFile":file,
         }
     }).to_string()).await, 200);
 }

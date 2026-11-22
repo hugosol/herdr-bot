@@ -178,7 +178,7 @@ impl Fixture {
     async fn app_event(&self, tab: &Value, session_id: &str, kind: &str) {
         let argv = &tab["options"]["argv"];
         post(&self.server, "/api/sessions/events", json!({"sessionId":session_id,"kind":kind,"data":{
-            "launchId":argv[4],"targetId":argv[5],"agentType":argv[6],"cwd":tab["options"]["folder"],"pid":43127
+            "launchId":argv[6],"targetId":argv[7],"agentType":argv[8],"cwd":tab["options"]["folder"],"pid":43127
         }})).await;
     }
     fn identity(&self, id: &str) {

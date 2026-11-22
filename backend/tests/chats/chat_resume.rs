@@ -410,7 +410,7 @@ async fn app_resume_selects_only_the_current_hosts_space_and_directory() {
             "status":{"space":expected,"tab":"tab-owned",
                 "focused_pane":if scenario == "wrong-focal-pane" { "pane-other" } else { "pane-owned" }},
         }}));
-        core.set_behavior(json!({"app_transport":{
+        core.set_behavior(json!({"app_launches":app.path().join("app-created.json"),"app_transport":{
             "server status":{"core":{"id":"core-only"}},
             "get":{"address":"t27","state":"live","cwd":actual,
                 "labels":{"herdr.space":expected,"herdr.tab":"tab-owned"}},
@@ -442,7 +442,7 @@ async fn app_resume_selects_only_the_current_hosts_space_and_directory() {
         assert_eq!(body["target"], json!({"workspaceId":expected,"tabId":"tab-owned","paneId":"pane-owned"}));
         let calls = app.calls();
         let tab = calls.iter().find(|call| call["kind"] == "tab.new").unwrap();
-        assert_eq!(tab["data"]["argv"], json!(["pi", "--session", "resume-native"]));
+        assert_eq!(tab["data"]["argv"].as_array().unwrap()[8..], [json!("pi"), json!("--session"), json!("resume-native")]);
         let focuses: Vec<_> = calls.iter().filter(|call| call["kind"] == "pane.focus").collect();
         assert_eq!(focuses.len(), 1);
         assert_eq!(focuses[0]["data"], json!({"pane":"pane-owned"}));
@@ -536,15 +536,15 @@ async fn app_resume_with_correlated_identity(agent: &str, scenario: &str) {
     state_extension["entrypoint"] = toml::Value::String(cwd.join("not-installed-tui-state.ts").display().to_string());
     config.tasks.metadata_file = cwd.join("app-options.toml");
     std::fs::write(&config.tasks.metadata_file, toml::to_string(&metadata).unwrap()).unwrap();
-    let core_behavior = |argv: Value, tab: &str| json!({"app_transport":{
+    let core_behavior = |argv: Value, tab: &str| json!({"app_launches":app.path().join("app-created.json"),"app_transport":{
         "server status":{"core":{"id":"core-selected"}},
-        "get":{"address":"t27","state":"live","cwd":cwd,"pid":std::process::id(),"argv":argv,
+        "get":{"address":"t27","state":"live","cwd":cwd,"pid":std::process::id(),"argv":argv,"fixture_wrong_launch":tab == "tab-decoy",
             "labels":{"herdr.space":"space-real", "herdr.tab":tab}},
     }});
     let app_behavior = |focused: &str, refuse: bool| json!({"app_transport":{
         "ls":{"spaces":[{"id":"space-real","name":"bot-playground","tabs":[]},
             {"id":"space-decoy","name":"Other","tabs":[{"id":"tab-decoy","terminals":[{"pane":"pane-decoy","terminal":"t99"}]}]}]},
-        "tab.new":{"space":"space-real","tab":"tab-real","terminal":"t27","fixture_pane":"pane-real"},
+        "tab.new":{"space":"space-real","tab":"tab-real","terminal":"t27","fixture_pane":"pane-real","fixture_pid":std::process::id()},
         "pane.focus":if refuse { json!({"fixture_error":"focus refused"}) } else { json!({"ok":true}) },
         "status":{"space":"space-real","tab":"tab-real","focused_pane":focused},
     }});
@@ -583,7 +583,7 @@ async fn app_resume_with_correlated_identity(agent: &str, scenario: &str) {
     } else { native.clone() };
     let accepted = post_json_over_tcp(server.addr(), "/api/sessions/events", &json!({
         "sessionId":if scenario == "wrong-id" { "different-owner" } else { "app-owner" }, "kind":"launch_identity", "data":{
-            "launchId":args[separator+1], "targetId":args[separator+2], "agentType":if scenario == "wrong-type" { if agent == "pi" { "omp" } else { "pi" } } else { agent },
+            "launchId":args[separator+3], "targetId":args[separator+4], "agentType":if scenario == "wrong-type" { if agent == "pi" { "omp" } else { "pi" } } else { agent },
             "cwd":cwd, "pid":std::process::id(), "sessionFile":report_file,
         },
     }).to_string()).await;

@@ -210,7 +210,7 @@ workflow 是只读观察入口，没有暂停/恢复按钮。要暂停新派发�
 
 在 `herdr-bot.toml` 的 `[herdr]` 设置 `backend = 'tui'` 或 `backend = 'app'`；省略等同 `tui`，非法值拒绝启动。TUI CLI 路径为 `executable`，App 窗口控制与配套 core 分别为 `app_executable`、`core_executable`。三条路径可一次填好；也可省略，分别按 PATH 查找 `herdr`、`herdr-app`、`hc`。切换前先结束旧 agent、停止旧宿主，再改 `backend` 并重启 herdr-bot；不迁移正在运行的 Chat 或 Run。
 
-App 模式下，`HERDR_APP_HOME` 指向所选窗口，App 实际连接的 core 和 herdr-bot 调用的 `hc` 必须使用相同 core 环境（非默认实例可通过 `HC_SESSION` 或 `HC_SOCKET` 选择）。仅关闭 App 窗口不会退出 core。herdr-bot 用 App 中的实际 Space／Tab 及 core 中记录的终端归属核对目标；短终端地址相同不能证明是同一实例。App Tab 回执本身既不能证明归属，也不能证明 agent 已可输入。
+App 模式下，`HERDR_APP_HOME` 指向所选窗口。新 Tab 中的启动包装器通过 core 已有的 `HC_TERMINAL_ID`、`HC_TERMINAL_SOCKET` 发布本次终端来源；后端核对创建回执、启动凭据、core 身份及进程归属后，后续 `hc` 调用显式使用该端点，不按后端默认 `HC_SESSION` 猜测实例，也不依赖旧终端的 `herdr.space`、`herdr.tab` 标签。`core_executable` 只选择配套 CLI，不选择目标 core。仅关闭 App 窗口不会退出 core。短终端地址相同、App Tab 回执或启动来源上报都不能单独证明原生会话身份及输入就绪。来源缺失、core 或进程改变时停止操作，不切换到默认 core、不重放创建。App 的聚焦和关闭仍通过现有公开接口执行；外部校验不等于 App 内原子绑定操作，并发重启或移动下无法确认的结果保留为未确认。无需修改或替换 herdr-app、herdr-core。
 
 `workspace_name` 是默认容器名称的唯一来源：TUI 匹配 Workspace label，App 匹配 Space name。按字面精确匹配，零个或多个都报错，不任取一个或新建容器。它不是 zone 路径，也不是原生 Chat 身份。
 
@@ -450,7 +450,7 @@ Zone 行与 Task 行的“发起 Chat”打开同一个弹窗，zone 与 Task �
 
 只切换 zone 不重置 model、thinking 或初始 input。重复选择当前 Task 或 zone 不会清除已有名称预览。发起时先校验已保存 Task 的选项，再校验本次覆盖值；损坏的预设须先修正，不能通过本次覆盖值绕过。模型、思考级别及本次名称规则的修改仅用于本次发起，不保存到 Task 或其他配置；关闭后重新打开不保留临时修改。初始 input、名称预览、Herdr Workspace 选择及创建进度仍在同一弹窗中完成。
 
-Task 发起时，当前容器按 zone 根目录名匹配，默认容器按 `[herdr].workspace_name` 匹配；App 使用 Space，TUI 使用 Workspace。所选宿主启动目标后，页面会显示“正在初始化输入”，直到后端确认本次原生会话的输入管线已就绪。初始指示只经该目标终端提交，沿用命令、Skill 和模板的原生交互语义。`inputSubmitted: true` 只表示后端已确认终端提交，不表示模型已读或完成；初始化也不改变会话的在线状态或关机监听。
+Task 发起时，当前容器按 zone 根目录名匹配，默认容器按 `[herdr].workspace_name` 匹配；App 使用 Space，TUI 使用 Workspace。普通独立 Chat 在 App 的有效清单中确认当前目标不存在时，可回退到配置的唯一默认 Space；目标歧义、畸形清单或查询失败不会触发兜底。TUI、chief、Run 节点和嵌套 Map 保持各自原有位置规则。创建状态的 `workspace` 在位置选定后提供实际容器及可选降级原因，页面独立展示该位置，不表示 Tab 已创建或输入已提交。所选宿主启动目标后，页面会显示“正在初始化输入”，直到后端确认本次原生会话的输入管线已就绪。初始指示只经该目标终端提交，沿用命令、Skill 和模板的原生交互语义。`inputSubmitted: true` 只表示后端已确认终端提交，不表示模型已读或完成；初始化也不改变会话的在线状态或关机监听。
 
 只有宿主明确证明在写入前因 blocked 拒绝初始指示时，后端才会重试。每次从收到该拒绝起等待至少 1 秒，并在重试前核对原 Tab、进程和原生会话仍匹配；最多重试 5 次（含首次提交共 6 次尝试）。页面在等待时显示本次拒绝的原因，刷新不会重新发起 Chat；目标退出或更换会话／进程时取消，不创建替代 Tab。若第 6 次仍明确被拒绝，则保留现场与最后一次拒绝的原因，不再发送。超时、断线、部分输入、响应不明确或 `started:false` 都可能已经产生输入效果，只显示投递结果未确认，不自动重发。恢复与报告通知不使用此重试规则。
 

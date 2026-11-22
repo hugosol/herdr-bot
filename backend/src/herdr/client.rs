@@ -63,7 +63,7 @@ impl WorkspaceInventory {
         )))
     }
 
-    fn error(&self, detail: &str) -> HerdrError {
+    pub(super) fn error(&self, detail: &str) -> HerdrError {
         HerdrError::UnexpectedResponse { command: self.command, detail: detail.into() }
     }
 }
@@ -220,7 +220,7 @@ impl HerdrClient {
         Ok(original.map(|label| Workspace { id: id.into(), label: label.into() }))
     }
 
-    async fn workspace_inventory(&self) -> Result<WorkspaceInventory, HerdrError> {
+    pub(super) async fn workspace_inventory(&self) -> Result<WorkspaceInventory, HerdrError> {
         if let Host::App(app) = &self.host {
             return app.inventory().await;
         }
@@ -281,11 +281,8 @@ impl HerdrClient {
                 (tab, LaunchControl::Tui { alias: alias.into() })
             }
             Host::App(app) => {
-                let mut argv = Vec::with_capacity(7 + args.len());
-                argv.extend(["bun", "-e", APP_AGENT, "--", launch_id, target_id, kind].map(str::to_owned));
-                argv.extend_from_slice(args);
-                let (tab, terminal) = app.create(workspace, cwd, label, Some(&argv)).await?;
-                (tab, LaunchControl::App { terminal, correlation: Some((launch_id.into(), target_id.into())) })
+                let (tab, terminal) = app.create(workspace, cwd, label, kind, args, Some((launch_id, target_id))).await?;
+                (tab, LaunchControl::App { terminal })
             }
         };
         let target = std::sync::Arc::new(LaunchTarget {
@@ -298,26 +295,20 @@ impl HerdrClient {
 
     pub(crate) async fn launch_unreported_app(&self, workspace: &str, cwd: Option<&str>, label: &str, kind: &str, args: &[String]) -> Result<std::sync::Arc<LaunchTarget>, HerdrError> {
         let Host::App(app) = &self.host else { return Err(native_error("launch requires selected App host")); };
-        let argv = std::iter::once(kind.to_owned()).chain(args.iter().cloned()).collect::<Vec<_>>();
-        let (tab, terminal) = app.create(workspace, cwd, label, Some(&argv)).await?;
+        let (tab, terminal) = app.create(workspace, cwd, label, kind, args, None).await?;
         Ok(std::sync::Arc::new(LaunchTarget {
             location: NavigationTarget { workspace_id: workspace.into(), tab_id: tab.tab_id, pane_id: tab.pane_id },
-            control: LaunchControl::App { terminal, correlation: None },
+            control: LaunchControl::App { terminal },
         }))
     }
 
-    /// 在指定 Workspace 中新建 Tab；未指定 cwd 时由 Herdr 选择目录。
-    ///
-    /// 不使用当前焦点 Workspace；`--no-focus` 避免创建动作改变用户在 Herdr 中的焦点。
-    pub async fn create_tab(
+    /// 在指定 TUI Workspace 中新建 Tab，不改变当前焦点。
+    pub(crate) async fn create_tab(
         &self,
         workspace_id: &str,
         cwd: Option<&str>,
         label: &str,
     ) -> Result<CreatedTab, HerdrError> {
-        if let Host::App(app) = &self.host {
-            return app.create_tab(workspace_id, cwd, label).await;
-        }
         self.create_tui_tab(workspace_id, cwd, label, &[]).await
     }
 
@@ -478,7 +469,7 @@ impl HerdrClient {
 
     pub(crate) async fn close_app_target(&self, target: &LaunchTarget) -> Result<(), HerdrError> {
         match (&self.host, &target.control) {
-            (Host::App(app), LaunchControl::App { .. }) => app.close_tab(&target.location.tab_id).await,
+            (Host::App(app), LaunchControl::App { terminal }) => app.close_tab(&target.location, terminal).await,
             _ => Err(HerdrError::UnexpectedResponse { command: "App close", detail: "目标没有当前 App/core 的终端关联".into() }),
         }
     }
@@ -532,7 +523,32 @@ pub(super) async fn run_cli(
     args: &[impl AsRef<std::ffi::OsStr>],
     timeout: Duration,
 ) -> Result<Value, HerdrError> {
+        run_cli_command(Command::new(executable), executable, command_name, args, timeout).await
+    }
+
+    pub(super) async fn run_bound_core_cli(
+        executable: &Path, endpoint: &str, command_name: &'static str, args: &[&str], timeout: Duration,
+    ) -> Result<Value, HerdrError> {
+        // hc connects first. If the listener disappeared, its implicit startup
+        // must fail at state directory creation, even on platforms where status
+        // itself can start a core. A regular file cannot contain that directory.
+        #[cfg(windows)]
+        let no_start = std::env::current_exe().map_err(|error| HerdrError::NotStarted(format!("无法禁止 hc 自动启动：{error}")))?;
+        #[cfg(unix)]
+        let no_start = Path::new("/dev/null");
         let mut command = Command::new(executable);
+        command.env("HC_SOCKET", endpoint)
+            .env("XDG_STATE_HOME", no_start)
+            .env_remove("HC_SESSION")
+            .env_remove("HC_TERMINAL_ID")
+            .env_remove("HC_TERMINAL_SOCKET");
+        run_cli_command(command, executable, command_name, args, timeout).await
+    }
+
+    async fn run_cli_command(
+        mut command: Command, executable: &Path, command_name: &'static str,
+        args: &[impl AsRef<std::ffi::OsStr>], timeout: Duration,
+    ) -> Result<Value, HerdrError> {
         command
             .args(args)
             .stdin(Stdio::null())
@@ -617,19 +633,10 @@ impl NavigationTarget {
     }
 }
 
-// App has a structured argv but no per-Tab env setting. Set only the launch
-// correlation; keep the agent on the core PTY for native input and OSC 7501.
-// All Task args stay argv data.
-const APP_AGENT: &str = concat!(
-    "const [launchId, targetId, agent, ...args] = process.argv.slice(1); ",
-    "const child = Bun.spawn([agent, ...args], {env: {...process.env, HERDR_BOT_LAUNCH_ID: launchId, HERDR_BOT_LAUNCH_TARGET_ID: targetId}, stdin: 'inherit', stdout: 'inherit', stderr: 'inherit'}); ",
-    "process.exit(await child.exited);",
-);
-
 #[derive(Debug)]
 enum LaunchControl {
     Tui { alias: String },
-    App { terminal: super::app::AppTerminal, correlation: Option<(String, String)> },
+    App { terminal: super::app::AppTerminal },
 }
 
 #[derive(Debug)]
@@ -658,12 +665,7 @@ impl From<LaunchVerificationError> for HerdrError {
 }
 
 impl LaunchTarget {
-    pub(crate) fn app_coordinates(&self) -> Option<(&str, &str)> {
-        match &self.control {
-            LaunchControl::App { terminal, .. } => Some(terminal.coordinates()),
-            LaunchControl::Tui { .. } => None,
-        }
-    }
+    pub(super) fn is_app(&self) -> bool { matches!(self.control, LaunchControl::App { .. }) }
 
     pub(crate) async fn start_agent(&self, herdr: &HerdrClient, kind: &str, args: &[String]) -> Result<(), HerdrError> {
         if let LaunchControl::Tui { alias } = &self.control {
@@ -673,6 +675,14 @@ impl LaunchTarget {
     }
 
     pub(crate) async fn submit(&self, herdr: &HerdrClient, text: &str) -> Result<(), HerdrError> {
+        if let (LaunchControl::App { terminal }, Host::App(app)) = (&self.control, &herdr.host) {
+            app.observe_launch(&self.location, terminal).await?;
+        }
+        self.submit_observed(herdr, text).await
+    }
+
+    /// Initial input calls this after verifying the launch owner and host.
+    pub(super) async fn submit_observed(&self, herdr: &HerdrClient, text: &str) -> Result<(), HerdrError> {
         match (&self.control, &herdr.host) {
             (LaunchControl::Tui { alias }, Host::Tui(_)) => {
                 let value = herdr.prompt_once(alias, text).await?;
@@ -726,22 +736,14 @@ impl LaunchTarget {
                     if official.session_file.is_some() || file.is_none() { return Ok(official); }
                 }
             }
-            (LaunchControl::App { terminal, correlation: Some((launch_id, target_id)) }, Host::App(app)) => {
+            (LaunchControl::App { terminal }, Host::App(app)) => {
+                let bootstrap_pid = terminal.reported_bootstrap_pid().ok_or_else(|| native_error("App launch did not request native reports"))?;
                 let record = app.observe_launch(&self.location, terminal).await?;
-                let actual_argv = record.get("argv").and_then(Value::as_array);
-                let root_pid = record.get("pid").and_then(Value::as_u64).and_then(|n| u32::try_from(n).ok());
-                let has_argument = |value: &str| actual_argv.is_some_and(|argv| argv.iter().filter_map(Value::as_str).any(|arg| {
-                    arg == value || arg.split([' ', '\'', '"']).any(|part| part == value)
-                }));
-                if nonempty(record.get("state")) != Some("live")
-                    || !has_argument(launch_id) || !has_argument(target_id)
-                    || !nonempty(record.get("cwd")).is_some_and(valid_cwd)
-                {
-                    return Err(native_error("core terminal no longer runs this launch program").into());
+                if !nonempty(record.get("cwd")).is_some_and(valid_cwd) {
+                    return Err(native_error("App terminal cwd conflicts with launch report").into());
                 }
-                let root_pid = root_pid.ok_or_else(|| native_error("core terminal is missing its live process"))?;
-                if root_pid != pid && !tokio::task::spawn_blocking(move || super::launch::process_is_descendant(root_pid, pid)).await.unwrap_or(false) {
-                    return Err(native_error("reported owner is not the current App terminal process").into());
+                if bootstrap_pid != pid && !tokio::task::spawn_blocking(move || super::launch::process_is_descendant(bootstrap_pid, pid)).await.unwrap_or(false) {
+                    return Err(native_error("reported owner is not a process of this App launch").into());
                 }
             }
             _ => return Err(native_error("launch target host changed").into()),

@@ -131,10 +131,10 @@ async fn app_root_run_waits_for_native_readiness_and_persists_before_business_in
     assert_eq!(tab["space"], "space-current");
     assert_eq!(tab["options"]["folder"], json!(cwd));
     let argv = tab["options"]["argv"].as_array().expect("App must start the actual agent in its new tab");
-    assert_eq!(argv[6], "omp");
+    assert_eq!(argv[8], "omp");
     assert!(!argv.iter().any(|arg| arg.as_str().is_some_and(|arg| arg.contains("Root business"))));
     let event = |kind| json!({"kind":kind,"sessionId":"app-root-omp","data":{
-        "launchId":argv[4],"targetId":argv[5],"agentType":"omp","cwd":cwd,"pid":43127,"sessionFile":native_file,
+        "launchId":argv[6],"targetId":argv[7],"agentType":"omp","cwd":cwd,"pid":43127,"sessionFile":native_file,
     }}).to_string();
     let root = fs::read_dir(&config.scheduler.run_directory).unwrap().next().unwrap().unwrap().path();
     let run_id = root.file_name().unwrap().to_str().unwrap();
@@ -479,7 +479,12 @@ async fn precise_auto_close_app_targets_tab_and_confirms_only_tab_scope() {
         }
         fs::write(herdr.path().join("app-unrelated-terminal"), "").unwrap();
         let observe = |args: &[&str]| {
-            let output = std::process::Command::new(herdr.executable()).args(args).output().unwrap();
+            let mut hash = std::collections::hash_map::DefaultHasher::new();
+            std::hash::Hash::hash(&herdr.path(), &mut hash);
+            let endpoint = if cfg!(windows) {
+                format!(r"\\.\pipe\herdr-core-fixture-{:016x}.sock", std::hash::Hasher::finish(&hash))
+            } else { herdr.path().join("core.sock").to_string_lossy().into_owned() };
+            let output = std::process::Command::new(herdr.executable()).env("HC_SOCKET", endpoint).args(args).output().unwrap();
             assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
             serde_json::from_slice::<Value>(&output.stdout).unwrap()
         };
@@ -585,12 +590,12 @@ async fn app_tab(herdr: &HerdrFixture, n: usize) -> Value {
 async fn app_launch(server: &TestServer, herdr: &HerdrFixture, n: usize, agent: &str, session: &str, cwd: &std::path::Path) -> Value {
     let tab = app_tab(herdr, n).await;
     let argv = tab["options"]["argv"].as_array().unwrap();
-    assert_eq!(argv[6], agent);
+    assert_eq!(argv[8], agent);
     let file = cwd.join(format!("{session}.jsonl"));
     fs::write(&file, format!("{}\n", json!({"type":"session","id":session,"cwd":cwd}))).unwrap();
     for kind in ["launch_identity", "launch_ready"] {
         run_reply(post_json_over_tcp(server.addr(), "/api/sessions/events", &json!({"kind":kind,"sessionId":session,"data":{
-            "launchId":argv[4],"targetId":argv[5],"agentType":agent,"cwd":cwd,"pid":43127,"sessionFile":file,
+            "launchId":argv[6],"targetId":argv[7],"agentType":agent,"cwd":cwd,"pid":43127,"sessionFile":file,
         }}).to_string()).await, 200);
     }
     tab

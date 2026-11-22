@@ -129,7 +129,7 @@ impl Launches {
             let target = state.target.as_ref()?;
             (pending.kind == kind && state.retained && !state.closed && owner.session_id == session_id
                 && location.is_none_or(|location| target.location == *location)
-                && target.app_coordinates().is_some()).then(|| (pending.clone(), owner.clone(), target.clone()))
+                && target.is_app()).then(|| (pending.clone(), owner.clone(), target.clone()))
         }).collect::<Vec<_>>();
         let mut found = Vec::with_capacity(candidates.len());
         for (pending, owner, target) in candidates {
@@ -306,7 +306,7 @@ impl Launch {
         mut progress: impl FnMut(InitialInputProgress<'_>) -> F,
     ) -> Result<(), InitialInputError> {
         self.current(herdr, target).await.map_err(InitialInputError::BeforeSend)?;
-        let mut result = target.submit(herdr, text).await;
+        let mut result = target.submit_observed(herdr, text).await;
         for _ in 0..MAX_INITIAL_RETRIES {
             let blocked = match result {
                 Err(blocked @ HerdrError::InputBlocked { .. }) => blocked,
@@ -329,7 +329,7 @@ impl Launch {
                     return Err(InitialInputError::RetryCancelled { blocked, reason: state.retry_invalidation() });
                 }
             }
-            result = target.submit(herdr, text).await;
+            result = target.submit_observed(herdr, text).await;
             if !matches!(result, Err(HerdrError::InputBlocked { .. })) { break; }
         }
         self.pending.state.send_if_modified(|state| {
@@ -385,12 +385,16 @@ impl Drop for Launch {
 #[cfg(windows)]
 pub(super) fn process_is_descendant(root: u32, mut child: u32) -> bool {
     use std::{mem::size_of, os::windows::io::{FromRawHandle, OwnedHandle}};
-    use windows_sys::Win32::{Foundation::{FILETIME, INVALID_HANDLE_VALUE}, System::{Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS}, Threading::{GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION}}};
+    use windows_sys::Win32::{Foundation::{FILETIME, INVALID_HANDLE_VALUE, STILL_ACTIVE}, System::{Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS}, Threading::{GetExitCodeProcess, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION}}};
 
     fn started(pid: u32) -> Option<u64> {
         let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
         if process.is_null() { return None; }
         let _handle = unsafe { OwnedHandle::from_raw_handle(process.cast()) };
+        let mut exit_code = 0;
+        if unsafe { GetExitCodeProcess(process, &mut exit_code) } == 0 || exit_code != STILL_ACTIVE as u32 {
+            return None;
+        }
         let [mut created, mut exited, mut kernel, mut user] = [FILETIME::default(); 4];
         if unsafe { GetProcessTimes(process, &mut created, &mut exited, &mut kernel, &mut user) } == 0 { return None; }
         Some((u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime))
