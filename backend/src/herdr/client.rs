@@ -646,6 +646,7 @@ pub(crate) struct LaunchTarget {
 }
 
 pub(super) enum LaunchVerificationError {
+    Ended,
     Unproven(HerdrError),
     OfficialIdentity(HerdrError),
     ReportedIdentity(HerdrError),
@@ -658,6 +659,7 @@ impl From<HerdrError> for LaunchVerificationError {
 impl From<LaunchVerificationError> for HerdrError {
     fn from(error: LaunchVerificationError) -> Self {
         match error {
+            LaunchVerificationError::Ended => HerdrError::CommandFailed { command: "hc get", message: "启动终端已结束".into() },
             LaunchVerificationError::Unproven(error) | LaunchVerificationError::OfficialIdentity(error)
             | LaunchVerificationError::ReportedIdentity(error) => error,
         }
@@ -738,7 +740,8 @@ impl LaunchTarget {
             }
             (LaunchControl::App { terminal }, Host::App(app)) => {
                 let bootstrap_pid = terminal.reported_bootstrap_pid().ok_or_else(|| native_error("App launch did not request native reports"))?;
-                let record = app.observe_launch(&self.location, terminal).await?;
+                let record = app.observe_owner(&self.location, terminal).await?
+                    .ok_or(LaunchVerificationError::Ended)?;
                 if !nonempty(record.get("cwd")).is_some_and(valid_cwd) {
                     return Err(native_error("App terminal cwd conflicts with launch report").into());
                 }

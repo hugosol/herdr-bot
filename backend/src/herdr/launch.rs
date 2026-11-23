@@ -123,18 +123,33 @@ impl Launches {
     }
 
     async fn app_targets(&self, herdr: &HerdrClient, kind: &str, session_id: &str, location: Option<&super::NavigationTarget>) -> Result<Vec<Arc<LaunchTarget>>, HerdrError> {
-        let candidates = self.pending.lock().unwrap().values().filter_map(|pending| {
+        let candidates = self.pending.lock().unwrap().iter().filter_map(|(id, pending)| {
             let state = pending.state.borrow();
             let owner = state.owner.as_ref()?;
             let target = state.target.as_ref()?;
             (pending.kind == kind && state.retained && !state.closed && owner.session_id == session_id
                 && location.is_none_or(|location| target.location == *location)
-                && target.is_app()).then(|| (pending.clone(), owner.clone(), target.clone()))
+                && target.is_app()).then(|| (id.clone(), pending.clone(), owner.clone(), target.clone()))
         }).collect::<Vec<_>>();
         let mut found = Vec::with_capacity(candidates.len());
-        for (pending, owner, target) in candidates {
-            target.verify(herdr, kind, &owner.cwd, owner.pid, session_id, owner.session_file.as_deref()).await?;
-            if !pending.state.borrow().closed { found.push(target); }
+        for (id, pending, owner, target) in candidates {
+            match target.verify(herdr, kind, &owner.cwd, owner.pid, session_id, owner.session_file.as_deref()).await {
+                Ok(_) => {
+                    if !pending.state.borrow().closed { found.push(target); }
+                }
+                Err(LaunchVerificationError::Ended) => {
+                    pending.state.send_if_modified(|state| {
+                        if state.closed || !state.owner.as_ref().is_some_and(|current| current.same_session(&owner)) { return false; }
+                        state.closed = true;
+                        true
+                    });
+                    if !pending.state.borrow().closed {
+                        return Err(native_error("App owner changed during lookup"));
+                    }
+                    self.pending.lock().unwrap().remove(&id);
+                }
+                Err(error) => return Err(error.into()),
+            }
         }
         Ok(found)
     }
@@ -187,6 +202,7 @@ impl Launches {
             Ok(_) => (None, false),
             Err(LaunchVerificationError::OfficialIdentity(error)) => (Some(error), true),
             Err(LaunchVerificationError::ReportedIdentity(error)) => (Some(error), restore_identity),
+            Err(error @ LaunchVerificationError::Ended) => (Some(error.into()), false),
             Err(LaunchVerificationError::Unproven(error)) => (Some(error), false),
         };
         if let Some(error) = error {
