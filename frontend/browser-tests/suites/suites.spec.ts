@@ -53,14 +53,14 @@ test('P3 manages an unreferenced Suite through the main interface and authoritat
   await page.getByLabel('LSP 声明（JSON）', { exact: true }).fill('{"rust":{"command":"rust-analyzer","fileTypes":["rs"]}}')
   await page.getByLabel('catalog-search', { exact: true }).check()
   await page.getByRole('button', { name: '保存 Suite', exact: true }).click()
-  const expected = { id: 'review-tools-omp', name: '评审工具 · OMP', harness: 'omp',
+  const expected = { id: 'review-tools', name: '评审工具 · OMP', harness: 'omp',
     skills: [{ kind: 'collection', path: '${roots.skills}/review-collection' }, { kind: 'collection', path: '../shared/research' }],
     extensions: ['${roots.toolkit}/extensions/review'], lsp: { rust: { command: 'rust-analyzer', fileTypes: ['rs'] } }, mcp: ['catalog-search'], dap: [] }
-  await expect(list.getByRole('button', { name: '评审工具 · OMP · review-tools-omp', exact: true })).toBeVisible()
+  await expect(list.getByRole('button', { name: '评审工具 · OMP · review-tools', exact: true })).toBeVisible()
   expect(JSON.parse(fs.readFileSync(definitions, 'utf8'))).toEqual({ suites: [expected] })
   expect(fs.readFileSync(mcp, 'utf8')).toBe(catalogBytes)
   await page.getByRole('button', { name: '重新读取 Suite', exact: true }).click()
-  await list.getByRole('button', { name: '评审工具 · OMP · review-tools-omp', exact: true }).click()
+  await list.getByRole('button', { name: '评审工具 · OMP · review-tools', exact: true }).click()
   await expect(page.getByLabel('Suite ID', { exact: true })).toBeDisabled()
   await expect(page.getByLabel('适用宿主', { exact: true })).toBeDisabled()
   await expect(page.getByLabel('适用宿主', { exact: true })).toHaveValue('omp')
@@ -69,9 +69,9 @@ test('P3 manages an unreferenced Suite through the main interface and authoritat
   const updated = { ...expected, name: '更新后的评审工具 · OMP' }
   await page.getByLabel('Suite 名称', { exact: true }).fill(updated.name)
   await page.getByRole('button', { name: '保存 Suite', exact: true }).click()
-  await expect(list.getByRole('button', { name: '更新后的评审工具 · OMP · review-tools-omp', exact: true })).toBeVisible()
+  await expect(list.getByRole('button', { name: '更新后的评审工具 · OMP · review-tools', exact: true })).toBeVisible()
   expect(JSON.parse(fs.readFileSync(definitions, 'utf8'))).toEqual({ suites: [updated] })
-  const response = await page.request.get(`${server.baseURL}/api/suites/review-tools-omp`)
+  const response = await page.request.get(`${server.baseURL}/api/suites/review-tools`)
   expect(response.status()).toBe(200)
   expect(await response.json()).toMatchObject({ suite: updated })
   page.once('dialog', dialog => dialog.accept())
@@ -193,7 +193,7 @@ test('skill sources round-trip mixed OMP directories and unchanged Pi paths', as
   const name = page.getByLabel('Suite 名称', { exact: true })
   const harness = page.getByLabel('适用宿主', { exact: true })
   await create.click()
-  await id.fill('native-skills')
+  await id.fill('native-skills-omp')
   await name.fill('原生技能来源')
   const collections = page.getByLabel('OMP 技能集合目录（每行一个路径）', { exact: true })
   const single = page.getByLabel('OMP 单技能目录（每行一个路径）', { exact: true })
@@ -247,7 +247,7 @@ test('skill sources round-trip mixed OMP directories and unchanged Pi paths', as
   expect(await response.json()).toMatchObject({ suite: { skills: updatedOmpSkills } })
 
   await create.click()
-  await id.fill('native-skills')
+  await id.fill('native-skills-pi')
   await name.fill('原生技能来源')
   await harness.selectOption('pi')
   await expect(pi).toHaveValue('')
@@ -290,11 +290,11 @@ test('P25 saves Pi prompts and explicit on and only modes without OMP fields', a
   await only.check()
   await page.getByRole('button', { name: '保存 Suite', exact: true }).click()
   await expect(page.getByRole('status')).toHaveText('Suite 已保存到权威文件。')
-  const expected = { id: 'mode-tools-pi', name: '模式工具 · Pi', harness: 'pi', codemode: 'only', prompts: ['../prompts/review.md'], skills: [], extensions: [], mcp: [] }
+  const expected = { id: 'mode-tools-omp', name: '模式工具 · Pi', harness: 'pi', codemode: 'only', prompts: ['../prompts/review.md'], skills: [], extensions: [], mcp: [] }
   expect(JSON.parse(fs.readFileSync(definitions, 'utf8'))).toEqual({ suites: [expected] })
   await page.getByRole('button', { name: '关闭编辑', exact: true }).click()
   await page.getByRole('button', { name: '重新读取 Suite', exact: true }).click()
-  await page.getByRole('button', { name: '模式工具 · Pi · mode-tools-pi', exact: true }).click()
+  await page.getByRole('button', { name: '模式工具 · Pi · mode-tools-omp', exact: true }).click()
   await expect(harness).toBeDisabled()
   await expect(harness).toHaveValue('pi')
   await expect(lsp).toHaveCount(0)
@@ -305,7 +305,7 @@ test('P25 saves Pi prompts and explicit on and only modes without OMP fields', a
   await expect(page.getByRole('status')).toHaveText('Suite 已保存到权威文件。')
   const updated = { ...expected, codemode: 'on' }
   expect(JSON.parse(fs.readFileSync(definitions, 'utf8'))).toEqual({ suites: [updated] })
-  const response = await page.request.get(`${server.baseURL}/api/suites/mode-tools-pi`)
+  const response = await page.request.get(`${server.baseURL}/api/suites/mode-tools-omp`)
   expect(response.status()).toBe(200)
   expect(await response.json()).toMatchObject({ suite: updated })
   await page.getByRole('button', { name: '重新读取 Suite', exact: true }).click()

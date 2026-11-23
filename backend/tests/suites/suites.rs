@@ -244,8 +244,57 @@ async fn pi_mode_is_explicit_through_public_http() {
     assert_eq!(serde_json::from_slice::<Value>(&fs::read(&config.suites.definition_file).unwrap()).unwrap(), json!({"suites":[on]}));
 }
 
-// The path retains the saved ID, so a changed harness must be rejected as
-// immutable, not treated as a rename, conversion, or cleared environment.
+#[tokio::test]
+async fn suite_ids_are_harness_independent_but_validated_on_reads_and_writes() {
+    let root = TempDir::new("suite IDs independent of harness");
+    let config = config(&root);
+    let server = TestServer::start(&config).await;
+    for (id, harness, name) in [
+        ("plain_tools", "omp", "Plain · OMP"),
+        ("plain-pi-tools", "pi", "Plain · Pi"),
+        ("opposite-pi", "omp", "Opposite · OMP"),
+        ("opposite-omp", "pi", "Opposite · Pi"),
+    ] {
+        let mut input = json!({"id":id,"harness":harness,"name":name});
+        if harness == "pi" { input["codemode"] = json!("on"); }
+        let saved = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&input.to_string())).await;
+        assert_eq!(saved.status, 200, "{}", saved.body);
+        let duplicate = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&input.to_string())).await;
+        assert_eq!(duplicate.status, 409, "{}", duplicate.body);
+        input["name"] = json!(format!("Edited {name}"));
+        let detail = format!("/api/suites/{id}");
+        let edited = request_json_over_tcp(server.addr(), "PUT", &detail, Some(&input.to_string())).await;
+        assert_eq!(edited.status, 200, "{}", edited.body);
+        let read = get_over_tcp(server.addr(), &detail).await;
+        assert_eq!(read.status, 200, "{}", read.body);
+        let actual: Value = serde_json::from_str(&read.body).unwrap();
+        assert_eq!(actual["suite"]["id"], id);
+        assert_eq!(actual["suite"]["harness"], harness);
+        assert_eq!(actual["suite"]["name"], input["name"]);
+    }
+    let before = fs::read(&config.suites.definition_file).unwrap();
+    for id in ["", " ", "../escape", "folder/name", "folder\\name", "tools.name", "工具"] {
+        let invalid = json!({"id":id,"name":"Invalid · OMP","harness":"omp"});
+        let reply = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&invalid.to_string())).await;
+        assert_eq!(reply.status, 400, "{id}: {}", reply.body);
+        assert_eq!(fs::read(&config.suites.definition_file).unwrap(), before);
+    }
+    let mut external: Value = serde_json::from_slice(&before).unwrap();
+    external["suites"][0]["id"] = json!("manual_id");
+    fs::write(&config.suites.definition_file, external.to_string()).unwrap();
+    let read = get_over_tcp(server.addr(), "/api/suites/manual_id").await;
+    assert_eq!(read.status, 200, "{}", read.body);
+    for invalid in [json!(""), json!("../escape"), json!("opposite-pi")] {
+        external["suites"][0]["id"] = invalid;
+        let bytes = external.to_string();
+        fs::write(&config.suites.definition_file, &bytes).unwrap();
+        let read = get_over_tcp(server.addr(), "/api/suites").await;
+        assert_eq!(read.status, 500, "{}", read.body);
+        assert!(read.body.contains("suite-storage-failed"), "{}", read.body);
+        assert_eq!(fs::read_to_string(&config.suites.definition_file).unwrap(), bytes);
+    }
+}
+
 #[tokio::test]
 async fn suite_harness_cannot_change_after_save() {
     let root = TempDir::new("immutable suite harness");
@@ -284,7 +333,7 @@ async fn suite_rejects_wrong_harness_fields_and_legacy_wire_shape() {
         (&omp, "agents", json!(["omp"])), (&pi, "pi", json!({"codemode":"on"})),
         (&pi, "extensions", json!({"pi":[]})),
         (&omp, "harness", json!(["omp"])),
-        (&omp, "id", json!("strict-pi")), (&pi, "name", json!("Strict · OMP")),
+        (&omp, "id", json!("invalid/id")), (&pi, "name", json!("Strict · OMP")),
     ] {
         let original = suite["id"].as_str().unwrap();
         let detail = format!("/api/suites/{original}");

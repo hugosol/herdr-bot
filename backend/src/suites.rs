@@ -166,15 +166,13 @@ impl Suite {
     }
 
     fn validate(&self) -> Result<(), SuiteError> {
-        let (id_suffix, name_suffix) = match self.harness() {
-            Agent::Omp => ("-omp", " · OMP"),
-            Agent::Pi => ("-pi", " · Pi"),
+        let name_suffix = match self.harness() {
+            Agent::Omp => " · OMP",
+            Agent::Pi => " · Pi",
         };
         let id = self.id();
-        if !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
-            || !id.strip_suffix(id_suffix).is_some_and(|base| !base.is_empty())
-        {
-            return Err(SuiteError::invalid(format!("Suite ID 只能包含英文字母、数字、连字符和下划线，且必须以 {id_suffix} 结尾。")));
+        if id.is_empty() || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_') {
+            return Err(SuiteError::invalid("Suite ID 不能为空，且只能包含英文字母、数字、连字符和下划线。"));
         }
         if !self.name().strip_suffix(name_suffix).is_some_and(|base| !base.trim().is_empty()) {
             return Err(SuiteError::invalid(format!("Suite 名称必须非空且以{name_suffix} 结尾。")));

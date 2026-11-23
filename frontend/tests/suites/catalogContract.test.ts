@@ -29,6 +29,14 @@ describe('Single-harness Suite API contract', () => {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(saved),
     })
   })
+  it.each([
+    { ...omp, id: 'plain_tools' }, { ...pi, id: 'plain-pi-tools' },
+    { ...omp, id: 'opposite-pi' }, { ...pi, id: 'opposite-omp' },
+  ])('accepts $harness Suite ID $id without deriving its harness', async suite => {
+    const response = { ...catalog, suites: [suite] }
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => response })))
+    expect(await suiteRequest()).toEqual(response)
+  })
   it('preserves missing references so the editor can remove them', async () => {
     const stale = { ...catalog, dap: [] }
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => stale })))
@@ -52,7 +60,8 @@ describe('Single-harness Suite API contract', () => {
       { ...omp, prompts: [] }, { ...omp, codemode: 'on' }, { ...pi, lsp: {} },
       { ...omp, dap: undefined }, { ...omp, dap: ['codelldb', false] }, { ...pi, dap: [] },
       { ...pi, codemode: undefined }, { ...pi, codemode: 'off' }, { ...pi, pi: { codemode: 'on' } },
-      { ...omp, id: 'source-tools-pi' }, { ...pi, name: '源入口工具 · OMP' },
+      ...['', ' ', '../escape', 'folder/name', 'tools.name', '工具'].map(id => ({ ...omp, id })),
+      { ...pi, name: '源入口工具 · OMP' },
     ].map(suite => ({ ...catalog, suites: [suite] })),
     { ...catalog, fixedExtensions: [{ ...catalog.fixedExtensions[0], kind: 'optional' }] },
     { ...catalog, fixedExtensions: [{ ...catalog.fixedExtensions[0], roles: ['unknown'] }] },

@@ -46,7 +46,7 @@ test('OMP selects and repairs DAP references while Pi saves without DAP', async 
     await info.attach(`dap-expanded-${name}`, { path: screenshot, contentType: 'image/png' })
   }
 
-  await page.getByLabel('Suite ID', { exact: true }).fill('debug')
+  await page.getByLabel('Suite ID', { exact: true }).fill('debug-omp')
   await page.getByLabel('Suite 名称', { exact: true }).fill('调试工具')
   const post = page.waitForResponse(response => response.url().endsWith('/api/suites') && response.request().method() === 'POST')
   await save.click()
@@ -82,7 +82,7 @@ test('OMP selects and repairs DAP references while Pi saves without DAP', async 
   await option.check()
   await page.getByLabel('适用宿主', { exact: true }).selectOption('pi')
   await expect(dap).toHaveCount(0)
-  await page.getByLabel('Suite ID', { exact: true }).fill('debug')
+  await page.getByLabel('Suite ID', { exact: true }).fill('debug-pi')
   await page.getByLabel('Suite 名称', { exact: true }).fill('Pi 工具')
   const piPost = page.waitForResponse(response => response.url().endsWith('/api/suites') && response.request().method() === 'POST')
   await save.click()

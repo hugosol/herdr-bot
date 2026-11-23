@@ -48,9 +48,8 @@ export function isSuite(value: unknown): value is Suite {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
   const { id, name, harness, skills, extensions, mcp, lsp, dap, prompts, codemode } = value as Record<string, unknown>
   if (harness !== 'omp' && harness !== 'pi') return false
-  const idSuffix = `-${harness}`
   const nameSuffix = harness === 'omp' ? ' · OMP' : ' · Pi'
-  if (typeof id !== 'string' || !id.endsWith(idSuffix) || !id.slice(0, -idSuffix.length).trim()
+  if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(id)
     || typeof name !== 'string' || !name.endsWith(nameSuffix) || !name.slice(0, -nameSuffix.length).trim()
     || !isStringArray(extensions) || !isStringArray(mcp)) return false
   const keys = ['id', 'name', 'harness', 'skills', 'extensions', 'mcp']

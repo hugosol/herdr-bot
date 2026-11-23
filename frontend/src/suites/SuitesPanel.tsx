@@ -98,12 +98,12 @@ export function SuitesPanel({ active }: { active: boolean }) {
     let suite: Suite
     try {
       const { harness } = draft
-      const idBase = draft.id.trim().replace(/-(?:omp|pi)$/i, '').trimEnd()
+      const id = draft.id.trim()
       const nameBase = draft.name.trim().replace(/\s*·\s*(?:omp|pi)$/i, '').trimEnd()
-      if (!idBase || !nameBase) throw new Error('请填写非空的 Suite ID 和名称。')
+      if (!id || !nameBase) throw new Error('请填写非空的 Suite ID 和名称。')
       const { extensions, mcp } = draft[harness]
       const common = {
-        id: editing ?? `${idBase}-${harness}`,
+        id: editing ?? id,
         name: `${nameBase} · ${harnessLabels[harness]}`,
         extensions: [...new Set(lines(extensions))], mcp,
       }
@@ -211,7 +211,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
             }}><option value="omp">OMP</option><option value="pi">Pi</option></select>
           </div>
           </div>
-          <p className="scope-note" id="suite-harness-note">宿主在保存后不可更改。ID 以 -{harness} 结尾，名称以「· {harnessLabels[harness]}」结尾，保存时自动添加后缀。</p>
+          <p className="scope-note" id="suite-harness-note">ID 只能包含英文字母、数字、连字符和下划线，且须全局唯一，不要求宿主后缀。ID 和宿主在保存后不可更改。名称以「· {harnessLabels[harness]}」结尾，保存时自动添加名称后缀。</p>
           {harness === 'pi' && <fieldset><legend>Pi 配置</legend>
             <label className="suites-choice"><input type="checkbox" checked={draft.pi.codemode === 'only'} onChange={event => setDraft({ ...draft, pi: { ...draft.pi, codemode: event.target.checked ? 'only' : 'on' } })} />Codemode only</label>
             <p className="scope-note">关闭 only 表示明确的 on，不禁用，也不继承全局模式。</p>
