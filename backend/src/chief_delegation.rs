@@ -234,7 +234,7 @@ async fn resolve(
             crate::tasks::catalog::ExecutionRole::ChiefDelegated
         }))
         .map_err(Error::Task)?;
-    preset.env.select_host(&state.herdr);
+    crate::herdr::native_status::select_host(&state.herdr, &mut preset.env);
     preset
         .env
         .check_entrypoints()
@@ -290,7 +290,7 @@ async fn resolve(
         for id in closure.task_ids {
             let task = state.tasks.get(&id).await.map_err(Error::Task)?;
             let mut preset = state.tasks.catalog().and_then(|catalog| catalog.resolve(&task)).map_err(Error::Task)?;
-            preset.env.select_host(&state.herdr);
+            crate::herdr::native_status::select_host(&state.herdr, &mut preset.env);
             let fixed = prompts.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt)
                 .map_err(|error| rejected("prompt-dictionary-invalid", error.to_string()))?;
             tasks.insert(id, json!({"task":task,"renderedPrompt":fixed,"promptInstructions":prompts.instructions(&task.trigger.prompt),"launchArgs":chats::agent_launch_args(&preset.env, Some(&preset.trigger))}));

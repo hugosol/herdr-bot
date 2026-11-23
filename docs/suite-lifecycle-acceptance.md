@@ -1,6 +1,15 @@
 # Suite Chat lifecycle acceptance
 
-`python scripts/accept-suite-lifecycle.py` owns P12/P13/P28/P29/P30/P31/P32 and
+黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+
+```powershell
+$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
+$BOT = 'E:/Developer/myhub/herdr-bot'
+```
+
+验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-lifecycle` owns P12/P13/P28/P29/P30/P31/P32 and
 P35's **real concurrent startup consumption**. P35 assembly/publication tests
 remain separate. The approved boundaries are public Task/Suite/Chat/workflow HTTP
 (S2), isolated deployment/startup and restart (S3), and installed native agents
@@ -9,10 +18,11 @@ full regression suite or for the other Suite resource/MCP/mode acceptance.
 
 ## Inputs and safety
 
-Run from the supplied herdr-bot Git worktree. Both worktrees, the backend binary,
-the dependency-only paths file, and a new evidence directory are mandatory. There
-is no installed-toolkit, other-worktree backend, user deployment or paths.local
-fallback. `--scenario all` (default) independently runs `baseline`,
+Build and run product regressions from `$BOT`. The wrapper binds `$BOT` before
+the scenario, regardless of the shell's current directory. Both worktrees, the
+backend binary, the dependency-only paths file, and a new evidence directory are
+mandatory. There is no installed-toolkit, other-worktree backend, user deployment,
+or paths.local fallback. `--scenario all` (default) independently runs `baseline`,
 `suite-lifecycle`, `roles-native`, `roles-suite`, `native-resume`, `auth-native`
 and `concurrency`, each with both installed hosts. An earlier failure does not
 prevent later independent scenarios from being attempted. `--host pi|omp` and individual scenarios provide narrower
@@ -79,8 +89,12 @@ identity, installed integration hashes and host versions. This is local build
 provenance, not a reproducible-build attestation.
 
 ```powershell
-Set-Location $HERDR_BOT_WT
-$env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
+$TOOLKIT_WT = 'D:/worktrees/toolkit'
+$ORIGINAL_TOOLKIT_ROOT = 'D:/sources/original-toolkit-checkout'
+$ISOLATED_PATHS = 'D:/acceptance/lifecycle-paths.toml'
+$EVIDENCE_DIR = 'D:/acceptance/lifecycle-run-unique'
+Set-Location $BOT
+$env:CARGO_TARGET_DIR = Join-Path $BOT 'backend/target'
 bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bins --example safe_shutdown_shell
@@ -91,18 +105,18 @@ npm --prefix frontend run test:browser:build
 Set-Location $TOOLKIT_WT
 bun install --frozen-lockfile
 $env:OMP_BASELINE_RECORD_ROOT = $ORIGINAL_TOOLKIT_ROOT
-$env:HERDR_BOT_REPO = $HERDR_BOT_WT
+$env:HERDR_BOT_REPO = $BOT
 $env:HERDR_BOT_BINARY = Join-Path $env:CARGO_TARGET_DIR 'debug/examples/safe_shutdown_shell.exe'
-$env:HERDR_BOT_METADATA = Join-Path $HERDR_BOT_WT 'meta-data/task-options.toml'
+$env:HERDR_BOT_METADATA = Join-Path $BOT 'meta-data/task-options.toml'
 bun run typecheck
 bun run check:integrations
 bun run test
 
-Set-Location $HERDR_BOT_WT
 $env:LIFECYCLE_TOOLKIT_WORKTREE = $TOOLKIT_WT
-python scripts/accept-suite-lifecycle.test.py
-python scripts/accept-suite-lifecycle.py `
-  --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
+$env:HERDR_BOT_WORKTREE = $BOT
+python "$TESTER/scripts/accept-suite-lifecycle.test.py"
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-lifecycle `
+  --toolkit-worktree "$TOOLKIT_WT" `
   --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
   --paths-file "$ISOLATED_PATHS" --scenario all --host all `
   --evidence-dir "$EVIDENCE_DIR"
@@ -122,8 +136,10 @@ headers in evidence, or logs; credential stores are removed after confirmed exit
 ## Executed parameter provenance
 
 The historical, pre-source-path ticket's first execution used the following explicit values (not discovery
-of a user deployment). These are a record of the invoked command parameters,
-not a claim that all acceptance observations passed:
+of a user deployment). These commands record what ran, not what passed. The
+product-root script path below no longer works in the current checkout. For a
+rerun, use [Build, repository checks and invocation](#build-repository-checks-and-invocation)
+with current paths and a new evidence directory.
 
 ```powershell
 $HERDR_BOT_WT = 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-aGYCYZ'

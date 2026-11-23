@@ -53,7 +53,7 @@ function suiteIssue(task: Pick<Task, 'suite' | 'agent'>, options: TaskOptions): 
   if (task.suite == null) return null
   const suite = options.suites?.find(suite => suite.id === task.suite)
   if (!suite) return `Suite「${task.suite}」不存在；请显式修正引用。`
-  if (!suite.agents.includes(task.agent)) return `Suite「${task.suite}」不适用于 ${task.agent}。`
+  if (suite.harness !== task.agent) return `Suite「${task.suite}」不适用于 ${task.agent}；请选择匹配的 Suite 或不选 Suite。`
   const missing = suite.mcp.filter(id => !options.mcp?.includes(id))
   if (missing.length) return `Suite「${task.suite}」的集中 MCP 引用失效：${missing.join('、')}；请显式修正引用。`
   return null
@@ -288,7 +288,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled, detailRe
   }
 
   function changeAgent(agent: TaskInput['agent']) {
-    // 切换 Agent 不继承模型或同名扩展；切回也不恢复隐藏选择。
+    // 切换 Agent 重置模型与思考级别，但保留 Suite，直到用户明确修改。
     setDraft((current) => ({
       ...current,
       agent,
@@ -356,6 +356,8 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled, detailRe
       return
     }
 
+    if (suiteMismatch) return
+
     if (draft.name.trim() === '') {
       setFormError('请填写 Task 显示名。')
       return
@@ -392,7 +394,10 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled, detailRe
   const { modelUnavailable, thinkingUnavailable } = data === null
     ? { modelUnavailable: false, thinkingUnavailable: false }
     : modelCompatibility(draft, data.options)
-  const compatibleSuites = (data?.options.suites ?? []).filter(suite => suite.agents.includes(draft.agent))
+  const suites = data?.options.suites ?? []
+  const compatibleSuites = suites.filter(suite => suite.harness === draft.agent)
+  const selectedSuite = suites.find(suite => suite.id === draft.suite)
+  const suiteMismatch = selectedSuite !== undefined && selectedSuite.harness !== draft.agent
   const selectedSuiteIssue = data ? suiteIssue(draft, data.options) : null
   const selectionErrors = [
     ...(selectedSuiteIssue ? [selectedSuiteIssue] : []),
@@ -751,12 +756,13 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled, detailRe
             {step === 2 && <section aria-label="扩展配置">
               <label htmlFor="task-suite">Suite（至多一个）</label>
               <select id="task-suite" data-testid="task-suite" className="zone-form__input" disabled={saving}
-                value={draft.suite ?? ''} onChange={event => setDraft(current => ({ ...current, suite: event.target.value || null }))}>
+                value={draft.suite ?? ''} aria-invalid={selectedSuiteIssue !== null} aria-describedby={selectedSuiteIssue ? 'task-suite-issue' : undefined}
+                onChange={event => setDraft(current => ({ ...current, suite: event.target.value || null }))}>
                 <option value="">不选 Suite</option>
-                {draft.suite != null && !compatibleSuites.some(suite => suite.id === draft.suite) && <option value={draft.suite} disabled>{draft.suite}（不可用，保留引用）</option>}
+                {draft.suite != null && (!selectedSuite || suiteMismatch) && <option value={draft.suite} disabled>{selectedSuite ? `${selectedSuite.name} · ${selectedSuite.id}` : draft.suite}（不可用，保留引用）</option>}
                 {compatibleSuites.map(suite => <option key={suite.id} value={suite.id}>{suite.name} · {suite.id}</option>)}
               </select>
-              {selectedSuiteIssue && <p className="zone-error" data-testid="task-suite-issue" role="alert">{selectedSuiteIssue}</p>}
+              {selectedSuiteIssue && <p className="zone-error" id="task-suite-issue" data-testid="task-suite-issue" role="alert">{selectedSuiteIssue}</p>}
               <p>Suite 不替代初始 Skill、固定 prompt、模型或命名规则。切换 Agent 不会自动更换 Suite。</p>
               <p>扩展自动发现：关闭。创建时仅加载对应 Agent 的固定项与所选 Suite 声明。</p>
             </section>}
@@ -808,7 +814,7 @@ export function TasksPanel({ active, editRequest, onEditRequestHandled, detailRe
                 type="submit"
                 className="zone-register"
                 data-testid="save-task"
-                disabled={saving}
+                disabled={saving || suiteMismatch}
               >
                 {saving ? '正在保存……' : '保存'}
               </button> : <button type="submit" className="zone-register"

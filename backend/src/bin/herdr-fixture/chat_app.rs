@@ -3,6 +3,33 @@
 use super::{behavior, data_dir, fail, flag, output, read_records, record, usage, wait_at_gate};
 use serde_json::{Value, json};
 
+pub(super) fn socket() -> String {
+    if cfg!(windows) {
+        use std::hash::{Hash, Hasher};
+        let mut hash = std::collections::hash_map::DefaultHasher::new();
+        data_dir().hash(&mut hash);
+        format!(r"\\.\pipe\herdr-core-fixture-{:016x}.sock", hash.finish())
+    } else {
+        data_dir().join("core.sock").to_string_lossy().into_owned()
+    }
+}
+
+pub(super) fn publish_binding(argv: &Value, terminal: &Value, pid: u64) {
+    let argv = argv.as_array().expect("App bootstrap argv");
+    let receipt = argv[4].as_str().expect("App binding receipt path");
+    let behavior = behavior();
+    if flag(&behavior, "missing_app_binding") { return; }
+    let nonce = if flag(&behavior, "wrong_app_binding_nonce") { json!("another-launch") } else { argv[5].clone() };
+    let terminal = if flag(&behavior, "wrong_app_binding_terminal") { json!("another-terminal") } else { terminal.clone() };
+    std::fs::write(receipt, json!({"nonce":nonce,"terminal":terminal,"socket":socket(),"pid":pid}).to_string()).unwrap();
+}
+
+pub(super) fn require_bound_core() {
+    if std::env::var("HC_SOCKET").ok().as_deref() != Some(socket().as_str()) {
+        fail("wrong_core", "fixture core requires the actual launch endpoint");
+    }
+}
+
 pub(super) fn dispatch(args: &[String]) {
     const CURRENT: &str = "space-current";
     const DEFAULT: &str = "space-default";
@@ -10,8 +37,20 @@ pub(super) fn dispatch(args: &[String]) {
     let removed = || read_records("app-removed-tabs.jsonl");
     match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
         ["ls"] => {
+            if flag(&behavior(), "fail_app_ls") { fail("inventory_refused", "controlled App inventory failure"); }
             let tabs = tabs();
             let removed = removed();
+            if let Some(mut spaces) = behavior().get("app_spaces").and_then(Value::as_array).cloned() {
+                for space in &mut spaces {
+                    let id = space["id"].clone();
+                    if let Some(existing) = space.get_mut("tabs").and_then(Value::as_array_mut) {
+                        existing.extend(tabs.iter().filter(|tab| tab["space"] == id)
+                            .map(|tab| json!({"id":tab["tab"],"terminals":[{"pane":tab["pane"],"terminal":tab["terminal"]}]})));
+                    }
+                }
+                output(json!({"spaces":spaces}));
+                return;
+            }
             let spaces = [(CURRENT, "alpha"), (DEFAULT, "bot-playground")].into_iter().filter_map(|(id, name)| {
                 let selected = tabs.iter().filter(|t| t["space"] == id && !removed.iter().any(|closed| closed["tab"] == t["tab"]))
                     .map(|t| json!({"id":t["tab"],"terminals":[{"pane":t["pane"],"terminal":t["terminal"]}]}))
@@ -41,8 +80,9 @@ pub(super) fn dispatch(args: &[String]) {
             output(json!({"ok":true}));
         }
         ["server", "status", "--json"] => {
+            require_bound_core();
             let id = if flag(&behavior(), "change_app_core") { "other-core" } else { "fixture-core" };
-            output(json!({"core":{"id":id}}));
+            output(json!({"core":{"id":id},"pid":43126}));
         }
         ["do", "pane.focus", raw] => {
             let request: Value = serde_json::from_str(raw).unwrap();
@@ -59,11 +99,13 @@ pub(super) fn dispatch(args: &[String]) {
             let launch: Value = serde_json::from_str(raw).unwrap();
             let n = tabs().len() + 1;
             let tab = json!({"space":launch["space"],"tab":format!("tab-{n}"),"pane":format!("pane-{n}"),
-                "terminal":format!("t{n}"),"options":launch});
+                "terminal":behavior().get("app_terminal").cloned().unwrap_or_else(|| json!(format!("t{n}"))),"options":launch});
+            publish_binding(&tab["options"]["argv"], &tab["terminal"], behavior()["launch_pid"].as_u64().unwrap_or(43127));
             record("app-tabs.jsonl", tab.clone());
             output(tab);
         }
         ["get", terminal, "--json"] => {
+            require_bound_core();
             if *terminal == "t-unrelated" && data_dir().join("app-unrelated-terminal").is_file() {
                 output(json!({"address":terminal,"state":"live","pid":43128}));
                 return;
@@ -79,8 +121,9 @@ pub(super) fn dispatch(args: &[String]) {
             }
         }
         ["send", "--json", terminal, "--", text] => {
+            require_bound_core();
             assert!(tabs().iter().any(|t| t["terminal"] == *terminal));
-            let mut call = json!({"kind":"core_send","terminal":terminal,"text":text});
+            let mut call = json!({"kind":"core_send","terminal":terminal,"text":text,"coreSocket":std::env::var("HC_SOCKET").unwrap()});
             if let Ok(raw) = std::fs::read(data_dir().join("observe-app-send.json")) {
                 let files: Vec<std::path::PathBuf> = serde_json::from_slice(&raw).unwrap();
                 call["observedFiles"] = json!(files.iter().map(|file| {

@@ -148,6 +148,9 @@ impl<'a> Scenario<'a> {
 impl DirectoryMapping<'_> {
     pub(crate) async fn workspace(&self, herdr: &HerdrClient) -> Result<WorkspaceMapping, PlacementError> {
         let workspace = match self.scenario {
+            Scenario::Chat { workspace_name, .. } if herdr.is_app() => {
+                return chat_space(herdr, workspace_name).await.map_err(Into::into);
+            }
             Scenario::Chat { workspace_name, .. }
             | Scenario::Chief { workspace_name, .. }
             | Scenario::RootMap { workspace_name, .. }
@@ -164,6 +167,51 @@ impl DirectoryMapping<'_> {
         };
         Ok(WorkspaceMapping { workspace, degradation: None })
     }
+}
+
+async fn chat_space(herdr: &HerdrClient, name: &str) -> Result<WorkspaceMapping, HerdrError> {
+    let inventory = herdr.workspace_inventory().await?;
+    let default_name = herdr.workspace_name();
+    let mut requested = None;
+    let mut default = None;
+    for row in &inventory.records {
+        let id = super::client::nonempty(row.get(inventory.id_key))
+            .ok_or_else(|| inventory.error("Space 缺少 ID"))?;
+        let label = super::client::nonempty(row.get(inventory.name_key))
+            .ok_or_else(|| inventory.error("Space 缺少名称"))?;
+        let candidate = if label == name {
+            &mut requested
+        } else if label == default_name {
+            &mut default
+        } else {
+            continue;
+        };
+        let (_, count) = candidate.get_or_insert((id, 0));
+        *count += 1;
+    }
+
+    let (label, candidate) = if requested.is_none() && name != default_name {
+        (default_name, default)
+    } else {
+        (name, requested)
+    };
+    let id = match candidate {
+        None => return Err(HerdrError::WorkspaceNotFound { name: label.into() }),
+        Some((id, 1)) => id,
+        Some((_, matches)) => return Err(HerdrError::WorkspaceAmbiguous { name: label.into(), matches }),
+    };
+    if inventory.records.iter()
+        .filter(|row| row.get(inventory.id_key).and_then(serde_json::Value::as_str) == Some(id))
+        .nth(1).is_some()
+    {
+        return Err(inventory.error("所选 Space 的 ID 重复"));
+    }
+    let degradation = (label != name).then(|| Degradation {
+        element: "workspace",
+        reason: format!("成功查询确认没有名为 “{name}” 的 Space。"),
+        strategy: "已改选配置的唯一默认 Space；工作目录不变。".into(),
+    });
+    Ok(WorkspaceMapping { workspace: Workspace { id: id.into(), label: label.into() }, degradation })
 }
 
 async fn recovery_directory<'a>(

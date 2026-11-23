@@ -170,7 +170,7 @@ pub(crate) async fn create_chat(state: AppState, input: CreateChatRequest) -> Re
         Ok(args) => args,
         Err(error) => return Err(Error::Task(error, " 未创建 Herdr Tab、未启动 agent、未提交输入。")),
     };
-    preset.env.select_host(&state.herdr);
+    crate::herdr::native_status::select_host(&state.herdr, &mut preset.env);
     if let Err(message) = preset.env.check_entrypoints() {
         return Err(Error::Internal(
             "extension-entrypoint-invalid",
@@ -292,6 +292,27 @@ pub enum UnconfirmedInput {
     Unknown,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+enum WorkspaceKind {
+    Space,
+    Workspace,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct WorkspacePlacement {
+    id: String,
+    label: String,
+    kind: WorkspaceKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    degradation: Option<WorkspaceDegradation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct WorkspaceDegradation {
+    reason: String,
+    strategy: String,
+}
+
 /// 公开的创建状态；也是创建被接受时的回执与页面轮询读取的同一形状。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -305,6 +326,9 @@ pub struct ChatCreationView {
     /// 创建被接受时使用的 Task 标识。
     pub task_id: String,
     pub stage: Stage,
+    /// 成功查找后选定的 Herdr 容器，不代表已经创建 Tab。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    workspace: Option<WorkspacePlacement>,
     /// 已取得的 Herdr Tab 标识；未取得时不出现。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tab_id: Option<String>,
@@ -333,6 +357,7 @@ impl ChatCreationView {
             zone,
             task_id,
             stage: Stage::Starting,
+            workspace: None,
             tab_id: None,
             pane_id: None,
             agent_name: None,
@@ -523,8 +548,8 @@ pub(crate) async fn run_creation(
             return;
         }
     };
-    let workspace = match mapping.workspace(&herdr).await {
-        Ok(mapping) => mapping.workspace,
+    let placement::WorkspaceMapping { workspace, degradation } = match mapping.workspace(&herdr).await {
+        Ok(mapping) => mapping,
         Err(placement::PlacementError::Herdr(error)) => {
             fail(&job, FailureStage::Workspace, &error, authority).await;
             return;
@@ -549,7 +574,19 @@ pub(crate) async fn run_creation(
     };
 
     let zone = mapping.directory.as_deref().expect("Chat launch always specifies an execution directory");
-    let name = job.lock().await.name.clone();
+    let name = {
+        let mut view = job.lock().await;
+        view.workspace = Some(WorkspacePlacement {
+            id: workspace.id.clone(),
+            label: workspace.label,
+            kind: if herdr.is_app() { WorkspaceKind::Space } else { WorkspaceKind::Workspace },
+            degradation: degradation.map(|item| WorkspaceDegradation {
+                reason: item.reason,
+                strategy: item.strategy,
+            }),
+        });
+        view.name.clone()
+    };
     let agent_name = new_agent_name();
     let args = agent_launch_args(&preset.env, Some(&preset.trigger));
     let kind = task.agent.label();

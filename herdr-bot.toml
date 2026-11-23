@@ -56,8 +56,9 @@ workspace_name = 'bot-playground'
 # executable = '${roots.herdr}/herdr.exe'
 # app_executable = '${roots.herdr_app}/herdr-app.exe'
 # core_executable = '${roots.herdr_core}/hc.exe'
-# App 启动与 bot 应使用同一 core 环境（非默认实例可设 HC_SESSION 或 HC_SOCKET）。
-# HERDR_APP_HOME 选择 App 窗口实例；只关闭 App 窗口不会退出 core 或其中的 agent。
+# HERDR_APP_HOME 选择 App 窗口实例；新 Tab 上报实际 core 端点，bot 后续显式绑定该端点。
+# core_executable 仅选择 CLI，不需要让 bot 的 HC_SESSION 与 App 相同。
+# 只关闭 App 窗口不会退出 core 或其中的 agent。
 
 # zone 设置。
 # 新增 zone 的创建父目录必须显式配置；缺省未配置时只禁用“新增”，不影响登记与浏览。
@@ -102,12 +103,13 @@ run_directory = '${roots.data}/workflow-runs'
 # 部署请显式填写稳定说明路径；不按管理者/node cwd 查找。详见 docs/workflow-runtime.md。
 run_instructions = '${roots.project}/docs/workflow-runtime.md'
 
-# Suite 权威定义与只读集中 MCP 目录。界面与手工编辑使用同一文件；
+# Suite 权威定义与只读集中 MCP／DAP 目录。界面与手工编辑使用同一文件；
 # 非生成产物。普通相对路径以本配置文件目录为基准；详情见 docs/usage.md。
 [suites]
 definition_file = '${roots.project}/meta-data/suites.json'
 mcp_file = '${roots.project}/meta-data/mcp.json'
-# 可重建的技能目录链接及原生宿主入口文件；不包含认证／模型／会话副本。
+dap_file = '${roots.project}/meta-data/dap.json'
+# 每次启动独立的原生宿主配置产物；不创建技能链接，不包含认证／模型／会话副本。
 generated_directory = '${roots.suite_resources}'
 
 # Task 设置（可选，缺省为本配置文件目录下的 meta-data/tasks.json）。

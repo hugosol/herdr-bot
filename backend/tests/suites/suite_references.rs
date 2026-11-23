@@ -12,8 +12,8 @@ fn config(root: &TempDir) -> herdr_bot::Config {
     config.suites.definition_file = root.path().join("suites.json");
     config.suites.mcp_file = root.path().join("central-mcp.json");
     fs::write(&config.suites.definition_file, json!({"suites":[
-        {"id":"shared","name":"Shared tools","agents":["omp"],"mcp":["search"]},
-        {"id":"pi-only","name":"Pi tools","agents":["pi"],"pi":{"codemode":"on"}}
+        {"id":"shared-omp","name":"Shared tools · OMP","harness":"omp","mcp":["search"]},
+        {"id":"pi-only-pi","name":"Pi tools · Pi","harness":"pi","codemode":"on"}
     ]}).to_string()).unwrap();
     fs::write(&config.suites.mcp_file, r#"{"mcpServers":{"search":{"command":"controlled-search"}}}"#).unwrap();
     config
@@ -34,59 +34,83 @@ async fn task_accepts_one_compatible_suite_or_none_and_shares_stable_references(
     let root = TempDir::new("suite task selection");
     let config = config(&root);
     let server = TestServer::start(&config).await;
-    let first = send(&server, "POST", "/api/tasks", &task("First", json!("shared"))).await;
+    let first = send(&server, "POST", "/api/tasks", &task("First", json!("shared-omp"))).await;
     assert_eq!(first.status, 200, "{}", first.body);
     let id1 = body(&first)["tasks"][0]["id"].as_str().unwrap().to_owned();
-    let second = send(&server, "POST", "/api/tasks", &task("Second", json!("shared"))).await;
+    let second = send(&server, "POST", "/api/tasks", &task("Second", json!("shared-omp"))).await;
     assert_eq!(second.status, 200, "{}", second.body);
     let id2 = body(&second)["tasks"][1]["id"].as_str().unwrap().to_owned();
     assert_ne!(id1, id2);
     for id in [&id1, &id2] {
         let read = get_over_tcp(server.addr(), &format!("/api/tasks/{id}")).await;
         assert_eq!(read.status, 200, "{}", read.body);
-        assert_eq!(body(&read)["task"]["suite"], "shared");
+        assert_eq!(body(&read)["task"]["suite"], "shared-omp");
         assert_eq!(body(&read)["task"]["prompt"], "Keep my trigger");
     }
     let before = body(&get_over_tcp(server.addr(), "/api/tasks").await)["tasks"].clone();
-    for invalid in [json!(["shared", "pi-only"]), json!("pi-only"), json!("missing"), json!("")] {
+    for invalid in [json!(["shared-omp", "pi-only-pi"]), json!("pi-only-pi"), json!("missing"), json!("")] {
         for (method, path) in [("POST", "/api/tasks".to_owned()), ("PUT", format!("/api/tasks/{id1}"))] {
             let rejected = send(&server, method, &path, &task("Invalid", invalid.clone())).await;
             assert_eq!(rejected.status, 400, "{}", rejected.body);
             assert_eq!(body(&get_over_tcp(server.addr(), "/api/tasks").await)["tasks"], before);
         }
     }
-    let none = send(&server, "PUT", &format!("/api/tasks/{id1}"), &task("First", Value::Null)).await;
+    let path = format!("/api/tasks/{id1}");
+    let mut switched = task("First", json!("shared-omp"));
+    switched["agent"] = json!("pi");
+    let rejected = send(&server, "PUT", &path, &switched).await;
+    assert_eq!(rejected.status, 400, "{}", rejected.body);
+    assert_eq!(body(&rejected)["code"], "task-suite-invalid");
+    assert_eq!(body(&get_over_tcp(server.addr(), "/api/tasks").await)["tasks"], before);
+
+    switched["suite"] = json!("pi-only-pi");
+    let saved = send(&server, "PUT", &path, &switched).await;
+    assert_eq!(saved.status, 200, "{}", saved.body);
+    let read = body(&get_over_tcp(server.addr(), &path).await);
+    assert_eq!(read["task"]["agent"], "pi");
+    assert_eq!(read["task"]["suite"], "pi-only-pi");
+
+    switched["suite"] = Value::Null;
+    let none = send(&server, "PUT", &path, &switched).await;
     assert_eq!(none.status, 200, "{}", none.body);
-    assert_eq!(body(&get_over_tcp(server.addr(), &format!("/api/tasks/{id1}")).await)["task"]["suite"], Value::Null);
+    assert_eq!(body(&get_over_tcp(server.addr(), &path).await)["task"]["suite"], Value::Null);
 }
 
-// P1/P46: re-reading at save and launch must catch an external deletion or
-// host change after preview. A save-only validator would still accept launch.
+// P1/P46: re-reading at save and launch must catch an external Suite deletion
+// or Task host change after preview. A save-only validator would accept launch.
 #[tokio::test]
 async fn deleted_or_incompatible_suite_after_preview_never_starts_an_empty_environment() {
-    for changed in [json!({"suites":[]}), json!({"suites":[{"id":"shared","name":"Now Pi","agents":["pi"],"pi":{"codemode":"on"}}]})] {
+    for external_task_change in [false, true] {
         let root = TempDir::new("changed suite before launch");
         let mut config = config(&root);
         let herdr = common::HerdrFixture::new("changed suite Herdr");
         config.herdr.executable = herdr.executable().to_path_buf();
         let server = TestServer::start(&config).await;
-        let input = task("Stable source", json!("shared"));
+        let mut input = task("Stable source", json!("shared-omp"));
         let saved = send(&server, "POST", "/api/tasks", &input).await;
         assert_eq!(saved.status, 200, "{}", saved.body);
-        let original = body(&saved)["tasks"][0].clone();
-        let id = original["id"].as_str().unwrap();
+        let mut persisted = body(&saved)["tasks"][0].clone();
+        let id = persisted["id"].as_str().unwrap().to_owned();
         let registered = send(&server, "POST", "/api/zones", &json!({"id":"zone", "path":root.path()})).await;
         assert_eq!(registered.status, 200, "{}", registered.body);
         let preview = send(&server, "POST", "/api/chats/preview", &json!({"zone":"zone", "taskId":id})).await;
         assert_eq!(preview.status, 200, "{}", preview.body);
-        fs::write(&config.suites.definition_file, changed.to_string()).unwrap();
+        if external_task_change {
+            // Keep the incompatible ID in the valid Task shape; only the
+            // Task/Suite relationship is invalid, not either wire schema.
+            input["agent"] = json!("pi");
+            persisted["agent"] = json!("pi");
+            fs::write(&config.tasks.storage_file, json!({"tasks":[persisted]}).to_string()).unwrap();
+        } else {
+            fs::write(&config.suites.definition_file, r#"{"suites":[]}"#).unwrap();
+        }
         let rejected = send(&server, "PUT", &format!("/api/tasks/{id}"), &input).await;
         assert_eq!(rejected.status, 400, "{}", rejected.body);
         let launch = send(&server, "POST", "/api/chats", &json!({"zone":"zone", "taskId":id, "chatId":body(&preview)["chatId"], "input":"must not start"})).await;
         assert_eq!(launch.status, 400, "{}", launch.body);
         assert_eq!(body(&launch)["code"], "task-suite-invalid");
-        assert!(launch.body.contains("shared"));
-        assert_eq!(body(&get_over_tcp(server.addr(), &format!("/api/tasks/{id}")).await)["task"], original);
+        assert!(launch.body.contains("shared-omp"));
+        assert_eq!(body(&get_over_tcp(server.addr(), &format!("/api/tasks/{id}")).await)["task"], persisted);
         assert!(herdr.calls().is_empty());
     }
 }
@@ -99,20 +123,20 @@ async fn suite_saves_validate_central_mcp_ids_without_copying_settings() {
     let config = config(&root);
     let server = TestServer::start(&config).await;
     let central = fs::read(&config.suites.mcp_file).unwrap();
-    let literal = json!({"id":"reference-only","name":"Reference only","agents":["omp"],"mcp":["search"]});
+    let literal = json!({"id":"reference-only-omp","name":"Reference only · OMP","harness":"omp","mcp":["search"]});
     let saved = send(&server, "POST", "/api/suites", &literal).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
-    let read = get_over_tcp(server.addr(), "/api/suites/reference-only").await;
+    let read = get_over_tcp(server.addr(), "/api/suites/reference-only-omp").await;
     assert_eq!(body(&read)["suite"]["mcp"], json!(["search"]));
     assert!(!read.body.contains("controlled-search"));
     assert_eq!(fs::read(&config.suites.mcp_file).unwrap(), central);
     let before = fs::read(&config.suites.definition_file).unwrap();
     fs::write(&config.suites.mcp_file, r#"{"mcpServers":{}}"#).unwrap();
-    let rejected = send(&server, "PUT", "/api/suites/reference-only", &literal).await;
+    let rejected = send(&server, "PUT", "/api/suites/reference-only-omp", &literal).await;
     assert_eq!(rejected.status, 400, "{}", rejected.body);
     assert!(rejected.body.contains("search"));
     let mut missing = literal.clone();
-    missing["id"] = json!("new-missing");
+    missing["id"] = json!("new-missing-omp");
     let rejected = send(&server, "POST", "/api/suites", &missing).await;
     assert_eq!(rejected.status, 400, "{}", rejected.body);
     assert_eq!(fs::read(&config.suites.definition_file).unwrap(), before);
@@ -126,12 +150,12 @@ async fn referenced_suite_deletion_lists_tasks_and_preserves_references() {
     let config = config(&root);
     let server = TestServer::start(&config).await;
     for name in ["First reference", "Second reference"] {
-        let saved = send(&server, "POST", "/api/tasks", &task(name, json!("shared"))).await;
+        let saved = send(&server, "POST", "/api/tasks", &task(name, json!("shared-omp"))).await;
         assert_eq!(saved.status, 200, "{}", saved.body);
     }
     let before = body(&get_over_tcp(server.addr(), "/api/tasks").await)["tasks"].clone();
-    let suite_before = body(&get_over_tcp(server.addr(), "/api/suites/shared").await);
-    let rejected = request_json_over_tcp(server.addr(), "DELETE", "/api/suites/shared", None).await;
+    let suite_before = body(&get_over_tcp(server.addr(), "/api/suites/shared-omp").await);
+    let rejected = request_json_over_tcp(server.addr(), "DELETE", "/api/suites/shared-omp", None).await;
     assert_eq!(rejected.status, 409, "{}", rejected.body);
     assert_eq!(body(&rejected)["code"], "suite-in-use");
     for entry in before.as_array().unwrap() {
@@ -139,7 +163,7 @@ async fn referenced_suite_deletion_lists_tasks_and_preserves_references() {
         assert!(rejected.body.contains(entry["name"].as_str().unwrap()), "{}", rejected.body);
         assert_eq!(body(&get_over_tcp(server.addr(), &format!("/api/tasks/{}", entry["id"].as_str().unwrap())).await)["task"], *entry);
     }
-    assert_eq!(body(&get_over_tcp(server.addr(), "/api/suites/shared").await), suite_before);
+    assert_eq!(body(&get_over_tcp(server.addr(), "/api/suites/shared-omp").await), suite_before);
     for entry in before.as_array().unwrap() {
         let response = request_json_over_tcp(server.addr(), "DELETE", &format!("/api/tasks/{}", entry["id"].as_str().unwrap()), None).await;
         assert_eq!(response.status, 200, "{}", response.body);
@@ -147,7 +171,7 @@ async fn referenced_suite_deletion_lists_tasks_and_preserves_references() {
     let mut external = before[0].clone();
     external["name"] = json!("External reference");
     fs::write(&config.tasks.storage_file, json!({"tasks":[external]}).to_string()).unwrap();
-    let external_rejected = request_json_over_tcp(server.addr(), "DELETE", "/api/suites/shared", None).await;
+    let external_rejected = request_json_over_tcp(server.addr(), "DELETE", "/api/suites/shared-omp", None).await;
     assert_eq!(external_rejected.status, 409, "{}", external_rejected.body);
     assert!(external_rejected.body.contains("External reference"));
     assert_eq!(body(&get_over_tcp(server.addr(), "/api/tasks").await)["tasks"], json!([external]));
@@ -175,7 +199,7 @@ async fn concurrent_delete_and_new_reference_cannot_leave_a_dangling_task() {
     let config = config(&root);
     let server = TestServer::start(&config).await;
     for round in 0..24 {
-        let suite = json!({"id":format!("race-{round}"),"name":"Race tools","agents":["omp"]});
+        let suite = json!({"id":format!("race-{round}-omp"),"name":"Race tools · OMP","harness":"omp"});
         let created = send(&server, "POST", "/api/suites", &suite).await;
         assert_eq!(created.status, 200, "{}", created.body);
         let payload = task("Concurrent reference", suite["id"].clone()).to_string();
@@ -188,7 +212,7 @@ async fn concurrent_delete_and_new_reference_cannot_leave_a_dangling_task() {
             let id = list["tasks"].as_array().unwrap().last().unwrap()["id"].as_str().unwrap();
             ("PUT", format!("/api/tasks/{id}"))
         };
-        let path = format!("/api/suites/race-{round}");
+        let path = format!("/api/suites/race-{round}-omp");
         let gate = tokio::sync::Barrier::new(2);
         let (save, delete) = tokio::time::timeout(std::time::Duration::from_secs(10), async {
             tokio::join!(gated_request(server.addr(), method, &task_path, &payload, &gate), gated_request(server.addr(), "DELETE", &path, "", &gate))
@@ -219,7 +243,7 @@ async fn missing_central_mcp_is_readable_but_save_and_launch_are_refused() {
     let herdr = common::HerdrFixture::new("missing suite MCP Herdr");
     config.herdr.executable = herdr.executable().to_path_buf();
     let server = TestServer::start(&config).await;
-    let saved = send(&server, "POST", "/api/tasks", &task("MCP source", json!("shared"))).await;
+    let saved = send(&server, "POST", "/api/tasks", &task("MCP source", json!("shared-omp"))).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let id = body(&saved)["tasks"][0]["id"].as_str().unwrap().to_owned();
     let registered = send(&server, "POST", "/api/zones", &json!({"id":"zone", "path":root.path()})).await;
@@ -231,8 +255,8 @@ async fn missing_central_mcp_is_readable_but_save_and_launch_are_refused() {
     fs::write(&config.suites.mcp_file, r#"{"mcpServers":{}}"#).unwrap();
     let read = get_over_tcp(server.addr(), &format!("/api/tasks/{id}")).await;
     assert_eq!(read.status, 200, "{}", read.body);
-    assert_eq!(body(&read)["task"]["suite"], "shared");
-    let rejected = send(&server, "PUT", &format!("/api/tasks/{id}"), &task("MCP source", json!("shared"))).await;
+    assert_eq!(body(&read)["task"]["suite"], "shared-omp");
+    let rejected = send(&server, "PUT", &format!("/api/tasks/{id}"), &task("MCP source", json!("shared-omp"))).await;
     assert_eq!(rejected.status, 400, "{}", rejected.body);
     assert!(rejected.body.contains("search"), "{}", rejected.body);
     let launch = send(&server, "POST", "/api/chats", &json!({"zone":"zone", "taskId":id, "chatId":body(&preview)["chatId"], "input":"must not start"})).await;

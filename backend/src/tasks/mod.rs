@@ -372,7 +372,7 @@ impl Tasks {
     }
 
     pub(crate) fn validate_suite(&self, task: &Task) -> Result<(), TaskError> {
-        self.files.with(&[self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
+        self.files.with(&self.suites.selection_scope(), |access| {
             self.suites.resolve_selection(access, task.env.suite.as_deref(), task.agent).map(|_| ())
         }).map_err(TaskError::Unreadable)?
     }
@@ -380,10 +380,18 @@ impl Tasks {
     /// Re-read authority immediately before launch; do not hold coordination
     /// across Herdr or any other external effect.
     pub fn prepare_environment(&self, task: &Task) -> Result<Vec<String>, TaskError> {
-        let suite = self.files.with(&[self.suites.definition_file.clone(), self.suites.mcp_file.clone()], |access| {
+        let suite = self.resolve_environment_suite(task)?;
+        self.prepare_selected_environment(suite.as_ref(), task.agent)
+    }
+
+    pub(crate) fn resolve_environment_suite(&self, task: &Task) -> Result<Option<crate::suites::Suite>, TaskError> {
+        self.files.with(&self.suites.selection_scope(), |access| {
             self.suites.resolve_selection(access, task.env.suite.as_deref(), task.agent)
-        }).map_err(TaskError::Unreadable)??;
-        self.suites.prepare_environment(suite.as_ref(), task.agent, &self.roots)
+        }).map_err(TaskError::Unreadable)?
+    }
+
+    pub(crate) fn prepare_selected_environment(&self, suite: Option<&crate::suites::Suite>, agent: Agent) -> Result<Vec<String>, TaskError> {
+        self.suites.prepare_environment(suite, agent, &self.roots)
     }
 
     /// 新增一个 Task；成功返回保存后的完整列表。
@@ -479,7 +487,8 @@ impl Tasks {
 
     /// Read, validate, mutate and publish under one shared resource scope.
     fn change(&self, change: impl FnOnce(&FileAccess, &mut Vec<Task>) -> Result<(), TaskError>) -> Result<Vec<Task>, TaskError> {
-        self.files.with(&[self.storage_file.clone(), self.suites.definition_file.clone(), self.suites.mcp_file.clone(), self.metadata_file.clone()], |access| {
+        let [suite_file, mcp_file, dap_file] = self.suites.selection_scope();
+        self.files.with(&[self.storage_file.clone(), suite_file, mcp_file, dap_file, self.metadata_file.clone()], |access| {
             access.update_json(
                 &self.storage_file,
                 |access| self.read(access).map(|tasks| TasksDocument { tasks }),

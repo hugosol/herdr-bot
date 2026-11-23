@@ -53,7 +53,7 @@ impl LaunchFixture {
         let (launch, target) = if app {
             let tabs = common::read_json_lines(&host.path().join("app-tabs.jsonl"));
             let argv = &tabs[0]["options"]["argv"];
-            (argv[4].clone(), argv[5].clone())
+            (argv[6].clone(), argv[7].clone())
         } else {
             let correlations = common::read_json_lines(&host.path().join("tab-launches.jsonl"));
             (correlations[0]["launch"].clone(), correlations[0]["target"].clone())

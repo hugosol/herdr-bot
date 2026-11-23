@@ -5,10 +5,11 @@ use crate::{paths::Roots, tasks::{Agent, TaskError}};
 use super::{Suite, Suites};
 
 impl Suites {
-    pub(super) fn select_extensions(&self, suite: &Suite, agent: Agent, roots: &Roots) -> Result<Vec<PathBuf>, TaskError> {
-        let fail = |error: String| TaskError::InvalidSuite(format!("Suite「{}」扩展入口无效：{error}；没有跳过失败资源或回退为空环境。", suite.id));
+    pub(super) fn select_extensions(&self, suite: &Suite, roots: &Roots) -> Result<Vec<PathBuf>, TaskError> {
+        let fail = |error: String| TaskError::InvalidSuite(format!("Suite「{}」扩展入口无效：{error}；没有跳过失败资源或回退为空环境。", suite.id()));
+        let agent = suite.harness();
         let base = self.definition_file.parent().unwrap_or(Path::new("."));
-        let declarations = suite.extensions.get(agent.label()).map(Vec::as_slice).unwrap_or_default();
+        let declarations = suite.extensions();
         let mut entries = Vec::with_capacity(declarations.len());
         let mut seen = HashSet::with_capacity(declarations.len());
         let candidates = declarations.iter().map(|declaration|

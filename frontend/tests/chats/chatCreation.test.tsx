@@ -624,13 +624,19 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
     expect(screen.getByTestId('tab-files')).toHaveAttribute('aria-selected', 'true')
   })
 
-  it('投递超时只表述为结果未确认，不宣称未发送也不显示成功', async () => {
+  it('改选 Space 后投递超时，仍显示实际位置，不宣称未发送或创建成功', async () => {
     const user = userEvent.setup()
     mockCreationFailure(
       creation('failed', {
+        workspace: {
+          id: 'space-shared',
+          label: '共享空间',
+          kind: 'Space',
+          degradation: { reason: '找不到 alpha', strategy: '改选唯一默认 Space' },
+        },
         tabId: 'w-target:t9',
         paneId: 'w-target:p9',
-        agentName: 'chat-000000000009',
+        inputOutcome: 'unknown',
         failure: {
           stage: 'submit',
           code: 'herdr-timeout',
@@ -649,6 +655,9 @@ describe('从 zone 发起 Chat：名称预览与阶段', () => {
       '现场已存在：agent 已就绪；初始指示的投递结果未确认，不能断定它一定没有发送；不会自动重发。',
     )
     expect(failure).not.toHaveTextContent('确定未发送')
+    const result = within(within(dialog).getByTestId('chat-result'))
+    expect(result.getByText(/共享空间.*space-shared/)).toBeVisible()
+    expect(result.getByText(/alpha.*改选唯一默认 Space/)).toBeVisible()
     expect(within(dialog).queryByTestId('chat-create-success')).toBeNull()
     expect(within(dialog).getByTestId('chat-result-tab')).toHaveTextContent('w-target:t9')
     expect(within(dialog).getByTestId('chat-result-pane')).toHaveTextContent('w-target:p9')

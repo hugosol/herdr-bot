@@ -239,9 +239,12 @@ describe('Task tab：读取与展示', () => {
 
   it.each(['omp', 'pi'] as const)('%s 切换 Task 类型保留合法宿主、模型和 Suite，不重复展示扩展目录并保存', async (agent) => {
     const user = userEvent.setup()
+    const suite = agent === 'omp'
+      ? { id: 'role-omp', name: '角色工具 · OMP', harness: 'omp', skills: [], extensions: [], mcp: [], lsp: {}, dap: ['codelldb'] }
+      : { id: 'role-pi', name: '角色工具 · Pi', harness: 'pi', skills: [], extensions: [], mcp: [], prompts: [], codemode: 'on' }
     const original = { id: 'role-task', name: '角色编辑', chatName: '{chat.id}', agent,
-      taskType: 'normal', model: 'deepseek-flash', thinking: 'high', skill: null, prompt: '' }
-    const options = OPTIONS
+      taskType: 'normal', model: 'deepseek-flash', thinking: 'high', skill: null, prompt: '', suite: suite.id }
+    const options = { ...OPTIONS, suites: [suite], mcp: [] }
     const { calls } = mockTaskFetch((url, method, body) => {
       if (url === '/api/tasks' && method === 'GET') return jsonResponse(200, { tasks: [original], options })
       if (url === '/api/tasks/role-task' && method === 'PUT') return jsonResponse(200, { tasks: [{ id: original.id, ...JSON.parse(body!) }], options })
@@ -258,13 +261,13 @@ describe('Task tab：读取与展示', () => {
       expect(within(dialog).getByTestId('task-model')).toHaveValue('deepseek-flash')
       expect(within(dialog).getByTestId('task-thinking')).toHaveValue('high')
       await user.click(within(dialog).getByTestId('task-next'))
-      expect(within(dialog).getByTestId('task-suite')).toHaveValue('')
+      expect(within(dialog).getByTestId('task-suite')).toHaveValue(suite.id)
       expect(within(dialog).queryByTestId('task-fixed-extensions')).toBeNull()
       expect(within(dialog).queryByRole('checkbox')).toBeNull()
       await user.click(within(dialog).getByTestId('task-back'))
     }
     await saveTask(user, dialog)
-    expect(JSON.parse(calls.find(call => call.method === 'PUT')!.body!)).toEqual({ ...original, id: undefined, taskType: 'chief', suite: null })
+    expect(JSON.parse(calls.find(call => call.method === 'PUT')!.body!)).toEqual({ ...original, id: undefined, taskType: 'chief' })
     expect(await screen.findByTestId('task-feedback')).toHaveAttribute('data-kind', 'success')
   })
 

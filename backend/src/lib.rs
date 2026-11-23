@@ -217,7 +217,12 @@ pub fn app_with_state(
     let sync_state = Arc::new(sync::SyncState::with_ttl(
         config.git.status_cache_ttl_seconds.duration(),
     ));
-    let suites = Arc::new(suites::Suites::new(config.suites.definition_file.clone(), config.suites.mcp_file.clone(), config.suites.generated_directory.clone()));
+    let suites = Arc::new(suites::Suites::new(
+        config.suites.definition_file.clone(),
+        config.suites.mcp_file.clone(),
+        config.suites.dap_file.clone(),
+        config.suites.generated_directory.clone(),
+    ));
     let chief = Arc::new(chief::Authority::new(config.sessions.history_file.with_extension("chief.json")));
     sessions.attach_chief(Arc::clone(&chief));
     let (start, stop) = config.operations.selected(config.herdr.backend);

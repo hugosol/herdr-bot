@@ -1,6 +1,15 @@
 # Pi Suite resources and native MCP acceptance
 
-`python scripts/accept-suite-pi-resources.py` owns the Pi resource/MCP matrix at
+黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+
+```powershell
+$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
+$BOT = 'E:/Developer/myhub/herdr-bot'
+```
+
+验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-resources` owns the Pi resource/MCP matrix at
 S2 (public HTTP), S3 (deployment/startup), and S4 (native agents launched by real
 Herdr). It also consumes the same selected declaration with installed OMP as a
 cross-host resource control; that does not replace OMP's separately owned tests.
@@ -17,8 +26,11 @@ including its public path resolver. Build the current frontend, not a different
 worktree's static assets:
 
 ```powershell
-$env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
-Set-Location $HERDR_BOT_WT
+$TOOLKIT_WT = 'D:/worktrees/toolkit'
+$ISOLATED_PATHS = 'D:/acceptance/pi-resource-paths.toml'
+$EVIDENCE_DIR = 'D:/acceptance/pi-resource-run-unique'
+$env:CARGO_TARGET_DIR = Join-Path $BOT 'backend/target'
+Set-Location $BOT
 bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-paths
@@ -45,8 +57,8 @@ arguments must match what the installed PATH launchers actually load. There is
 no fallback to another worktree, installed toolkit or user deployment.
 
 ```powershell
-python scripts/accept-suite-pi-resources.py `
-  --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-resources `
+  --toolkit-worktree "$TOOLKIT_WT" `
   --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
   --paths-file "$ISOLATED_PATHS" --scenario all --evidence-dir "$EVIDENCE_DIR"
 ```
@@ -73,7 +85,7 @@ user Chat/daemon processes.
 | `empty` | P21: explicit empty Suite MCP list still calls the native file server. |
 | `unreadable-skill`, `unreadable-extension` | P46: after successful preview, a Windows exclusive file handle makes SKILL.md or the concrete extension entry truly unreadable (not an arbitrary package asset pre-scan); public launch rejects with the resource identity, no model request and unchanged Herdr tab list. |
 | `generation-failure` | P46: after preview a normal file blocks the owned output directory; launch refuses instead of continuing empty. |
-| `incompatible` | P46: after preview the same Suite becomes OMP-only; Pi startup rejects instead of ignoring it. |
+| `incompatible` | P46: after preview, the owned persisted Pi Task is explicitly changed to reference an existing OMP Suite; Pi startup rejects before Herdr/model invocation. Suite harness remains immutable. |
 | `unreachable` | P46: a syntactically valid native MCP endpoint is unreachable. Normal startup and the working native MCP call still happen; real tool failure and native `/mcp` error/state are retained, not a new all-ready gate. |
 
 MCP endpoints are test-owned HTTP protocol servers that read independent files;
@@ -100,13 +112,15 @@ Missing centralized MCP reference coverage is intentionally not duplicated: use
 The runner's S3 fail-closed regression does not launch agents:
 
 ```powershell
+$env:HERDR_BOT_WORKTREE = $BOT
 $env:SUITE_ACCEPTANCE_TOOLKIT = $TOOLKIT_WT
-python scripts/accept-suite-pi-resources.test.py
+python "$TESTER/scripts/accept-suite-pi-resources.test.py"
 ```
 
 From the herdr-bot worktree, record each result separately:
 
 ```powershell
+Set-Location $BOT
 node scripts/test-backend.mjs
 npm --prefix frontend test
 npm --prefix frontend run test:browser:build
@@ -117,10 +131,12 @@ all interop inputs explicitly; `HERDR_BOT_BINARY`/`HERDR_BOT_METADATA` do not se
 the separate workflow fixture's source root:
 
 ```powershell
-$env:HERDR_BOT_REPO = $HERDR_BOT_WT
-$env:HERDR_BOT_BINARY = "$HERDR_BOT_WT/backend/target/debug/examples/safe_shutdown_shell.exe"
-$env:HERDR_BOT_METADATA = "$HERDR_BOT_WT/meta-data/task-options.toml"
+Set-Location $TOOLKIT_WT
+$env:HERDR_BOT_REPO = $BOT
+$env:HERDR_BOT_BINARY = Join-Path $env:CARGO_TARGET_DIR 'debug/examples/safe_shutdown_shell.exe'
+$env:HERDR_BOT_METADATA = Join-Path $BOT 'meta-data/task-options.toml'
 # If temporary worktrees do not share the recorded sibling baseline checkouts:
+$ORIGINAL_TOOLKIT_ROOT = 'D:/sources/original-toolkit-checkout'
 $env:OMP_BASELINE_RECORD_ROOT = $ORIGINAL_TOOLKIT_ROOT
 bun install --frozen-lockfile
 bun run typecheck

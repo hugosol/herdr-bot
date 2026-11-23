@@ -264,7 +264,7 @@ export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 
       >
         <h2 className="zone-dialog__title">发起 Chat</h2>
         <p className="zone-dialog__hint">
-          新 Chat 会在所选 Herdr Workspace 中新建独立 Tab；默认使用服务端配置，当前按 zone 目录名匹配。
+          新 Chat 会在 Herdr 中新建独立 Tab；默认使用服务端配置，当前按 zone 目录名匹配。
           无论选择哪项，都以所选 zone 的目录作为工作目录。
           创建前自动检查 Task 的固定及所选扩展入口存在、为文件且可读；关闭扩展自动发现，选择仅来自 Task。
           文件检查不执行扩展或探测模型、余额及账号，不代表扩展或 Skill 已初始化成功，也不保证检查后文件不再变化。
@@ -348,7 +348,7 @@ export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 
         </select>
         <p id="chat-workspace-hint" className="zone-dialog__hint">
           当前按 zone 目录名匹配（区分大小写），不是 Herdr 当前聚焦的 Workspace，也不是浏览器所在子目录。
-          未找到或匹配到多个 Workspace 时创建失败，不会改用默认 Workspace。
+          在 Herdr App 中，普通 Chat 仅在查询确认没有同名 Space 时改选配置的唯一默认 Space；重名或查询异常时不会改选。
         </p>
 
         <label className="zone-form__label" htmlFor="chat-input">
@@ -440,6 +440,18 @@ export function ChatCreationDialog({ chief = false, zone: initialZone = chief ? 
               <dt>zone</dt>
               <dd data-testid="chat-result-zone">{creation.zone}</dd>
             </div>
+            {creation.workspace !== undefined && (
+              <div>
+                <dt>选定的 Herdr {creation.workspace.kind}</dt>
+                <dd>{creation.workspace.label}（{creation.workspace.id}）</dd>
+              </div>
+            )}
+            {creation.workspace?.degradation !== undefined && (
+              <div>
+                <dt>位置回退</dt>
+                <dd>{creation.workspace.degradation.reason} {creation.workspace.degradation.strategy}</dd>
+              </div>
+            )}
             {creation.tabId !== undefined && (
               <div>
                 <dt>Herdr Tab</dt>

@@ -695,7 +695,7 @@ pub(crate) async fn start_run(state: AppState, map: String, input: crate::runs::
         Err(e) => return Err(RunError::Task(e)),
     };
     preset.env.suite_args = suite_args;
-    preset.env.select_host(&state.herdr);
+    crate::herdr::native_status::select_host(&state.herdr, &mut preset.env);
     if let Err(message) = preset.env.check_entrypoints() {
         return Err(error(
             FailureKind::Failed,

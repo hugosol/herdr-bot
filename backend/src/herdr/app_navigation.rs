@@ -1,7 +1,7 @@
 //! Resume navigation verifies both the bound core terminal and the exact App
 //! pane. A successful command alone does not establish the App's focus.
 
-use super::{AppHost, AppTerminal, CORE_GET, QUERY_TIMEOUT, nonempty, run_cli, unexpected};
+use super::{AppHost, AppTerminal, QUERY_TIMEOUT, nonempty, run_cli, unexpected};
 use crate::herdr::{HerdrError, NavigationTarget};
 use serde_json::{Value, json};
 
@@ -13,10 +13,6 @@ impl AppHost {
         &self, target: &NavigationTarget, terminal: &AppTerminal,
     ) -> Result<Value, HerdrError> {
         let record = self.observe_launch(target, terminal).await?;
-        if record.get("state").and_then(Value::as_str) != Some("live") {
-            return Err(unexpected(CORE_GET, "App 绑定的终端不再运行"));
-        }
-
         let args = json!({"pane": target.pane_id}).to_string();
         let reply = run_cli(&self.executable, FOCUS, &["do", "pane.focus", &args], QUERY_TIMEOUT).await?;
         if reply.get("ok").and_then(Value::as_bool) != Some(true) {

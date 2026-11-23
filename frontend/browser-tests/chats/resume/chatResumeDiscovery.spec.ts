@@ -73,18 +73,26 @@ for (const agent of ['pi', 'omp']) {
 
   // S1 / B1 (P34): corrupt source config is not deletion. The real page
   // must keep the same policy and exact reason after either success or failure.
-  for (const mechanism of ['tasks-corrupt', 'tasks-unreadable', 'catalog-parse', 'catalog-unreadable', 'suite-invalid']) {
-    test(`${agent} ${mechanism} displays native discovery and preserves the source`, async ({ page }) => {
+  for (const mechanism of ['tasks-corrupt', 'tasks-unreadable', 'catalog-parse', 'catalog-unreadable', 'suite-invalid', 'suite-resource']) {
+    const unavailable = mechanism === 'suite-resource'
+    const outcome = unavailable ? 'rejects the declared resource without starting' : 'displays native discovery'
+    test(`${agent} ${mechanism} ${outcome} and preserves the source`, async ({ page }) => {
       server = await startServer({ herdr: {} })
       const root = path.dirname(server.configPath)
       const suiteFile = path.join(root, 'meta-data', 'suites.json')
-      const suite = { id: 'original-suite', name: 'Original Suite', agents: [agent], ...(agent === 'pi' ? { pi: { codemode: 'on' } } : {}) }
       const invalidSuite = mechanism === 'suite-invalid'
-      if (invalidSuite) {
+      const hasSuite = invalidSuite || unavailable
+      const entry = path.join(path.dirname(suiteFile), 'declared-suite-extension.ts')
+      const suite = {
+        id: `original-suite-${agent}`, name: `Original Suite · ${agent === 'omp' ? 'OMP' : 'Pi'}`, harness: agent,
+        skills: [], extensions: [entry], mcp: [], ...(agent === 'pi' ? { prompts: [], codemode: 'on' } : { lsp: {} }),
+      }
+      if (hasSuite) {
         fs.mkdirSync(path.dirname(suiteFile), { recursive: true })
+        fs.writeFileSync(entry, 'export default function () {}\n')
         fs.writeFileSync(suiteFile, JSON.stringify({ suites: [suite] }))
       }
-      const source = (await post('/api/tasks', { ...preset(agent), ...(invalidSuite ? { suite: suite.id } : {}) })).tasks[0].id
+      const source = (await post('/api/tasks', { ...preset(agent), ...(hasSuite ? { suite: suite.id } : {}) })).tasks[0].id
       const id = `${agent}-error-independent-001`
       const native = path.join(root, `${id}.jsonl`)
       fs.writeFileSync(native, `${JSON.stringify({ type: 'session', version: 3, id, cwd: root })}\n`)
@@ -92,10 +100,12 @@ for (const agent of ['pi', 'omp']) {
       const bytes = JSON.stringify([{ sessionId: id, sessionName: 'Source read error', agentType: agent, cwd: root, sessionFile: native, firstRecordedAt: 123, originalWorkspaceId: 'w-target', sourceTaskId: source }])
       fs.writeFileSync(historyFile, bytes)
       const affected = invalidSuite ? suiteFile : mechanism.startsWith('tasks') ? server.storageFile : server.metadataFile
-      const damaged = invalidSuite
-        ? JSON.stringify({ suites: [{ ...suite, extensions: { [agent]: ['missing-suite-extension.ts'] } }] })
-        : '{ independently invalid !!!'
-      if (mechanism.endsWith('unreadable')) {
+      const damaged = '{ independently invalid !!!'
+      const authorityBefore = unavailable ? fs.readFileSync(suiteFile) : null
+      const nativeBefore = fs.readFileSync(native)
+      if (unavailable) {
+        fs.unlinkSync(entry)
+      } else if (mechanism.endsWith('unreadable')) {
         fs.unlinkSync(affected)
         fs.mkdirSync(affected)
         fs.writeFileSync(path.join(affected, 'preserve.txt'), 'Do not repair')
@@ -103,6 +113,19 @@ for (const agent of ['pi', 'omp']) {
       const failFocus = mechanism === 'catalog-unreadable'
       server.setHerdrBehavior({ native_session: { agent, source: `herdr:${agent}`, kind: 'path', value: native }, fail_agent_focus: failFocus })
       const { row, response } = await resumeOnPage(page, 'Source read error')
+      if (unavailable) {
+        expect(response.status()).toBe(502)
+        expect(await response.json()).toMatchObject({ outcome: 'failed', stage: 'settings', target: null, degradations: [] })
+        await expect(row.getByRole('alert')).toContainText('declared-suite-extension.ts')
+        await expect(row.getByRole('alert')).not.toContainText('原生默认扩展发现')
+        expect(server.herdrTabs()).toHaveLength(0)
+        expect(server.herdrCalls().some(call => ['tab_create', 'agent_start', 'agent_prompt', 'agent_input'].includes(String(call.kind)))).toBe(false)
+        expect(fs.readFileSync(suiteFile)).toEqual(authorityBefore)
+        expect(fs.readFileSync(historyFile, 'utf8')).toBe(bytes)
+        expect(fs.readFileSync(native)).toEqual(nativeBefore)
+        await page.screenshot({ path: test.info().outputPath(`${agent}-${mechanism}.png`), fullPage: true })
+        return
+      }
       expect(response.status()).toBe(failFocus ? 502 : 200)
       const result = await response.json()
       expect(result.outcome).toBe(failFocus ? 'failed' : 'restored')

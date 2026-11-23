@@ -1,6 +1,15 @@
 # Initial Suite native acceptance
 
-`python scripts/accept-initial-suites.py` owns P11's exploration OMP directory-set,
+黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+
+```powershell
+$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
+$BOT = 'E:/Developer/myhub/herdr-bot'
+```
+
+验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-initial-suites` owns P11's exploration OMP directory-set,
 exploration Pi explicit-skill and implementation OMP directory-set scenarios, P42's actual
 `hyper-auto-coding` command, and P44's complete two-repository delivery manifest
 and public-entrypoint consistency. The approved interfaces are isolated
@@ -9,8 +18,9 @@ hosts launched by real Herdr (S4). No product test-only endpoint is added.
 
 ## Dependencies and preparation
 
-Run from the explicit herdr-bot worktree with a separately supplied toolkit Git
-worktree containing the delivered Pi Suite extension. Use Python 3.11+. Only herdr-bot is modified
+Build from `$BOT`. Pass a separate toolkit Git worktree containing the delivered
+Pi Suite extension. The wrapper binds `$BOT` before the scenario, regardless of
+the shell's current directory. Use Python 3.11+. Only herdr-bot is modified
 by this acceptance ticket. Dependencies must already be installed. Do not
 install/elevate/change PATH, patch Herdr/OMP/Pi, use a source CLI/SDK-built agent,
 replace the native tool manager, copy credentials or use existing user Chats.
@@ -21,12 +31,13 @@ freshness, binary hash, normal PATH launchers and their installed package roots.
 Do not substitute another worktree's binary or static assets.
 
 ```powershell
-$env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
-Set-Location $HERDR_BOT_WT
+$env:CARGO_TARGET_DIR = Join-Path $BOT 'backend/target'
+Set-Location $BOT
 bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-paths
-python scripts/accept-initial-suites.test.py
+$env:HERDR_BOT_WORKTREE = $BOT
+python "$TESTER/scripts/accept-initial-suites.test.py"
 ```
 
 Supply a **dependency-only** paths file. Each root is an existing read-only
@@ -48,7 +59,7 @@ pi_extensions = 'D:/sources/pi-extension'
 ```
 
 The current exploration Pi declaration names the `pi-web-access/index.ts` source
-entry directly in `extensions.pi`. Prepare that source and its runtime dependencies
+entry directly in the Pi Suite's `extensions` array. Prepare that source and its runtime dependencies
 before running acceptance. Pi entries must name a concrete file, not a package
 directory. Suite paths preserve root references, including the owned toolkit
 replacement; there is no optional metadata catalog.
@@ -64,9 +75,15 @@ Do not choose HEAD merely to conceal earlier contributions. Both baselines must
 be ancestors of their respective current source revisions. This evidence is not
 a new workflow scheduling gate or a claim that unrelated checks passed.
 
+Set `$HERDR_BOT_BEFORE_SUITES` and `$TOOLKIT_BEFORE_SUITES` to those revisions.
+Replace the example paths with the paths for this run.
+
 ```powershell
-python scripts/accept-initial-suites.py `
-  --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
+$TOOLKIT_WT = 'D:/worktrees/toolkit'
+$ISOLATED_DEPENDENCIES = 'D:/acceptance/initial-suite-paths.toml'
+$NEW_EXCLUSIVE_EVIDENCE_DIR = 'D:/acceptance/initial-suite-run-unique'
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-initial-suites `
+  --toolkit-worktree "$TOOLKIT_WT" `
   --herdr-bot-base "$HERDR_BOT_BEFORE_SUITES" --toolkit-base "$TOOLKIT_BEFORE_SUITES" `
   --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" `
   --paths-file "$ISOLATED_DEPENDENCIES" --scenario all `

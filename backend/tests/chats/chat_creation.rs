@@ -924,6 +924,100 @@ async fn invalid_launch_overrides_are_rejected_before_side_effects_without_savin
 // wrong native container; opening a TUI-only file would prevent App launch.
 // Compare actual App/core launch and send records, not only the HTTP reply.
 #[tokio::test(flavor = "multi_thread")]
+async fn app_creation_places_only_after_a_valid_inventory_and_ignores_legacy_terminal_labels() {
+    let default = json!({"id":"space-default","name":"bot-playground","tabs":[]});
+    for (scenario, spaces, expected) in [
+        ("legacy-unlabelled", json!([
+            {"id":"space-current","name":"alpha","tabs":[{"id":"legacy-tab","terminals":[{"pane":"legacy-pane","terminal":"legacy-terminal"}]}]},
+            default.clone()
+        ]), Some("space-current")),
+        ("confirmed-missing", json!([default.clone()]), Some("space-default")),
+        ("base36-terminal", json!([{"id":"space-current","name":"alpha","tabs":[]},default.clone()]), Some("space-current")),
+        ("malformed", json!([{"id":"missing-name","tabs":[]},default.clone()]), None),
+        ("ambiguous", json!([
+            {"id":"space-first","name":"alpha","tabs":[]},
+            {"id":"space-second","name":"alpha","tabs":[]},default.clone()
+        ]), None),
+        ("default-missing", json!([]), None),
+        ("query-refused", json!([default.clone()]), None),
+    ] {
+        let host = HerdrFixture::new(scenario);
+        fs::write(host.path().join("chat-app-mode"), "").unwrap();
+        host.set_behavior(json!({"app_spaces":spaces,"fail_app_ls":scenario == "query-refused","app_terminal":if scenario == "base36-terminal" {"ta"} else {"t1"}}));
+        let storage = TempDir::new("App placement storage");
+        let mut config = config_with(&host, &storage);
+        config.herdr.backend = herdr_bot::config::HerdrBackend::App;
+        config.herdr.app_executable = host.executable().into();
+        config.herdr.core_executable = host.executable().into();
+        let server = TestServer::start(&config).await;
+        let cwd = storage.path().join("alpha");
+        fs::create_dir(&cwd).unwrap();
+        let zone = register(&server, &cwd).await;
+        let task = save_task(&server, default_task()).await;
+        let preview: Value = serde_json::from_str(&preview(&server, &zone, task["id"].as_str().unwrap()).await.body).unwrap();
+        let mut request = create_body(&zone, task["id"].as_str().unwrap(), &preview, "Placement business input");
+        request["workspaceTarget"] = json!("current");
+        let response = create(&server, request).await;
+        assert_eq!(response.status, 202, "{scenario}: {}", response.body);
+        let accepted: Value = serde_json::from_str(&response.body).unwrap();
+        let id = accepted["id"].as_str().unwrap();
+        let Some(space) = expected else {
+            let failed = wait_stage(&server, id, "failed").await;
+            assert_eq!(failed["failure"]["stage"], "workspace", "{scenario}: {failed}");
+            assert!(common::read_json_lines(&host.path().join("app-tabs.jsonl")).is_empty(), "{scenario}");
+            assert!(calls_of_kind(&host, "core_send").is_empty());
+            continue;
+        };
+        let initializing = wait_stage(&server, id, "initializing").await;
+        assert_eq!(initializing["workspace"]["id"], space, "{scenario}: {initializing}");
+        assert_eq!(initializing["workspace"]["kind"], "Space");
+        assert_eq!(initializing["workspace"].get("degradation").is_some(), scenario == "confirmed-missing");
+        let tab = &common::read_json_lines(&host.path().join("app-tabs.jsonl"))[0];
+        assert_eq!(tab["space"], space);
+        let argv = &tab["options"]["argv"];
+        for kind in ["launch_identity", "launch_ready"] {
+            let report = json!({"kind":kind,"sessionId":"placement-native","data":{
+                "launchId":argv[6],"targetId":argv[7],"agentType":"omp","cwd":cwd,"pid":43127
+            }});
+            let response = post_json_over_tcp(server.addr(), "/api/sessions/events", &report.to_string()).await;
+            assert_eq!(response.status, 200, "{}", response.body);
+        }
+        let succeeded = wait_stage(&server, id, "succeeded").await;
+        assert_eq!(succeeded["workspace"], initializing["workspace"]);
+        let sent = calls_of_kind(&host, "core_send");
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0]["terminal"], tab["terminal"]);
+        assert_eq!(sent[0]["text"], "Placement business input");
+        assert!(sent[0]["coreSocket"].as_str().is_some_and(|value| value.ends_with(".sock")));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn app_rejects_conflicting_launch_binding_without_submitting_input() {
+    for fault in ["wrong_app_binding_nonce", "wrong_app_binding_terminal"] {
+        let host = HerdrFixture::new(fault);
+        fs::write(host.path().join("chat-app-mode"), "").unwrap();
+        host.set_behavior(json!({fault:true}));
+        let storage = TempDir::new("App binding refusal storage");
+        let mut config = config_with(&host, &storage);
+        config.herdr.backend = herdr_bot::config::HerdrBackend::App;
+        config.herdr.app_executable = host.executable().into();
+        config.herdr.core_executable = host.executable().into();
+        let server = TestServer::start(&config).await;
+        let cwd = storage.path().join("alpha");
+        fs::create_dir(&cwd).unwrap();
+        let zone = register(&server, &cwd).await;
+        let task = save_task(&server, default_task()).await;
+        let id = accept_creation(&server, &zone, task["id"].as_str().unwrap(), "Must not submit").await;
+        let failed = wait_stage(&server, &id, "failed").await;
+        assert_eq!(failed["failure"]["stage"], "tab", "{fault}: {failed}");
+        assert_eq!(failed["inputSubmitted"], false);
+        assert_eq!(common::read_json_lines(&host.path().join("app-tabs.jsonl")).len(), 1);
+        assert!(calls_of_kind(&host, "core_send").is_empty());
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn app_launch_uses_task_environment_and_selected_terminal_without_tui_files() {
     let host = HerdrFixture::new("app task terminal fixture");
     fs::write(host.path().join("chat-app-mode"), "").unwrap();
@@ -942,9 +1036,21 @@ async fn app_launch_uses_task_environment_and_selected_terminal_without_tui_file
     fs::write(&config.tasks.metadata_file, toml::to_string(&catalog).unwrap()).unwrap();
     config.suites.definition_file = storage.path().join("suites.json");
     config.suites.generated_directory = storage.path().join("generated-suites");
+    config.suites.mcp_file = storage.path().join("mcp.json");
+    fs::write(&config.suites.mcp_file, json!({"mcpServers":{
+        "omp-fixture":{"command":"controlled-omp"}, "pi-fixture":{"command":"controlled-pi"}
+    }}).to_string()).unwrap();
+    let pi_skill = storage.path().join("selected Pi skill");
+    fs::create_dir(&pi_skill).unwrap();
+    fs::write(pi_skill.join("SKILL.md"), "---\nname: selected-pi\ndescription: A selected native skill\n---\nSkill body\n").unwrap();
+    let pi_prompt = storage.path().join("pi-fixture-prompt.md");
+    fs::write(&pi_prompt, "A Pi prompt template; do not expand automatically.\n").unwrap();
     for entry in ["omp-test-suite.ts", "pi-test-suite.ts"] { fs::write(storage.path().join(entry), "// owned resource").unwrap(); }
-    fs::write(&config.suites.definition_file, json!({"suites":[{"id":"paired","name":"Paired","agents":["omp","pi"],
-        "extensions":{"omp":["omp-test-suite.ts"],"pi":["pi-test-suite.ts"]},"pi":{"codemode":"on"}}]}).to_string()).unwrap();
+    fs::write(&config.suites.definition_file, json!({"suites":[
+        {"id":"paired-omp","name":"Paired · OMP","harness":"omp","extensions":["omp-test-suite.ts"],"mcp":["omp-fixture"]},
+        {"id":"paired-pi","name":"Paired · Pi","harness":"pi","extensions":["pi-test-suite.ts"],"mcp":["pi-fixture"],
+            "skills":["selected Pi skill"],"prompts":["pi-fixture-prompt.md"],"codemode":"only"}
+    ]}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
     let dir = storage.path().join("alpha");
     fs::create_dir(&dir).unwrap();
@@ -954,7 +1060,7 @@ async fn app_launch_uses_task_environment_and_selected_terminal_without_tui_file
         ("pi", "xhigh", "default", "space-default", "pi-suite.json"),
     ].into_iter().enumerate() {
         let task = save_task(&server, json!({"name":format!("App {agent}"),"chatName":"{task.name}","agent":agent,
-            "model":"gpt-6.1-sol","thinking":thinking,"suite":"paired","skill":"teach","prompt":"Literal {unknown}"})).await;
+            "model":"gpt-6.1-sol","thinking":thinking,"suite":format!("paired-{agent}"),"skill":"teach","prompt":"Literal {unknown}"})).await;
         let task_id = task["id"].as_str().unwrap();
         let preview = serde_json::from_str(&preview(&server, &zone, task_id).await.body).unwrap();
         let mut request = create_body(&zone, task_id, &preview, "User body\nsecond line");
@@ -973,21 +1079,39 @@ async fn app_launch_uses_task_environment_and_selected_terminal_without_tui_file
         assert_eq!(at_init["tabId"], tab["tab"]);
         assert_eq!(at_init["paneId"], tab["pane"]);
         let argv = tab["options"]["argv"].as_array().unwrap();
-        assert_eq!(argv[6], agent);
-        assert_eq!(&argv[7..11], &[json!("--model"), json!("openai-codex/gpt-6.1-sol"), json!("--thinking"), json!(thinking)]);
+        assert_eq!(argv[8], agent);
+        assert_eq!(&argv[9..13], &[json!("--model"), json!("openai-codex/gpt-6.1-sol"), json!("--thinking"), json!(thinking)]);
         // The native argv must point to a real manifest under the owned temp
         // directory, not a generated file left beside the checked-in fixtures.
         let manifest = argv.iter().filter_map(Value::as_str).map(Path::new)
             .find(|path| path.file_name().is_some_and(|name| name == manifest_name))
             .unwrap_or_else(|| panic!("native argv missing {manifest_name}: {argv:?}"));
-        assert!(manifest.is_file() && manifest.starts_with(storage.path().join("generated-suites/paired")),
+        assert!(manifest.is_file() && manifest.starts_with(storage.path().join(format!("generated-suites/paired-{agent}"))),
             "expected an isolated Suite manifest, found {}", manifest.display());
+        if agent == "pi" {
+            assert!(argv.contains(&json!("--no-skills")));
+            assert!(argv.contains(&json!("--no-prompt-templates")));
+            let skill_arg = [json!("--skill"), json!(fs::canonicalize(&pi_skill).unwrap())];
+            let prompt_arg = [json!("--prompt-template"), json!(pi_prompt)];
+            assert!(argv.windows(2).any(|pair| pair == skill_arg));
+            assert!(argv.windows(2).any(|pair| pair == prompt_arg));
+            let delivered: Value = serde_json::from_slice(&fs::read(manifest).unwrap()).unwrap();
+            assert_eq!(delivered, json!({"version":1,"codemode":"only","mcpServers":{"pi-fixture":{"command":"controlled-pi"}}}));
+        } else {
+            assert!(!argv.contains(&json!("--skill")));
+            assert!(!argv.contains(&json!("--prompt-template")));
+            let mcp_dir = manifest.parent().unwrap().join("mcp");
+            let mcp_arg = [json!("--extension"), json!(mcp_dir)];
+            assert!(argv.windows(2).any(|pair| pair == mcp_arg));
+            let delivered: Value = serde_json::from_slice(&fs::read(mcp_dir.join(".mcp.json")).unwrap()).unwrap();
+            assert_eq!(delivered, json!({"mcpServers":{"omp-fixture":{"command":"controlled-omp"}}}));
+        }
         let paths = argv.iter().filter_map(Value::as_str).filter_map(|s| Path::new(s).file_name()?.to_str()).collect::<Vec<_>>();
         assert!(paths.contains(&format!("{agent}-test-suite.ts").as_str()), "{paths:?}");
         assert!(paths.contains(&format!("{agent}-connect-bot.ts").as_str()), "{paths:?}");
         assert!(paths.contains(&format!("{agent}-model-cost.ts").as_str()), "{paths:?}");
         assert!(!paths.iter().any(|name| name.contains("herdr-agent-state") || name.contains("not-installed")));
-        let data = json!({"launchId":argv[4],"targetId":argv[5],"agentType":agent,"cwd":dir,"pid":43127});
+        let data = json!({"launchId":argv[6],"targetId":argv[7],"agentType":agent,"cwd":dir,"pid":43127});
         let report = |kind: &str| json!({"kind":kind,"sessionId":format!("app-native-{agent}"),"data":data}).to_string();
         if agent == "omp" {
             for kind in ["launch_ready", "launch_ready"] {

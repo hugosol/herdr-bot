@@ -37,7 +37,7 @@ impl TestServer {
             "scheduler":{"bot_directory":config.scheduler.bot_directory,"map_directory":config.scheduler.map_directory,
                 "run_directory":config.scheduler.run_directory,"run_instructions":root.join("run-guide.md")},
             "suites":{"definition_file":config.suites.definition_file,"mcp_file":config.suites.mcp_file,
-                "generated_directory":config.suites.generated_directory}
+                "dap_file":config.suites.dap_file,"generated_directory":config.suites.generated_directory}
         });
         fs::write(&config_file, toml::to_string(&input).unwrap()).unwrap();
         let child = Command::new(env!("CARGO_BIN_EXE_herdr-bot"))

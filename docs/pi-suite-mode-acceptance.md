@@ -1,6 +1,15 @@
 # Pi Suite 模式与模板真实验收
 
-`python scripts/accept-suite-pi-mode.py` 负责 P14、P16、P23、P24、P26、P27。
+黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+
+```powershell
+$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
+$BOT = 'E:/Developer/myhub/herdr-bot'
+```
+
+验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-mode` 负责 P14、P16、P23、P24、P26、P27。
 入口经公开 Task／Chat HTTP 发起真实 Herdr pane，由 PATH 上已安装的 Pi 正常启动；
 它不直接用 SDK 发起 agent，不替换 MCP manager，也不修改 Pi／Herdr 源码。
 SessionManager SDK 仅用于事后读取原生历史。外部模型和 MCP endpoint 是数值回环受控服务，
@@ -15,17 +24,17 @@ toolkit 必须包含工厂期 `--pi-suite-config` 通道。runner 不安装宿�
 从 **herdr-bot worktree 根**执行，变量均为显式绝对路径：
 
 ```powershell
-$HERDR_BOT_WT = (Get-Location).Path
+Set-Location $BOT
 $TOOLKIT_WT = 'D:/worktrees/toolkit'
 $ISOLATED_PATHS = 'D:/acceptance/isolated-paths.toml'
 $EVIDENCE_DIR = 'D:/acceptance/pi-mode-run-unique'
-$env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
+$env:CARGO_TARGET_DIR = Join-Path $BOT 'backend/target'
 bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
 $BACKEND_BINARY = Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe'
-python scripts/accept-suite-pi-mode.py `
-  --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-mode `
+  --toolkit-worktree "$TOOLKIT_WT" `
   --backend "$BACKEND_BINARY" --paths-file "$ISOLATED_PATHS" `
   --evidence-dir "$EVIDENCE_DIR"
 ```
@@ -54,21 +63,22 @@ Pi 状态及会话目录。静态页面必须由当前 worktree 前端构建产�
 | P26 | 全局 only + Suite on 的声明必须恰为 read、bash、edit、write、codemode；全局 on + Suite only 必须恰为 codemode。前后读取原全局 codemode，不能写回 Suite 模式。Pi 自己的 `lastChangelogVersion` 记账不等于改写模式，原始前后 settings 均保留。 |
 | P27 | `codemode` 实际调用底层 `tools.read` 读取文件；结果须含独立字面 `PI-ONLY-REAL-FILE-731`，再核对源文件内容及哈希未变。 |
 | P16 | 模板正文哨兵在初始模型请求及首次工具续轮均不存在，系统消息始终不得含正文。显式 `/suite-mode "red fox" blue` 后，原生位置参数展开的 user 文本必须为 `PI-TEMPLATE-BODY-827 red fox\|blue\|red fox blue`，同时核对原生 SessionManager 历史。 |
-| P14 | 共享 Suite 声明一个有启动标记的受控 LSP 命令及 Python 文件。所属进程树没有该命令、启动标记不存在，而模板、真实文件及原生 MCP 确实被消费。 |
+| P14 | 向 Pi Suite POST 空及非空 `lsp` 均拒绝且清单不变。受控 LSP 命令及 Python 文件仅属于另一份 OMP Suite；合法 Pi Suite 的原生模板、真实文件与 MCP 被消费，所属进程树没有该 LSP 命令且启动标记不存在。 |
 
 MCP 的 `tools/call` 还须在真实 endpoint wire 中恰出现一次，并返回独立受控文件正文
 `PI-NATIVE-MCP-FILE-619`。测试没有用预期字符串替代 Pi 的文件读取或 native MCP 执行。
 本矩阵选择空技能／可选扩展集合，只使用本票所需模板与原生资源，不建立复制／junction
 回退，也不声称完成非空技能或可选扩展工具消费验收。Suite 扩展统一直接传具体源文件入口，
-不生成扩展链接／清单；非空技能同样直接引用 `skills.pi` 原目录，不需要创建符号链接权限。
+不生成扩展链接／清单；非空技能同样直接引用 Pi Suite 的 `skills` 原目录，不需要创建符号链接权限。
 
 默认 `--scenario all` 覆盖六次真实发起。`baseline`、`modes`、`template` 可用于窄反馈；
 部分场景即使成功也非零退出，不代表全部 Coverage 完成。缺依赖、行为不符或清理失败均非零，
 不 skip，不自动重试业务提交。CLI 缺当前二进制的 fail-closed 回归为：
 
 ```powershell
+$env:HERDR_BOT_WORKTREE = $BOT
 $env:PI_MODE_TOOLKIT_WORKTREE = $TOOLKIT_WT
-python scripts/accept-suite-pi-mode.test.py
+python "$TESTER/scripts/accept-suite-pi-mode.test.py"
 ```
 
 该回归只证明缺依赖时保留原错误、六项保持未验证且不启动服务，不代替 S4 成功证据。
@@ -86,10 +96,17 @@ settings 前后值、原生历史、terminal 和所属进程退出事实。stdou
 
 ```powershell
 # herdr-bot 根；源码变更后的页面由最后一条命令重新构建。
+Set-Location $BOT
 node scripts/test-backend.mjs
 npm --prefix frontend test
 npm --prefix frontend run test:browser:build
+cargo build --manifest-path backend/Cargo.toml --bin herdr-fixture --example safe_shutdown_shell
+
 # toolkit 根；冻结依赖预先准备，临时 worktree 可按其规范设置 baseline 根。
+Set-Location $TOOLKIT_WT
+$env:HERDR_BOT_REPO = $BOT
+$env:HERDR_BOT_BINARY = Join-Path $env:CARGO_TARGET_DIR 'debug/examples/safe_shutdown_shell.exe'
+$env:HERDR_BOT_METADATA = Join-Path $BOT 'meta-data/task-options.toml'
 bun run typecheck
 bun run check:integrations
 bun run test
@@ -101,9 +118,5 @@ bun run test
 MCP 或 codemode。无来源 Task 的恢复仍保持原生发现，不套用过滤参数。
 这些 argv 检查只证明启动接线，不替代上述真实 S4 矩阵。
 
-toolkit 跨仓 regression 使用当前 herdr-bot 的安全壳而非生产关机二进制：将
-`HERDR_BOT_REPO` 指向参与根，`HERDR_BOT_BINARY` 指向该根构建的
-`backend/target/debug/examples/safe_shutdown_shell.exe`，`HERDR_BOT_METADATA` 指向
-`meta-data/task-options.toml`，并先构建同根 `herdr-fixture`。这些 interop 配置不改变本专项
-显式传入真实 backend 的启动路径。历史 baseline 的宿主版本失败不能通过改写 baseline 消除；
+Toolkit 跨仓回归使用 `$BOT` 构建的安全壳和 `herdr-fixture`，不使用生产关机二进制。上述 interop 变量只用于 Toolkit 检查，不改变原生专项的 `--backend`。历史 baseline 的宿主版本失败不能通过改写 baseline 消除；
 实际检查日志应明确区分版本缺口、依赖准备失败、产品失败和未派发检查。

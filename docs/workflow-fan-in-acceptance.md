@@ -1,5 +1,14 @@
 # 共享文件 → 双消费者 → 业务汇总的真实验收
 
+黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+
+```powershell
+$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
+$BOT = 'E:/Developer/myhub/herdr-bot'
+```
+
+验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+
 本场景覆盖文件交接协议的 P23/P24：真实 Herdr、Pi 原生 Chat、实际模型和两个参与 worktree。受控 HTTP 回归、已有旧版 A/B→C 示例、准备好的文件或最终 completed 状态都不能替代本场景。角色工具与门禁另见[测试指引](agents/testing.md#文件交接真实角色自动验收)；本入口复用其隔离部署和真实模型传输，不复制旧例中“manager 默认读材料验收”的职责。
 
 ## 入口与依赖
@@ -7,9 +16,12 @@
 从参与的 herdr-bot worktree 执行。先按测试指引安装依赖、构建该 worktree 前端静态资源和后端。不同源码副本必须使用独立 `CARGO_TARGET_DIR`，不可传入其他 checkout 的旧可执行文件。toolkit 必须指向参与 worktree 的绝对根；其实际角色入口及配置会复制到本次专用部署，而不是修改用户配置。
 
 ```powershell
-$env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
+$TOOLKIT_WT = 'D:/worktrees/toolkit'
+$ISOLATED_PATHS = 'D:/acceptance/fan-in-paths.toml'
+$env:CARGO_TARGET_DIR = Join-Path $BOT 'backend/target'
+Set-Location $BOT
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --example safe_shutdown_shell
-python scripts/test-workflow-file-handoff.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-file-handoff `
   --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
   --toolkit $TOOLKIT_WT --scenario fan-in --paths-file $ISOLATED_PATHS
 ```
@@ -54,17 +66,20 @@ stdout 返回 `passed` 和 `evidence.json` 路径。失败仍保存已获得的�
 
 ```powershell
 # herdr-bot，使用该 worktree 独立 CARGO_TARGET_DIR
+Set-Location $BOT
 cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- --nocapture
 node scripts/test-backend.mjs
 npm --prefix frontend test
-# runner 的缺依赖 fail-closed 回归，不代表真实业务通过
+# 验证项目的缺依赖回归，不代表真实业务通过
+$env:HERDR_BOT_WORKTREE = $BOT
 $env:WORKFLOW_HANDOFF_TOOLKIT = $TOOLKIT_WT
-python scripts/test-workflow-file-handoff.test.py
+python "$TESTER/scripts/test-workflow-file-handoff.test.py"
 
-# toolkit，临时 worktree 不共享默认 sibling 布局时显式指定安全壳及只读元数据
-$env:HERDR_BOT_REPO = $HERDR_BOT_WT
+# toolkit，显式指定产品安全壳及只读元数据
+Set-Location $TOOLKIT_WT
+$env:HERDR_BOT_REPO = $BOT
 $env:HERDR_BOT_BINARY = Join-Path $env:CARGO_TARGET_DIR 'debug/examples/safe_shutdown_shell.exe'
-$env:HERDR_BOT_METADATA = Join-Path $HERDR_BOT_WT 'meta-data/task-options.toml'
+$env:HERDR_BOT_METADATA = Join-Path $BOT 'meta-data/task-options.toml'
 bun test tests/workflow-chat
 bun test tests/harness-dock/node-report-contract.test.ts tests/harness-dock/node-report.test.ts tests/harness-dock/manager-state-actions.test.ts tests/harness-dock/role-guidance-rehearsal.test.ts
 bun run typecheck

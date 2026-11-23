@@ -28,12 +28,20 @@ export type ChatCreationFailure = {
   message: string
 }
 
+type ChatWorkspace = {
+  id: string
+  label: string
+  kind: 'Space' | 'Workspace'
+  degradation?: { reason: string; strategy: string }
+}
+
 export type ChatCreation = {
   id: string
   name: string
   zone: string
   taskId: string
   stage: ChatCreationStage
+  workspace?: ChatWorkspace
   tabId?: string
   paneId?: string
   agentName?: string
@@ -81,6 +89,19 @@ function isPreview(value: unknown): value is ChatPreview {
 const STAGES: ChatCreationStage[] = ['starting', 'initializing', 'submitting', 'retrying', 'succeeded', 'failed']
 const FAILURE_STAGES: ChatFailureStage[] = ['workspace', 'tab', 'start', 'submit']
 
+function isWorkspace(value: unknown): value is ChatWorkspace {
+  if (typeof value !== 'object' || value === null) return false
+  const workspace = value as Record<string, unknown>
+  const degradation = workspace.degradation
+  return isString(workspace.id) && isString(workspace.label) &&
+    (workspace.kind === 'Space' || workspace.kind === 'Workspace') &&
+    (degradation === undefined || (
+      typeof degradation === 'object' && degradation !== null &&
+      'reason' in degradation && isString(degradation.reason) &&
+      'strategy' in degradation && isString(degradation.strategy)
+    ))
+}
+
 function isCreation(value: unknown): value is ChatCreation {
   if (typeof value !== 'object' || value === null) return false
   const creation = value as Record<string, unknown>
@@ -100,6 +121,7 @@ function isCreation(value: unknown): value is ChatCreation {
     isString(creation.taskId) &&
     isString(creation.stage) &&
     STAGES.includes(creation.stage as ChatCreationStage) &&
+    (creation.workspace === undefined || isWorkspace(creation.workspace)) &&
     isNullableString(creation.tabId) &&
     isNullableString(creation.paneId) &&
     isNullableString(creation.agentName) &&

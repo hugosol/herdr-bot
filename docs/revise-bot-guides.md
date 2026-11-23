@@ -1,5 +1,14 @@
 # 独立修订既有 Bot 三指南
 
+黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+
+```powershell
+$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
+$BOT = 'E:/Developer/myhub/herdr-bot'
+```
+
+验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+
 公开能力为 `revise-bot-guides` Bot，唯一绑定现有文件 `enhance-existing-bot--bc-301b25d9f8d6.json`。该 Map 已原位切换为“只读核实 → 三路修订确认 → 一次保存”，不再先优化 Task.prompt。没有旧输入字段别名或自动兼容分支；已保存的用户部署、运行中定义与历史记录不会自动迁移。旧独立 Task.prompt 优化者、create-bot／create-bot-task 及无关 Map 不变；确需优化目标 Task 时，可在适用外层工作中单独安排，并在修改完成后重新核实修订基线。
 
 ## 调用与交付
@@ -36,33 +45,37 @@
 
 ## 运行与验证
 
-使用本 worktree 的独立 `CARGO_TARGET_DIR`，先生成当前静态页面并构建安全宿主：
+先生成本次产品 worktree 的静态页面并构建安全宿主。使用独立的绝对 `CARGO_TARGET_DIR`。
 
 ```powershell
+$env:CARGO_TARGET_DIR = Join-Path $BOT 'backend/target'
+Set-Location $BOT
 bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
 cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch revise_bot_guides -- --nocapture
 cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch shared_business -- --nocapture
 cargo build --manifest-path backend/Cargo.toml --bin herdr-fixture --example safe_shutdown_shell
-python scripts/check-revise-bot-guides.py --target-dir $env:CARGO_TARGET_DIR
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" check-revise-bot-guides --target-dir $env:CARGO_TARGET_DIR
 node scripts/test-backend.mjs
 ```
 
 `revise_bot_guides` 是启用接线检查：通过公开定义保存／读取及预检消费五节点、同一直接 baseline、三路独立确认与七材料汇合，验证必填缺失、可选缺席／可读及不可读路径拒绝，不固定提示词措辞。`shared_business` 维护 Task／Map 两种绑定的一次保存、真实 stale revision、完整读回及非目标保持边界，本能力不复制 contract 测试所有权。
 
-独立安全后端烟测 `check-revise-bot-guides.py` 实际经 HTTP 保存、读回专属 Task、Map 输入／五节点与 Map 型包装 Bot，用真实临时 request／materials 验证缺席、存在、缺失及 Windows 独占读锁拒绝；核对拒绝不改变定义，无 Run 或宿主调用。每次保留独占目录下的 evidence.json、HTTP 请求响应及持续消费的进程日志，正常和失败均终止并等待所属安全后端及日志线程。使用受控资源只证明公开接线，不证明部署 Suite 或原生角色加载。
+验证项目的独立安全后端烟测 `check-revise-bot-guides` 实际经 HTTP 保存、读回专属 Task、Map 输入／五节点与 Map 型包装 Bot，用真实临时 request／materials 验证缺席、存在、缺失及 Windows 独占读锁拒绝；核对拒绝不改变定义，无 Run 或宿主调用。每次保留独占目录下的 evidence.json、HTTP 请求响应及持续消费的进程日志，正常和失败均终止并等待所属安全后端及日志线程。使用受控资源只证明公开接线，不证明部署 Suite 或原生角色加载。
 
 最小共享 Task 原生调用沿用[共享材料启用检查](agents/testing.md#共享-bot-指南材料的启用检查)：安装版 Pi、公开 CompletionTransport、隔离 HOME／APPDATA／XDG／sessions，加载实际共享 Task.prompt，真实读取源材料、写入唯一 text／handoff 并完整读回，核对原文和未授权哨兵不变。保留实际授权、原生 read／write 及准确文件字符；进程零退出、模型自称成功或静态定义存在均不充分。该窄烟测不是完整五节点自主执行。发布时实际用安装版 Pi 与 `task-18e31d34797f1464-3` 原始 prompt 执行独立 Chat：真实读取 writing-for-agents 与源文件，真实执行安全文件写入，再直接完整读取 text／handoff；独立核对来源准确、正文不重复、源文件与未授权哨兵不变。首次传输的真实模型输出混入 JSON 外文字，记录了 HTTP 502 与原生 stopReason:error，因此该次不判通过，即使 Pi 自动继续并生成了材料；保留原始失败材料。第二次在全新隔离目录仅对公开 completion 使用 JSON schema 约束序列化，不给定工具选择或业务答案，五次实际模型响应、原生真实工具与完整读回均成功，无原生或传输错误。两次均终止并等待所属原生进程、关闭传输并移除隔离模型配置。此结果不证明专属基线核实 Task 的自主质量或 22 的配对／完整修订验收。
 
 ## 真实模型跨仓修订验收
 
-从 herdr-bot worktree 运行 `python scripts/accept-workflow-nesting-revise.py`。入口复用公开 Chat／Run／HTTP、原生历史与真实宿主隔离设施，但使用本节修订场景和五节点定义，不运行创建场景或普通文件替换兼容用例。
+用 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-revise` 绑定本轮产品根并运行修订场景。入口复用公开 Chat／Run／HTTP、原生历史与真实宿主隔离设施，但使用本节修订场景和五节点定义，不运行创建场景或普通文件替换兼容用例。
 
 ```powershell
-$env:CARGO_TARGET_DIR = Join-Path $HERDR_BOT_WT 'backend/target'
+$TOOLKIT_WT = 'D:/worktrees/toolkit'
+$env:CARGO_TARGET_DIR = Join-Path $BOT 'backend/target'
+Set-Location $BOT
 npm --prefix frontend run build
 cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --example safe_shutdown_shell
-python scripts/accept-workflow-nesting-revise.py `
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-revise `
   --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
   --toolkit $TOOLKIT_WT --hosts declared `
   --paths-file 'D:/isolated-acceptance/paths.toml' `
@@ -83,6 +96,6 @@ python scripts/accept-workflow-nesting-revise.py `
 
 修订负例单独命名：未授权、基线／目标冲突、运行禁写、真实并发 revision 冲突、保存响应丢失后的已生效／未生效／未知。传输故障只作用于真实 HTTP 边界，不代替模型、宿主或后端决定；保存错误不盲重试、不回滚。独立业务场景各执行一次，失败逐项保留，不用其他场景成功抵消；一旦模型传输或所属资源清理已失败，余下不再提交并明确保持未验证。文件安全负例让专属基线核实 Task 面对实际 junction 和越界输出；正例实际安全生成 baseline／text／handoff／saved 并逐一原生完整读回，保留文件原字节和来源。这不是共享文本替换 Task 的普通文件兼容用例副本。六个已有共享 Task 的独立／workflow 配对不在此重认领，但本入口核对修订链实际 Task 身份和材料消费。
 
-证据目录必须不存在。保留两仓源码／锁文件／页面／二进制身份、实际安装入口和 OS 进程、模型服务身份（无密钥）、原始用户输入和确认、模型／HTTP／工具请求结果、原生历史、文件字节、只读运行事实和逐覆盖项结论。成功和失败都停止、等待并核实所属进程退出，原始验证错误与清理错误分开保留；移除含密钥的临时模型配置。缺依赖、宿主能力、模型权限或清理失败均非零、保持未验证。CLI 的缺依赖隔离回归为设置 `WORKFLOW_HANDOFF_TOOLKIT=$TOOLKIT_WT` 后运行 `python scripts/accept-workflow-nesting-revise.test.py`，只证明拒绝与证据边界，不证明真实业务成功。
+证据目录必须不存在。保留两仓源码／锁文件／页面／二进制身份、实际安装入口和 OS 进程、模型服务身份（无密钥）、原始用户输入和确认、模型／HTTP／工具请求结果、原生历史、文件字节、只读运行事实和逐覆盖项结论。成功和失败都停止、等待并核实所属进程退出，原始验证错误与清理错误分开保留；移除含密钥的临时模型配置。缺依赖、宿主能力、模型权限或清理失败均非零、保持未验证。CLI 的缺依赖隔离回归直接运行自测。先设置 `$env:HERDR_BOT_WORKTREE = $BOT` 和 `$env:WORKFLOW_HANDOFF_TOOLKIT = $TOOLKIT_WT`，再运行 `python "$TESTER/scripts/accept-workflow-nesting-revise.test.py"`。该回归只证明拒绝与证据边界，不证明真实业务成功。
 
 完整 P40／P42／P43／P44／P45 的 Task 型与 Map 型目标、有／无材料、真实澄清、全部负例与专属 Task 配对由修订专项唯一负责；启用检查不认领这些 contract 场景。外层真实调用使用独立专项。入口存在、准备完成、受控响应或单次最终状态均不是完整通过，必须以实际运行证据判断。

@@ -6,18 +6,33 @@ use super::{Suite, Suites, skills};
 
 impl Suites {
     pub(crate) fn prepare_environment(&self, suite: Option<&Suite>, agent: Agent, roots: &Roots) -> Result<Vec<String>, TaskError> {
-        let (pi_args, pi_config) = if agent == Agent::Pi {
-            self.select_pi(suite, roots)?
-        } else { (Vec::new(), None) };
-        let Some(suite) = suite else { return Ok(pi_args) };
+        let Some(suite) = suite else {
+            return Ok(if agent == Agent::Pi { super::pi::default_args() } else { Vec::new() });
+        };
+        suite.require_harness(agent)?;
+        let id = suite.id();
         // Resolve and validate every resource before creating any output.
-        let skills = self.select_skills(suite, agent, roots)?;
-        let extensions = self.select_extensions(suite, agent, roots)?;
-        let mcp = self.select_mcp(suite, agent, roots)?;
-        let directory = self.generated_directory.join(&suite.id);
+        let pi = match suite {
+            Suite::Pi { prompts, codemode, mcp, .. } => Some(self.select_pi(id, prompts, *codemode, mcp, roots)?),
+            Suite::Omp { .. } => None,
+        };
+        let skills = self.select_skills(suite, roots)?;
+        let extensions = self.select_extensions(suite, roots)?;
+        let mcp = match suite {
+            Suite::Omp { mcp, .. } => self.select_omp_mcp(id, mcp, roots)?,
+            Suite::Pi { .. } => None,
+        };
+        let (lsp, dap) = match suite {
+            Suite::Omp { lsp, dap, .. } => (
+                (!lsp.is_empty()).then_some(lsp),
+                self.select_omp_dap(id, dap, roots)?,
+            ),
+            Suite::Pi { .. } => (None, None),
+        };
+        let directory = self.generated_directory.join(id);
         let assembly = directory.join(crate::chats::new_creation_id());
         let fail = |error: String| TaskError::InvalidSuite(format!(
-            "Suite「{}」资源装配失败：{error}；没有回退为空环境、复制替代或自动提权。", suite.id));
+            "Suite「{id}」资源装配失败：{error}；没有回退为空环境、复制替代或自动提权。"));
         self.files.with(&[directory], |access| {
             access.create_dir_all(assembly.parent().unwrap())
                 .map_err(|error| fail(format!("{}：{error}", assembly.parent().unwrap().display())))?;
@@ -25,8 +40,20 @@ impl Suites {
             // tree. Ownership begins only after this create succeeds.
             access.create_dir(&assembly).map_err(|error| fail(error.to_string()))?;
             let result = (|| {
-                let mut args = skills::assemble(access, &assembly, suite, agent, &skills)
+                let mut args = skills::assemble(access, &assembly, suite, &skills)
                     .map_err(|error| format!("技能装配失败：{error}"))?;
+                // Native plugin discovery keeps defaults and user/project precedence.
+                if let Some(lsp) = lsp {
+                    let bytes = serde_json::to_vec_pretty(&serde_json::json!({"servers": lsp}))
+                        .map_err(|error| error.to_string())?;
+                    access.create(assembly.join("lsp.json"), &bytes).map_err(|error| error.to_string())?;
+                }
+                if let Some(bytes) = &dap {
+                    access.create(assembly.join("dap.json"), bytes).map_err(|error| error.to_string())?;
+                }
+                if lsp.is_some() || dap.is_some() {
+                    args.extend(["--plugin-dir".into(), assembly.to_string_lossy().into_owned()]);
+                }
                 for entry in &extensions {
                     args.extend(["--extension".into(), entry.to_string_lossy().into_owned()]);
                 }
@@ -36,10 +63,10 @@ impl Suites {
                     access.create(native.join(".mcp.json"), bytes).map_err(|error| error.to_string())?;
                     args.extend(["--extension".into(), native.to_string_lossy().into_owned()]);
                 }
-                args.extend(pi_args);
-                if let Some(bytes) = &pi_config {
+                if let Some((pi_args, bytes)) = pi {
+                    args.extend(pi_args);
                     let config = assembly.join("pi-suite.json");
-                    access.create(&config, bytes).map_err(|error| error.to_string())?;
+                    access.create(&config, &bytes).map_err(|error| error.to_string())?;
                     args.extend(["--pi-suite-config".into(), config.to_string_lossy().into_owned()]);
                 }
                 Ok(args)
