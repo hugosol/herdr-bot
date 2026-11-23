@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { suiteRequest, type OmpSkillSource, type Suite, type SuiteList } from '../controllers/suiteController'
 import './suites.css'
 import { NierTitleText } from '../app/NierTitleText'
@@ -52,10 +52,43 @@ function ompSkillSources(draft: Draft['omp'], previous: OmpSkillSource[]): OmpSk
 }
 const message = (error: unknown) => error instanceof Error ? error.message : '无法连接 Suite 服务，未确认保存。'
 
+type Scope = Harness | 'all'
+const hosts = ['omp', 'pi'] as const
+
+function SuiteCatalog({ data, scope, setScope, editing, busy, error, open }: {
+  data: SuiteList | null; scope: Scope; setScope: (scope: Scope) => void
+  editing: string | null; busy: boolean; error: string; open: (suite: Suite) => void
+}) {
+  return <section aria-label="Suite 列表" className="suites-list">
+    <div className="suites-filters" role="group" aria-label="按宿主筛选">
+      {(['all', ...hosts] as const).map(host => <button type="button" key={host} aria-pressed={scope === host} onClick={() => setScope(host)}>
+        {host === 'all' ? '全部' : harnessLabels[host]}
+      </button>)}
+    </div>
+    {!data ? <p>{error ? '未能读取 Suite，请重新读取。' : '正在读取 Suite…'}</p> : <div className="suites-groups">
+      {hosts.filter(host => scope === 'all' || scope === host).map(host => {
+        const suites = data.suites.filter(suite => suite.harness === host)
+        return <section className="suites-group" key={host} aria-label={`${harnessLabels[host]} 工具集`}>
+          <header><h3>{harnessLabels[host]} 工具集</h3><span>{suites.length} 个 Suite</span></header>
+          {suites.length === 0 ? <p>尚未定义 Suite</p> : suites.map(suite => <button className="suites-row" key={suite.id} type="button" disabled={busy}
+            aria-label={`${suite.name} · ${suite.id}`} aria-pressed={editing === suite.id} onClick={() => open(suite)}>
+            <span className="suites-row-identity"><span className="suites-list-name">{suite.name}</span><span className="suites-list-id">{suite.id}</span></span>
+            <span className="suites-list-meta">{suite.skills.length} 技能来源 · {suite.mcp.length} MCP</span>
+          </button>)}
+        </section>
+      })}
+    </div>}
+  </section>
+}
+
 export function SuitesPanel({ active }: { active: boolean }) {
   const [data, setData] = useState<SuiteList | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
+  const [scope, setScope] = useState<Scope>('all')
+  const createButton = useRef<HTMLButtonElement>(null)
+  const opener = useRef<HTMLElement | null>(null)
+  const editorTitle = useRef<HTMLSpanElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -74,7 +107,17 @@ export function SuitesPanel({ active }: { active: boolean }) {
   }, [active])
 
   function open(suite?: Suite) {
-    setDraft(suite ? draftFrom(suite) : emptyDraft); setEditing(suite?.id ?? null); setError(''); setNotice('')
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    requestAnimationFrame(() => editorTitle.current?.focus())
+    setDraft(suite ? draftFrom(suite) : { ...emptyDraft, harness: scope === 'pi' ? 'pi' : 'omp' }); setEditing(suite?.id ?? null); setError(''); setNotice('')
+  }
+  function closeEditor() {
+    setDraft(null); setEditing(null)
+    requestAnimationFrame(() => {
+      const target = opener.current
+      const button = target?.getClientRects().length ? target : createButton.current
+      button?.focus()
+    })
   }
   async function reload() {
     const saved = data?.suites.find(suite => suite.id === editing)
@@ -122,6 +165,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
     setBusy(true)
     try {
       const result = await suiteRequest(editing ? 'PUT' : 'POST', editing ?? undefined, suite)
+      if (scope !== 'all') setScope(suite.harness)
       setData(result); setEditing(suite.id); setDraft(draftFrom(result.suites.find(saved => saved.id === suite.id)!)); setNotice('Suite 已保存到权威文件。')
     } catch (error) { setError(message(error)) }
     finally { setBusy(false) }
@@ -130,7 +174,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
     if (!editing || !window.confirm(`删除 Suite「${draft?.name}」？`)) return
     setBusy(true); setError(''); setNotice('')
     try {
-      setData(await suiteRequest('DELETE', editing)); setDraft(null); setEditing(null); setNotice('Suite 已删除。')
+      setData(await suiteRequest('DELETE', editing)); closeEditor(); setNotice('Suite 已删除。')
     } catch (error) { setError(message(error)) }
     finally { setBusy(false) }
   }
@@ -157,19 +201,19 @@ export function SuitesPanel({ active }: { active: boolean }) {
 
   return <section className="suites-panel" aria-label="Suite 管理" data-editing={draft !== null}>
     <header className="suites-toolbar suites-page-header">
-      <div><h1><NierTitleText>Suite</NierTitleText></h1><p className="suites-subtitle">场景工具集：每个 Suite 为 OMP 或 Pi 配置可复用的场景资源。</p></div>
-      <button type="button" disabled={busy} onClick={() => open()}>创建 Suite</button>
+      <div><h2><NierTitleText>Suite</NierTitleText></h2><p className="suites-subtitle">按宿主管理场景工具集。</p></div>
+      <button ref={createButton} className={draft ? undefined : "suites-primary"} type="button" disabled={busy} onClick={() => open()}>创建 Suite</button>
       <button type="button" disabled={busy} onClick={() => void reload()}>重新读取 Suite</button>
     </header>
-    <p className="scope-note">界面与手工维护使用同一份 Suite 权威文件。资源路径按声明文件所在目录或集中 roots 解析；这里不编辑 MCP 连接，也不表示资源已经运行。</p>
     {error && <p className="zone-error" role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     <section className="suites-fixed" aria-label="全局固定扩展" aria-describedby="suite-fixed-note">
-      <h3>全局固定扩展 · 只读</h3>
+      <details>
+      <summary>全局固定扩展 <span>只读{data && ` · ${data.fixedExtensions.length} 项`}</span></summary>
       <p className="scope-note" id="suite-fixed-note">固定扩展按宿主和执行角色加载，不受 Suite 选择影响；未选 Suite 的 Task 也会加载。这里展示已配置的入口与适用角色，不表示已连接或正在运行。</p>
       {data === null ? <p>{error ? '未能读取固定扩展，请重新读取。' : '正在读取固定扩展…'}</p> : <div className="suites-fixed-groups">
-        {(['omp', 'pi'] as const).map(agent => <section key={agent} aria-label={`${agent.toUpperCase()} 固定扩展`}>
-          <h4>{agent.toUpperCase()}</h4>
+        {hosts.map(agent => <section key={agent} aria-label={`${agent.toUpperCase()} 固定扩展`}>
+          <h4>{harnessLabels[agent]}</h4>
           {data.fixedExtensions.some(extension => extension.agent === agent) ? <ul>
             {data.fixedExtensions.filter(extension => extension.agent === agent).map(extension => <li key={extension.id}>
               <span className="suites-fixed-name">{extension.label}{extension.label !== extension.id && <> · <span className="suites-resource-id">{extension.id}</span></>}</span>
@@ -179,24 +223,17 @@ export function SuitesPanel({ active }: { active: boolean }) {
           </ul> : <p className="scope-note">此宿主暂无固定扩展。</p>}
         </section>)}
       </div>}
+      </details>
     </section>
     <div className="suites-layout">
-      <section aria-label="Suite 列表" className="suites-list">
-        <div className="suites-list-heading"><h3>工具集</h3><span>{data ? `${data.suites.length} 个 Suite` : '读取中'}</span></div>
-        {data === null ? <p>{error ? '未能读取 Suite，请重新读取。' : '正在读取 Suite…'}</p> : data.suites.length === 0 ? <p>尚未定义 Suite</p> : data.suites.map(suite =>
-          <button key={suite.id} type="button" disabled={busy} aria-label={`${suite.name} · ${suite.id}`} aria-pressed={editing === suite.id} onClick={() => open(suite)}>
-            <span className="suites-list-name">{suite.name}</span><span className="suites-list-id">{suite.id}</span>
-            <span className="suites-list-meta">{harnessLabels[suite.harness]}<span>{suite.skills.length} 技能来源 · {suite.mcp.length} MCP</span></span>
-          </button>)}
-      </section>
-      {!draft && <section className="suites-empty" aria-label="编辑指引"><h3>选择一个场景工具集</h3><p>查看和编辑技能、宿主扩展、提示词模板、语言服务及调试器配置。</p><dl><div><dt>OMP</dt><dd>技能、扩展、LSP、集中 DAP 与 MCP</dd></div><div><dt>Pi</dt><dd>技能、扩展、提示词模板与集中 MCP</dd></div></dl><p className="scope-note">选择左侧工具集，或创建 Suite。保存的是资源声明，不代表资源已经运行。</p></section>}
+      <SuiteCatalog data={data} scope={scope} setScope={setScope} editing={editing} busy={busy} error={error} open={open} />
       {draft && <form className="suites-editor" onSubmit={event => void save(event)} aria-label="Suite 编辑">
         <fieldset disabled={busy}>
           <legend>{editing ? '查看 / 编辑 Suite' : '创建 Suite'}</legend>
           <div className="suites-toolbar suites-editor-actions">
-            <span>{editing ? draft.name : '新工具集'}</span>
+            <span ref={editorTitle} tabIndex={-1}>{editing ? draft.name : '新工具集'}</span>
             <button type="submit" className="suites-primary" disabled={missingDap.length > 0} aria-describedby={missingDap.length > 0 ? 'suite-dap-missing' : undefined}>保存 Suite</button>
-            <button type="button" onClick={() => { setDraft(null); setEditing(null) }}>关闭编辑</button>
+            <button type="button" onClick={closeEditor}>关闭编辑</button>
             {missingDap.length > 0 && <p className="suites-dap-missing zone-error" id="suite-dap-missing">请先移除失效的 DAP 引用。</p>}
           </div>
           <section className="suites-section" aria-label="基本信息"><h3>基本信息</h3>
@@ -292,5 +329,6 @@ export function SuitesPanel({ active }: { active: boolean }) {
         </fieldset>
       </form>}
     </div>
+    <p className="scope-note">界面与手工维护使用同一份 Suite 权威文件。资源路径按声明文件所在目录或集中 roots 解析；这里不编辑 MCP 连接，也不表示资源已经运行。</p>
   </section>
 }

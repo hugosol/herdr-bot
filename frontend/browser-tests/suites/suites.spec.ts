@@ -22,6 +22,8 @@ test('P3 manages an unreferenced Suite through the main interface and authoritat
   await expect(list).toContainText('尚未定义 Suite')
   const fixed = page.getByRole('region', { name: '全局固定扩展', exact: true })
   await expect(fixed).toBeVisible()
+  await expect(fixed.getByRole('listitem')).toHaveCount(0)
+  await fixed.locator('summary').press('Enter')
   await expect(fixed.getByRole('checkbox')).toHaveCount(0)
   const catalog = await (await page.request.get(`${server.baseURL}/api/suites`)).json()
   expect(catalog.fixedExtensions).toEqual(expect.arrayContaining([
@@ -181,6 +183,18 @@ test('extension paths and central MCP choices remain independent across Suite id
   await piPaths.focus()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   await expect(page.getByLabel('适用宿主', { exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: '关闭编辑', exact: true }).click()
+  const list = page.getByRole('region', { name: 'Suite 列表', exact: true })
+  await list.getByRole('button', { name: 'Pi', exact: true }).click()
+  await expect(list.getByRole('button', { name: 'first · OMP · first-omp' })).toHaveCount(0)
+  const piRow = list.getByRole('button', { name: 'first · Pi · first-pi' })
+  await piRow.click()
+  await expect(piPaths).toHaveValue(manualPi.join('\n'))
+  await expect(list).toBeHidden()
+  await page.getByRole('button', { name: '关闭编辑', exact: true }).click()
+  await expect(piRow).toBeFocused()
+  await page.getByRole('button', { name: '创建 Suite', exact: true }).click()
+  await expect(page.getByLabel('适用宿主', { exact: true })).toHaveValue('pi')
 })
 
 test('skill sources round-trip mixed OMP directories and unchanged Pi paths', async ({ page }) => {
