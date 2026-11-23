@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { suiteRequest, type Suite } from '../../src/controllers/suiteController'
 
 const omp = {
-  id: 'source-tools-omp', name: '源入口工具 · OMP', harness: 'omp', skills: ['../skill collections'],
+  id: 'source-tools-omp', name: '源入口工具 · OMP', harness: 'omp',
+  skills: [{ kind: 'collection', path: '../skill collections' }, { kind: 'skill', path: '../skills/review' }],
   extensions: ['../omp native package', '../omp/entry.ts'], lsp: {}, mcp: ['search'], dap: ['codelldb'],
 } satisfies Suite
 const pi = {
@@ -41,7 +42,12 @@ describe('Single-harness Suite API contract', () => {
     { ...catalog, dap: [{ ...catalog.dap[0], config: { command: 'adapter', languages: [false] } }] },
     { ...catalog, extensions: [] },
     ...[
-      { ...omp, skills: { omp: ['../legacy'] } }, { ...pi, skills: [false] },
+      { ...omp, skills: { omp: ['../legacy'] } }, { ...omp, skills: ['../legacy'] },
+      { ...omp, skills: [{ kind: 'directory', path: '../unsupported' }] },
+      { ...omp, skills: [{ kind: 'skill', path: '../extra', recursive: true }] },
+      { ...omp, skills: [{ path: '../missing-kind' }] }, { ...omp, skills: [{ kind: 'collection' }] },
+      { ...omp, skills: [{ kind: 'skill', path: 3 }] }, { ...omp, skills: [{ kind: 'skill', path: ' ' }] },
+      { ...pi, skills: [false] }, { ...pi, skills: [{ kind: 'skill', path: '../pi' }] },
       { ...omp, extensions: { omp: [] } }, { ...omp, agents: ['omp'] },
       { ...omp, prompts: [] }, { ...omp, codemode: 'on' }, { ...pi, lsp: {} },
       { ...omp, dap: undefined }, { ...omp, dap: ['codelldb', false] }, { ...pi, dap: [] },

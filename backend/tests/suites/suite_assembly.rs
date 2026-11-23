@@ -290,7 +290,7 @@ async fn windows_true_file_directory_and_cross_volume_links_preserve_targets_on_
     config.suites.mcp_file = root.path().join("mcp.json");
     config.suites.generated_directory = root.path().join("generated");
     config.herdr.executable = herdr.executable().to_owned();
-    let suite = json!({"id":"selected-omp","name":"Selected · OMP","harness":"omp","skills":[volume.0.clone()]});
+    let suite = json!({"id":"selected-omp","name":"Selected · OMP","harness":"omp","skills":[{"kind":"collection","path":&volume.0}]});
     fs::write(&config.suites.definition_file, json!({"suites":[suite]}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
     assert_eq!(post(&server, "/api/zones", json!({"id":"owned","path":root.path()})).await.status, 200);
@@ -314,7 +314,7 @@ async fn windows_true_file_directory_and_cross_volume_links_preserve_targets_on_
     fs::create_dir(&bad).unwrap();
     fs::write(bad.join("SKILL.md"), "---\nname: selected\ndescription: Duplicate selected name\n---\nDO-NOT-DELETE-579\n").unwrap();
     let bad_before = file_hash(&bad.join("SKILL.md"));
-    let definition = json!({"suites":[{"id":"selected-omp","name":"Selected · OMP","harness":"omp","skills":[volume.0.clone()]}]});
+    let definition = json!({"suites":[{"id":"selected-omp","name":"Selected · OMP","harness":"omp","skills":[{"kind":"collection","path":&volume.0}]}]});
     fs::write(&config.suites.definition_file, definition.to_string()).unwrap();
     let body = launch_body(&server, &id).await;
     let failed = post(&server, "/api/chats", body).await;
@@ -421,7 +421,7 @@ async fn publication_scenarios(resources: bool) {
                 fs::write(source.join("skill parents/selected").join("SKILL.md"), format!("---\nname: selected\ndescription: Selected resource\n---\n{body}\n")).unwrap();
                 fs::write(source.join("extension").join("entry.ts"), "export default function(pi) {}\n").unwrap();
                 fs::write(source.join("extension").join("asset.txt"), asset).unwrap();
-                suite["skills"] = json!([source.join("skill parents")]);
+                suite["skills"] = json!([{"kind":"collection","path":source.join("skill parents")}]);
                 suite["extensions"] = json!([source.join("extension").join("entry.ts")]);
             }
         }

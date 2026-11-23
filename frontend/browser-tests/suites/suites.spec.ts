@@ -53,7 +53,9 @@ test('P3 manages an unreferenced Suite through the main interface and authoritat
   await page.getByLabel('LSP 声明（JSON）', { exact: true }).fill('{"rust":{"command":"rust-analyzer","fileTypes":["rs"]}}')
   await page.getByLabel('catalog-search', { exact: true }).check()
   await page.getByRole('button', { name: '保存 Suite', exact: true }).click()
-  const expected = { id: 'review-tools-omp', name: '评审工具 · OMP', harness: 'omp', skills: ['${roots.skills}/review-collection', '../shared/research'], extensions: ['${roots.toolkit}/extensions/review'], lsp: { rust: { command: 'rust-analyzer', fileTypes: ['rs'] } }, mcp: ['catalog-search'], dap: [] }
+  const expected = { id: 'review-tools-omp', name: '评审工具 · OMP', harness: 'omp',
+    skills: [{ kind: 'collection', path: '${roots.skills}/review-collection' }, { kind: 'collection', path: '../shared/research' }],
+    extensions: ['${roots.toolkit}/extensions/review'], lsp: { rust: { command: 'rust-analyzer', fileTypes: ['rs'] } }, mcp: ['catalog-search'], dap: [] }
   await expect(list.getByRole('button', { name: '评审工具 · OMP · review-tools-omp', exact: true })).toBeVisible()
   expect(JSON.parse(fs.readFileSync(definitions, 'utf8'))).toEqual({ suites: [expected] })
   expect(fs.readFileSync(mcp, 'utf8')).toBe(catalogBytes)
@@ -90,7 +92,7 @@ test('P4 re-reads and restarts from the same externally maintained Suite authori
   const authority = path.join(configDirectory, 'shared definitions with spaces')
   fs.mkdirSync(authority)
   const definitions = path.join(authority, 'user-suites.json')
-  const external = '{"suites":[{"id":"external-tools-omp","name":"外部独立定义 · OMP","harness":"omp","skills":["../skills/independent"],"extensions":[],"lsp":{},"mcp":[]}]}'
+  const external = '{"suites":[{"id":"external-tools-omp","name":"外部独立定义 · OMP","harness":"omp","skills":[{"kind":"collection","path":"../skills/independent"}],"extensions":[],"lsp":{},"mcp":[]}]}'
   fs.writeFileSync(definitions, external)
   const shadows = [path.join(server.cwd, 'meta-data'), path.join(configDirectory, 'meta-data'), path.join(configDirectory, 'generated')]
   for (const directory of shadows) {
@@ -105,7 +107,9 @@ test('P4 re-reads and restarts from the same externally maintained Suite authori
   await page.getByRole('button', { name: '外部独立定义 · OMP · external-tools-omp', exact: true }).click()
   await expect(page.getByLabel('OMP 技能集合目录（每行一个路径）', { exact: true })).toHaveValue('../skills/independent')
   expect(fs.readFileSync(definitions, 'utf8')).toBe(external)
-  const edited = { id: 'external-tools-omp', name: '手工修改后的定义 · OMP', harness: 'omp', skills: ['../skills/changed'], extensions: [], lsp: { rust: { command: 'manual-rust-analyzer' } }, mcp: [], dap: [] }
+  const edited = { id: 'external-tools-omp', name: '手工修改后的定义 · OMP', harness: 'omp',
+    skills: [{ kind: 'skill', path: '../skills/individual' }, { kind: 'collection', path: '../skills/changed' }],
+    extensions: [], lsp: { rust: { command: 'manual-rust-analyzer' } }, mcp: [], dap: [] }
   const revised = JSON.stringify({ suites: [edited] })
   fs.writeFileSync(definitions, revised)
   await page.getByRole('button', { name: '重新读取 Suite', exact: true }).click()
@@ -119,6 +123,7 @@ test('P4 re-reads and restarts from the same externally maintained Suite authori
   await page.getByTestId('tab-suite').click()
   await page.getByRole('button', { name: '手工修改后的定义 · OMP · external-tools-omp', exact: true }).click()
   await expect(page.getByLabel('OMP 技能集合目录（每行一个路径）', { exact: true })).toHaveValue('../skills/changed')
+  await expect(page.getByLabel('OMP 单技能目录（每行一个路径）', { exact: true })).toHaveValue('../skills/individual')
   expect(fs.readFileSync(definitions, 'utf8')).toBe(revised)
   await page.getByLabel('Suite 名称', { exact: true }).fill('界面写回同一权威文件')
   await page.getByRole('button', { name: '保存 Suite', exact: true }).click()
@@ -178,7 +183,7 @@ test('extension paths and central MCP choices remain independent across Suite id
   await expect(page.getByLabel('适用宿主', { exact: true })).toBeDisabled()
 })
 
-test('skill sources use the selected harness rules and save only that harness’s paths', async ({ page }) => {
+test('skill sources round-trip mixed OMP directories and unchanged Pi paths', async ({ page }) => {
   server = await startServer({ separateCwd: true })
   const definitions = path.join(path.dirname(server.configPath), 'meta-data', 'suites.json')
   await page.goto(`${server.baseURL}?layout=expanded`)
@@ -190,36 +195,56 @@ test('skill sources use the selected harness rules and save only that harness’
   await create.click()
   await id.fill('native-skills')
   await name.fill('原生技能来源')
-  const omp = page.getByLabel('OMP 技能集合目录（每行一个路径）', { exact: true })
+  const collections = page.getByLabel('OMP 技能集合目录（每行一个路径）', { exact: true })
+  const single = page.getByLabel('OMP 单技能目录（每行一个路径）', { exact: true })
   const pi = page.getByLabel('Pi 单技能目录（每行一个路径）', { exact: true })
-  const resources = page.getByRole('region', { name: '资源路径', exact: true })
+  const reload = page.getByRole('button', { name: '重新读取 Suite', exact: true })
+  const ompSuite = page.getByRole('button', { name: '原生技能来源 · OMP · native-skills-omp', exact: true })
   await expect(pi).toHaveCount(0)
-  await expect(resources).toContainText('全选直接子目录中含 SKILL.md 的技能，不递归，也不加载父目录自身')
-  await expect(resources).toContainText('白名单，排除未选中的默认、托管或插件技能')
-  await expect(resources).toContainText('原生发现仍可能扫描默认目录。留空表示禁用技能')
-  await expect(resources).toContainText('未选择 Suite 时保留宿主原生技能行为')
-  await expect(resources).toContainText('路径缺失或不可读会报错，不回退到默认来源')
-  await omp.fill('  ../collections/team skills\r\n../collections/extra\n\n../collections/team skills\n')
+  await collections.fill('  ../collections/team skills\r\n../collections/extra\n\n../collections/team skills\n')
+  await single.fill('  ../individual/review\n../individual/review\n')
+  const screenshot = test.info().outputPath('mixed-omp-skill-sources.png')
+  await page.getByRole('region', { name: '资源路径', exact: true }).screenshot({ path: screenshot })
+  await test.info().attach('mixed-omp-skill-sources', { path: screenshot, contentType: 'image/png' })
   await harness.selectOption('pi')
-  await expect(omp).toHaveCount(0)
+  await expect(collections).toHaveCount(0)
+  await expect(single).toHaveCount(0)
   await expect(pi).toHaveValue('')
-  await expect(resources).toContainText('单技能根目录，不填写技能集合父目录')
   await pi.fill('../pi/unsaved')
   await harness.selectOption('omp')
   await expect(pi).toHaveCount(0)
-  await expect(omp).toHaveValue(/collections\/team skills/)
+  await expect(collections).toHaveValue(/collections\/team skills/)
+  await expect(single).toHaveValue(/individual\/review/)
   const save = async () => {
     await page.getByRole('button', { name: '保存 Suite', exact: true }).click()
     await expect(page.getByRole('status')).toHaveText('Suite 已保存到权威文件。')
   }
-  const ompSkills = ['../collections/team skills', '../collections/extra']
+  const ompSkills = [
+    { kind: 'collection', path: '../collections/team skills' },
+    { kind: 'collection', path: '../collections/extra' },
+    { kind: 'skill', path: '../individual/review' },
+  ]
   const piSkills = ['../pi/review', '../pi/research']
-  const persisted = (): { id: string; skills: string[] }[] => JSON.parse(fs.readFileSync(definitions, 'utf8')).suites
+  const persisted = (): { id: string; skills: unknown }[] => JSON.parse(fs.readFileSync(definitions, 'utf8')).suites
   await save()
   expect(persisted().map(({ id, skills }) => [id, skills])).toEqual([['native-skills-omp', ompSkills]])
-  await expect(page.getByRole('button', { name: '原生技能来源 · OMP · native-skills-omp', exact: true })).toContainText('2 技能来源')
-  await page.getByRole('button', { name: '重新读取 Suite', exact: true }).click()
-  await expect(omp).toHaveValue(ompSkills.join('\n'))
+  await expect(ompSuite).toContainText('3 技能来源')
+  await page.getByRole('button', { name: '关闭编辑', exact: true }).click()
+  await reload.click()
+  await ompSuite.click()
+  await expect(collections).toHaveValue('../collections/team skills\n../collections/extra')
+  await expect(single).toHaveValue('../individual/review')
+  await collections.fill('../collections/extra')
+  await single.fill('../individual/research')
+  const updatedOmpSkills = [
+    { kind: 'collection', path: '../collections/extra' },
+    { kind: 'skill', path: '../individual/research' },
+  ]
+  await save()
+  expect(persisted().map(({ id, skills }) => [id, skills])).toEqual([['native-skills-omp', updatedOmpSkills]])
+  const response = await page.request.get(`${server.baseURL}/api/suites/native-skills-omp`)
+  expect(response.ok()).toBe(true)
+  expect(await response.json()).toMatchObject({ suite: { skills: updatedOmpSkills } })
 
   await create.click()
   await id.fill('native-skills')
@@ -228,13 +253,13 @@ test('skill sources use the selected harness rules and save only that harness’
   await expect(pi).toHaveValue('')
   await pi.fill('../pi/review\n../pi/research\n../pi/review')
   await save()
-  expect(persisted().map(({ id, skills }) => [id, skills])).toEqual([['native-skills-omp', ompSkills], ['native-skills-pi', piSkills]])
-  await page.getByRole('button', { name: '重新读取 Suite', exact: true }).click()
+  expect(persisted().map(({ id, skills }) => [id, skills])).toEqual([['native-skills-omp', updatedOmpSkills], ['native-skills-pi', piSkills]])
+  await reload.click()
   await expect(pi).toHaveValue(piSkills.join('\n'))
   await pi.fill('')
   await save()
-  expect(persisted().map(({ id, skills }) => [id, skills])).toEqual([['native-skills-omp', ompSkills], ['native-skills-pi', []]])
-  await page.getByRole('button', { name: '重新读取 Suite', exact: true }).click()
+  expect(persisted().map(({ id, skills }) => [id, skills])).toEqual([['native-skills-omp', updatedOmpSkills], ['native-skills-pi', []]])
+  await reload.click()
   await expect(pi).toHaveValue('')
 })
 

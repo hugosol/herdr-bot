@@ -1,12 +1,12 @@
+export type OmpSkillSource = { kind: 'collection' | 'skill'; path: string }
 export type Suite = {
   id: string
   name: string
-  skills: string[]
   extensions: string[]
   mcp: string[]
 } & (
-  { harness: 'omp'; lsp: Record<string, unknown>; dap: string[]; prompts?: never; codemode?: never } |
-  { harness: 'pi'; prompts: string[]; codemode: 'on' | 'only'; lsp?: never; dap?: never }
+  { harness: 'omp'; skills: OmpSkillSource[]; lsp: Record<string, unknown>; dap: string[]; prompts?: never; codemode?: never } |
+  { harness: 'pi'; skills: string[]; prompts: string[]; codemode: 'on' | 'only'; lsp?: never; dap?: never }
 )
 export type SuiteFixedExtension = {
   id: string
@@ -37,6 +37,13 @@ function isSuiteDapOption(value: unknown): value is SuiteDapOption {
     && Object.keys(value).every(key => ['id', 'name', 'description', 'config'].includes(key))
 }
 
+function isOmpSkillSource(value: unknown): value is OmpSkillSource {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const { kind, path } = value as Record<string, unknown>
+  return (kind === 'collection' || kind === 'skill') && typeof path === 'string' && path.trim() !== ''
+    && Object.keys(value).every(key => key === 'kind' || key === 'path')
+}
+
 export function isSuite(value: unknown): value is Suite {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
   const { id, name, harness, skills, extensions, mcp, lsp, dap, prompts, codemode } = value as Record<string, unknown>
@@ -45,11 +52,12 @@ export function isSuite(value: unknown): value is Suite {
   const nameSuffix = harness === 'omp' ? ' · OMP' : ' · Pi'
   if (typeof id !== 'string' || !id.endsWith(idSuffix) || !id.slice(0, -idSuffix.length).trim()
     || typeof name !== 'string' || !name.endsWith(nameSuffix) || !name.slice(0, -nameSuffix.length).trim()
-    || !isStringArray(skills) || !isStringArray(extensions) || !isStringArray(mcp)) return false
+    || !isStringArray(extensions) || !isStringArray(mcp)) return false
   const keys = ['id', 'name', 'harness', 'skills', 'extensions', 'mcp']
-  if (harness === 'omp') return lsp !== null && typeof lsp === 'object' && !Array.isArray(lsp) && isStringArray(dap)
+  if (harness === 'omp') return Array.isArray(skills) && skills.every(isOmpSkillSource)
+    && lsp !== null && typeof lsp === 'object' && !Array.isArray(lsp) && isStringArray(dap)
     && Object.keys(value).every(key => keys.includes(key) || key === 'lsp' || key === 'dap')
-  return isStringArray(prompts) && (codemode === 'on' || codemode === 'only')
+  return isStringArray(skills) && isStringArray(prompts) && (codemode === 'on' || codemode === 'only')
     && Object.keys(value).every(key => keys.includes(key) || key === 'prompts' || key === 'codemode')
 }
 

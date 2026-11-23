@@ -296,27 +296,40 @@ async fn suite_rejects_wrong_harness_fields_and_legacy_wire_shape() {
             assert_eq!(fs::read(&config.suites.definition_file).unwrap(), before);
         }
     }
-    let malformed_file = json!({"suites":[{"id":"strict-omp","name":"Strict · OMP","harness":"omp","prompts":[]}]}).to_string();
-    fs::write(&config.suites.definition_file, &malformed_file).unwrap();
-    let response = get_over_tcp(server.addr(), "/api/suites").await;
-    assert_eq!(response.status, 500, "{}", response.body);
-    assert!(response.body.contains("suite-storage-failed"));
-    assert_eq!(fs::read_to_string(&config.suites.definition_file).unwrap(), malformed_file);
+    for (key, value) in [("prompts", json!([])), ("skills", json!(["legacy collection"]))] {
+        let mut invalid = omp.clone();
+        invalid[key] = value;
+        let malformed_file = json!({"suites":[invalid]}).to_string();
+        fs::write(&config.suites.definition_file, &malformed_file).unwrap();
+        let response = get_over_tcp(server.addr(), "/api/suites").await;
+        assert_eq!(response.status, 500, "{}", response.body);
+        assert!(response.body.contains("suite-storage-failed"));
+        assert_eq!(fs::read_to_string(&config.suites.definition_file).unwrap(), malformed_file);
+    }
 }
 
 #[tokio::test]
-async fn skills_accept_single_harness_paths_and_reject_invalid_writes_without_persistence() {
-    let root = TempDir::new("flat harness skill paths");
+async fn skills_round_trip_harness_specific_types_and_reject_invalid_writes() {
+    let root = TempDir::new("harness-specific skill sources");
     let config = config(&root);
     let server = TestServer::start(&config).await;
-    for (valid, detail) in [
-        (json!({"id":"selected-omp","name":"Selected · OMP","harness":"omp","skills":["parents with spaces"]}), "/api/suites/selected-omp"),
-        (json!({"id":"selected-pi","name":"Selected · Pi","harness":"pi","skills":["individual skill"],"codemode":"on"}), "/api/suites/selected-pi"),
+    for (valid, detail, invalid_lists) in [
+        (json!({"id":"selected-omp","name":"Selected · OMP","harness":"omp","skills":[
+            {"kind":"collection","path":"parents with spaces"}, {"kind":"skill","path":"individual OMP skill"}
+        ]}), "/api/suites/selected-omp", vec![
+            json!(["legacy collection"]), json!([["skill", "root"]]),
+            json!([{"kind":0,"path":"root"}]), json!([{"kind":"unknown","path":"root"}]),
+            json!([{"path":"root"}]), json!([{"kind":"skill"}]), json!([{"kind":"skill","path":42}]),
+            json!([{"kind":"skill","path":"root","name":"extra"}]),
+            json!([{"kind":"collection","path":""}]), json!([{"kind":"skill","path":" \t "}]),
+        ]),
+        (json!({"id":"selected-pi","name":"Selected · Pi","harness":"pi","skills":["individual skill"],"codemode":"on"}),
+            "/api/suites/selected-pi", vec![json!([{"kind":"skill","path":"root"}]), json!([""]), json!([" \t "])]),
     ] {
         let saved = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&valid.to_string())).await;
         assert_eq!(saved.status, 200, "{}", saved.body);
         let persisted = fs::read(&config.suites.definition_file).unwrap();
-        for skills in [json!({}), json!({"omp":[]}), json!({"pi":["legacy root"]}), json!([""]), json!([" \t "])] {
+        for skills in [json!({}), json!({"omp":[]}), json!({"pi":["legacy root"]})].into_iter().chain(invalid_lists) {
             let mut invalid = valid.clone();
             invalid["skills"] = skills;
             for (method, path) in [("POST", "/api/suites"), ("PUT", detail)] {

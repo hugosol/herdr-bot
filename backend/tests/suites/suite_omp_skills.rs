@@ -29,7 +29,7 @@ async fn unreadable_selected_skill_rejects_public_launch_before_herdr() {
     fs::create_dir_all(&skill).unwrap();
     fs::write(skill.join("SKILL.md"), "---\nname: selected\ndescription: Selected skill\n---\nSelected body").unwrap();
     fs::write(&config.suites.definition_file, json!({"suites":[{
-        "id":"selected-omp", "name":"Selected · OMP", "harness":"omp", "skills":["selected parents"]
+        "id":"selected-omp", "name":"Selected · OMP", "harness":"omp", "skills":[{"kind":"collection","path":"selected parents"}]
     }]}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
     let saved = post(&server, "/api/tasks", json!({"name":"Selected skill", "chatName":"{task.name}",
@@ -68,7 +68,7 @@ async fn blocked_assembly_directory_rejects_public_launch_before_herdr() {
     fs::write(root.path().join("selected parents/readable skill/SKILL.md"), "---\nname: selected\ndescription: Selected skill\n---\nSelected body").unwrap();
     fs::write(&config.suites.generated_directory, "not a directory").unwrap();
     fs::write(&config.suites.definition_file, json!({"suites":[{
-        "id":"selected-omp", "name":"Selected · OMP", "harness":"omp", "skills":["selected parents"]
+        "id":"selected-omp", "name":"Selected · OMP", "harness":"omp", "skills":[{"kind":"collection","path":"selected parents"}]
     }]}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
     let saved = post(&server, "/api/tasks", json!({"name":"Selected skill", "chatName":"{task.name}",
@@ -125,10 +125,18 @@ async fn omp_direct_children_canonical_parents_empty_no_fallback_and_name_collis
     fs::write(inactive.join("disabled/SKILL.md"), "---\nname: selected\ndescription: Disabled\nenabled: false\n---\nDisabled").unwrap();
     let empty = root.path().join("empty parents");
     fs::create_dir(&empty).unwrap();
+    let singles = root.path().join("single parents");
+    for (directory, name) in [("first", "single-first"), ("second", "single-second"), ("unselected", "unrelated")] {
+        let skill = singles.join(directory);
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(skill.join("SKILL.md"), format!("---\nname: {name}\ndescription: Single source\n---\n{name}")).unwrap();
+    }
+    // An unselected sibling must not block launch even if its SKILL.md cannot be read as a file.
+    fs::create_dir_all(singles.join("not a skill/SKILL.md")).unwrap();
     // Explicitly empty selection must not use another Suite's roots.
     let pi_suite = json!({"id":"selected-pi","name":"Selected · Pi","harness":"pi","skills":["missing Pi root"],"codemode":"on"});
     fs::write(&config.suites.definition_file, json!({"suites":[{"id":"selected-omp","name":"Selected · OMP","harness":"omp",
-        "skills":["selected parents", "selected parents/../selected parents"]}, pi_suite]}).to_string()).unwrap();
+        "skills":[{"kind":"collection","path":"selected parents"}]}, pi_suite]}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
     let saved = post(&server, "/api/tasks", json!({"name":"Native parents", "chatName":"{task.name}",
         "agent":"omp", "taskType":"normal", "model":"default", "thinking":"default", "skill":null,
@@ -137,18 +145,29 @@ async fn omp_direct_children_canonical_parents_empty_no_fallback_and_name_collis
     let saved: Value = serde_json::from_str(&saved.body).unwrap();
     let id = &saved["tasks"][0]["id"];
     assert_eq!(post(&server, "/api/zones", json!({"id":"owned", "path":root.path()})).await.status, 200);
-    for (paths, expected_names, expected_parents) in [
-        (json!(["selected parents", "selected parents/../selected parents", "other parents"]),
-            json!(["\\!literal\\*\\?\\[ab\\]\\{x,y\\}\\(z\\)", "added", "repaired", "selected"]),
+    for (sources, expected_names, expected_parents) in [
+        (json!([
+            {"kind":"collection","path":"selected parents"},
+            {"kind":"collection","path":"selected parents/../selected parents"},
+            {"kind":"collection","path":"other parents"},
+        ]), json!(["\\!literal\\*\\?\\[ab\\]\\{x,y\\}\\(z\\)", "added", "repaired", "selected"]),
             json!([fs::canonicalize(&parent).unwrap(), fs::canonicalize(&other).unwrap()])),
-        (json!(["selected parents"]), json!(["added", "repaired", "selected"]), json!([fs::canonicalize(&parent).unwrap()])),
-        (json!(["inactive parents"]), json!([]), json!([fs::canonicalize(&inactive).unwrap()])),
-        (json!(["empty parents"]), json!([]), json!([fs::canonicalize(&empty).unwrap()])),
+        (json!([{"kind":"collection","path":"selected parents"}]),
+            json!(["added", "repaired", "selected"]), json!([fs::canonicalize(&parent).unwrap()])),
+        (json!([
+            {"kind":"skill","path":"selected parents/selected"},
+            {"kind":"collection","path":"selected parents"},
+            {"kind":"skill","path":"single parents/second"},
+            {"kind":"skill","path":"single parents/../single parents/first"},
+        ]), json!(["added", "repaired", "selected", "single-first", "single-second"]),
+            json!([fs::canonicalize(&parent).unwrap(), fs::canonicalize(&singles).unwrap()])),
+        (json!([{"kind":"collection","path":"inactive parents"}]), json!([]), json!([fs::canonicalize(&inactive).unwrap()])),
+        (json!([{"kind":"collection","path":"empty parents"}]), json!([]), json!([fs::canonicalize(&empty).unwrap()])),
         (json!([]), json!([]), json!([])),
     ] {
         let expected_enabled = !expected_names.as_array().unwrap().is_empty();
         fs::write(&config.suites.definition_file, json!({"suites":[{"id":"selected-omp","name":"Selected · OMP","harness":"omp",
-            "skills":paths}, pi_suite]}).to_string()).unwrap();
+            "skills":sources}, pi_suite]}).to_string()).unwrap();
         let preview = post(&server, "/api/chats/preview", json!({"zone":"owned", "taskId":id})).await;
         assert_eq!(preview.status, 200, "{}", preview.body);
         let preview: Value = serde_json::from_str(&preview.body).unwrap();
@@ -199,7 +218,7 @@ async fn omp_direct_children_canonical_parents_empty_no_fallback_and_name_collis
     fs::create_dir(other.join("collision")).unwrap();
     fs::write(other.join("collision/SKILL.md"), "---\nname: repaired\ndescription: Different source\n---\nCOLLISION").unwrap();
     fs::write(&config.suites.definition_file, json!({"suites":[{"id":"selected-omp","name":"Selected · OMP","harness":"omp",
-        "skills":["selected parents", "other parents"]}, pi_suite]}).to_string()).unwrap();
+        "skills":[{"kind":"collection","path":"selected parents"}, {"kind":"collection","path":"other parents"}]}, pi_suite]}).to_string()).unwrap();
     let launch = post(&server, "/api/chats", json!({"zone":"owned", "taskId":id, "chatId":preview["chatId"], "input":"must not start"})).await;
     assert_eq!(launch.status, 400, "{}", launch.body);
     assert!(launch.body.contains("repaired"), "{}", launch.body);

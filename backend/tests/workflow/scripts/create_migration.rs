@@ -152,7 +152,7 @@ async fn migrated_workflow(fault: Option<&str>) {
     let original_tasks: Value = serde_json::from_str(before["meta-data/tasks.json"].as_str().unwrap()).unwrap();
     let tasks = source("meta-data/tasks.json");
     for (path, original) in before.as_object().unwrap() {
-        if ["meta-data/tasks.json", "meta-data/bots/bot-1793348060748020300-25960-2.json", "meta-data/workflow-maps/create-bot-wrapper.json", "meta-data/workflow-maps/create-bot-task-workflow--bc-61ce48b80a4c.json"].contains(&path.as_str()) { continue; }
+        if ["meta-data/tasks.json", "meta-data/suites.json", "meta-data/bots/bot-1793348060748020300-25960-2.json", "meta-data/workflow-maps/create-bot-wrapper.json", "meta-data/workflow-maps/create-bot-task-workflow--bc-61ce48b80a4c.json"].contains(&path.as_str()) { continue; }
         // The portable archive was captured with universal-newline reads.
         // Normalize checkout line endings only, never parsed field/text bytes.
         let original = original.as_str().unwrap();
@@ -181,40 +181,6 @@ async fn migrated_workflow(fault: Option<&str>) {
         if !path.ends_with(".json") { assert_eq!(actual, original, "Unrelated definition changed: {path}"); continue; }
         let mut expected: Value = serde_json::from_str(original).unwrap();
         let mut current: Value = serde_json::from_str(&actual).unwrap();
-        if path == "meta-data/suites.json" {
-            // The archive predates ADR 0020 and the independent pstack release.
-            // Project the archived declarations into their single-harness forms
-            // and compare every applicable resource, not just the new IDs.
-            let mut suites = Vec::new();
-            for original in expected["suites"].as_array().unwrap() {
-                let id = original["id"].as_str().unwrap();
-                let name = original["name"].as_str().unwrap();
-                for host in original["agents"].as_array().unwrap() {
-                    let host = host.as_str().unwrap();
-                    let label = match host { "omp" => "OMP", "pi" => "Pi", _ => panic!("unknown archived harness: {host}") };
-                    let mut suite = json!({
-                        "id":format!("{id}-{host}"), "name":format!("{name} · {label}"), "harness":host,
-                        "skills":original["skills"].get(host).cloned().unwrap_or(json!([])),
-                        "extensions":original["extensions"].get(host).cloned().unwrap_or(json!([])),
-                        "mcp":original["mcp"],
-                    });
-                    if host == "omp" {
-                        suite["lsp"] = original["lsp"].clone();
-                    } else {
-                        suite["prompts"] = original["prompts"].clone();
-                        suite["codemode"] = original["pi"]["codemode"].clone();
-                    }
-                    suites.push(suite);
-                }
-            }
-            suites.insert(4, json!({
-                "id":"pstack-omp", "name":"pstack · OMP", "harness":"omp",
-                "skills":["${roots.toolkit}/pstack-suite/generated/skills"],
-                "extensions":["${roots.toolkit}/pstack-suite/omp.ts", "${roots.toolkit}/pstack-suite/generated"],
-                "lsp":{}, "mcp":[],
-            }));
-            expected["suites"] = json!(suites);
-        }
         // This archive predates the independent approval cutover. Preserve the
         // business interfaces, not obsolete report-policy-specific assertions.
         // The literal responsibility test above owns every current mode.

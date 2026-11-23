@@ -20,6 +20,50 @@ use crate::{AppState, files::{FileAccess, FileStore}, tasks::Agent};
 #[serde(rename_all = "lowercase")]
 pub enum Codemode { On, Only }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum OmpSkillSource {
+    Collection { path: String },
+    Skill { path: String },
+}
+
+impl<'de> Deserialize<'de> for OmpSkillSource {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct SourceObject;
+        impl<'de> serde::de::Visitor<'de> for SourceObject {
+            type Value = OmpSkillSource;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("an OMP skill source object with kind and path")
+            }
+
+            fn visit_map<M: serde::de::MapAccess<'de>>(self, map: M) -> Result<Self::Value, M::Error> {
+                #[derive(Deserialize)]
+                #[serde(deny_unknown_fields)]
+                struct Fields<'a> {
+                    #[serde(borrow)]
+                    kind: std::borrow::Cow<'a, str>,
+                    path: String,
+                }
+                let Fields { kind, path } = Fields::deserialize(serde::de::value::MapAccessDeserializer::new(map))?;
+                match kind.as_ref() {
+                    "collection" => Ok(OmpSkillSource::Collection { path }),
+                    "skill" => Ok(OmpSkillSource::Skill { path }),
+                    kind => Err(serde::de::Error::unknown_variant(kind, &["collection", "skill"])),
+                }
+            }
+        }
+        // Derived internally tagged enums also accept positional arrays and numeric tags.
+        deserializer.deserialize_map(SourceObject)
+    }
+}
+
+impl OmpSkillSource {
+    fn path(&self) -> &str {
+        match self { Self::Collection { path } | Self::Skill { path } => path }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "harness", rename_all = "lowercase", deny_unknown_fields)]
 pub enum Suite {
@@ -27,7 +71,7 @@ pub enum Suite {
         id: String,
         name: String,
         #[serde(default)]
-        skills: Vec<String>,
+        skills: Vec<OmpSkillSource>,
         #[serde(default)]
         extensions: Vec<String>,
         #[serde(default)]
@@ -113,10 +157,6 @@ impl Suite {
         Ok(())
     }
 
-    fn skills(&self) -> &[String] {
-        match self { Self::Omp { skills, .. } | Self::Pi { skills, .. } => skills }
-    }
-
     fn extensions(&self) -> &[String] {
         match self { Self::Omp { extensions, .. } | Self::Pi { extensions, .. } => extensions }
     }
@@ -139,7 +179,11 @@ impl Suite {
         if !self.name().strip_suffix(name_suffix).is_some_and(|base| !base.trim().is_empty()) {
             return Err(SuiteError::invalid(format!("Suite 名称必须非空且以{name_suffix} 结尾。")));
         }
-        if self.skills().iter().any(|path| path.trim().is_empty()) {
+        let empty_skill_path = match self {
+            Self::Omp { skills, .. } => skills.iter().any(|source| source.path().trim().is_empty()),
+            Self::Pi { skills, .. } => skills.iter().any(|path| path.trim().is_empty()),
+        };
+        if empty_skill_path {
             return Err(SuiteError::invalid("技能路径不能包含空值。"));
         }
         validate_entries("extensions", self.extensions())?;

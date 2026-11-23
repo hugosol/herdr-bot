@@ -12,7 +12,7 @@ Pi 与 oh-my-pi（OMP）的技能选择、扩展及专属配置语义已经分�
 
 - 保留一份 Suite 权威清单、统一 API、统一管理入口和全局唯一 ID，不拆成两套存储或管理系统。公共身份字段共享，单值 harness 决定专属配置结构，不再使用多宿主选择及双宿主资源映射。
 - 创建时单选 harness，保存后不可切换；需要另一宿主时新建 Suite，不自动转换或清空不兼容字段。编辑器只显示所选 harness 的有效字段。
-- Pi 保留单技能目录、Pi 扩展、prompt templates、codemode 和独立的 MCP 选择；OMP 保留技能集合目录、OMP 扩展、LSP 和独立的 MCP 选择。
+- Pi 保留单技能目录、Pi 扩展、prompt templates、codemode 和独立的 MCP 选择；OMP 支持集合与单技能目录的显式来源对象、OMP 扩展、LSP 和独立的 MCP 选择。
 - 底层资源目录、集中 MCP 定义、路径解析、存储及其他通用设施尽量共享。共享资源定义不意味着共享 Suite 选择：修改一份 Suite 的选择不影响另一份；修改双方引用的资源定义仍可能影响双方。
 - Task 只能选择匹配其 agent 的 Suite。切换 agent 后若原 Suite 不兼容，必须显式重选或取消选择后才能保存，不按名称自动配对、不自动转换或静默清空。
 - Suite ID 统一以 `-omp` 或 `-pi` 标明 harness，显示名称统一以 `· OMP` 或 `· Pi` 标明归属。

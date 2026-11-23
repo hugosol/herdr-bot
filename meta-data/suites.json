@@ -17,8 +17,8 @@
       "id": "codebase-exploration-omp",
       "name": "代码库探索 · OMP",
       "skills": [
-        "${roots.wayfinder_skills}",
-        "${roots.wayfinder}/dependent-skills/codebase-exploration"
+        { "kind": "collection", "path": "${roots.wayfinder_skills}" },
+        { "kind": "collection", "path": "${roots.wayfinder}/dependent-skills/codebase-exploration" }
       ],
       "extensions": [
         "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"
@@ -132,8 +132,8 @@
       "id": "code-implementation-omp",
       "name": "代码实现 · OMP",
       "skills": [
-        "${roots.wayfinder_skills}",
-        "${roots.wayfinder}/dependent-skills/code-implementation"
+        { "kind": "collection", "path": "${roots.wayfinder_skills}" },
+        { "kind": "collection", "path": "${roots.wayfinder}/dependent-skills/code-implementation" }
       ],
       "extensions": [
         "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts",
@@ -215,7 +215,7 @@
       "id": "pstack-omp",
       "name": "pstack · OMP",
       "skills": [
-        "${roots.toolkit}/pstack-suite/generated/skills"
+        { "kind": "collection", "path": "${roots.toolkit}/pstack-suite/generated/skills" }
       ],
       "extensions": [
         "${roots.toolkit}/pstack-suite/omp.ts",

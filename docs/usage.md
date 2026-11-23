@@ -276,7 +276,10 @@ generated_directory = '.data/suites'
       "id": "review-tools-omp",
       "name": "评审工具 · OMP",
       "harness": "omp",
-      "skills": ["${roots.skills}"],
+      "skills": [
+        { "kind": "collection", "path": "${roots.skills}" },
+        { "kind": "skill", "path": "${roots.toolkit}/pstack-suite/generated/skills/deslop" }
+      ],
       "extensions": ["${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"],
       "mcp": ["catalog-search"],
       "lsp": {}
@@ -309,13 +312,13 @@ Suite 的 `extensions` 是单一 harness 的入口路径数组（例如 `["entry
 
 ### 按宿主选择技能源路径
 
-`skills` 是当前 harness 的路径数组，不接受旧宿主键对象。OMP Suite 的每项是技能**集合目录**：仅发现该目录直接子目录中的 `SKILL.md`，不递归，也不加载集合目录自身的 `SKILL.md`。多个集合目录共同构成所选范围，后续发现会包含其中新增的技能。Pi Suite 的每项则是一个包含 `SKILL.md` 的技能目录。路径均相对 Suite 声明文件解析，并支持根引用。
+OMP Suite 的 `skills` 是 `{ "kind": "collection" | "skill", "path": "…" }` 来源对象数组，不接受旧的字符串数组。`collection` 选择集合目录，只发现其直接子目录中的 `SKILL.md`，不递归，也不加载集合目录自身的 `SKILL.md`；新增有效成员会进入后续启动的选择范围。`skill` 选择一个包含 `SKILL.md` 的技能目录，不自动选择同级技能。两种来源可以混选。编辑器分别逐行填写集合目录和单技能目录。Pi Suite 的 `skills` 仍为单技能目录字符串数组。路径均相对 Suite 声明文件解析，并支持根引用。已有 OMP 声明须将每个字符串改为 `kind: "collection"` 对象，Pi 声明不变。
 
 `SKILL.md` 使用原生 YAML frontmatter；`description` 必须非空，省略 `name` 时使用来源目录名。同一真实资源重复引用去重；不同实体声明同名时明确报错并指出来源，不按目录顺序覆盖或自动改名。指定目录缺失或不可读时失败，不回退到其他来源。
 
-发起前检查所选技能及配套资源可读，不生成技能链接目录。每次启动或需要新进程的来源 Task 会话恢复，重新读取当前集合，按 canonical 路径去重，并由本次有效直接子技能的最终名称生成 `includeSkills` 白名单；不同实体同名时拒绝启动，不能因其中一个未启用而绕过冲突检查。集合新增或移除有效技能会改变下一次启动的白名单。
+发起前检查所选技能及配套资源可读，不生成技能链接目录。每次启动或需要新进程的来源 Task 会话恢复，重新读取当前来源，按 canonical 技能文件路径去重，并由本次选中有效技能的最终名称生成 `includeSkills` 白名单；不同实体同名时拒绝启动，不能因其中一个未启用而绕过冲突检查。集合新增或移除有效技能会改变下一次启动的白名单。
 
-OMP 的 `omp-skills.json` 使用现有全局安装已支持的原生 `--config`，只对 `skills` 做高优先级局部覆盖：直接传入多个源集合目录，设置 `includeSkills`、`ignoredSkills: []`，将已有七个来源开关 `enableCodexUser`、`enableClaudeUser`、`enableClaudeProject`、`enablePiUser`、`enablePiProject`、`enableAgentsUser`、`enableAgentsProject` 均设为 `false`，并按有效名称是否非空设置 `enabled`。不修改 OMP 源码、全局安装或用户／项目配置，也不要求部署新的宿主构建。该覆盖约束的是**原生最终可用技能列表**，不承诺禁止默认目录扫描；默认来源中不在白名单的技能不得成为可用技能，实际名称及来源仍需原生验收核对。原本属于默认来源的目录若被显式指定，仍可加载。
+OMP 的 `omp-skills.json` 使用现有全局安装已支持的原生 `--config`，只对 `skills` 做高优先级局部覆盖：集合来源传入原集合目录，单技能来源传入技能目录的父目录；扫描目录按实际路径去重，设置本次选中名称的 `includeSkills`、`ignoredSkills: []`，将已有七个来源开关 `enableCodexUser`、`enableClaudeUser`、`enableClaudeProject`、`enablePiUser`、`enablePiProject`、`enableAgentsUser`、`enableAgentsProject` 均设为 `false`，并按有效名称是否非空设置 `enabled`。不修改 OMP 源码、全局安装或用户／项目配置，也不要求部署新的宿主构建。该覆盖约束的是**原生最终可用技能列表**，不承诺禁止默认目录扫描；默认来源中不在白名单的技能不得成为可用技能，实际名称及来源仍需原生验收核对。单技能来源的同级技能仍会被 OMP 扫描，最终以名称白名单过滤，不是按文件路径过滤；同名问题由使用者按原有规则处理，不新增冲突处理机制。原本属于默认来源的目录若被显式指定，仍可加载。
 
 技能列表隔离不改变原生扩展、agent、MCP、LSP 或项目指令，不是文件访问沙箱，也不复制认证或改变模型／会话位置。明确选择空集合或没有有效技能的 Suite 使用空白名单与 `enabled: false`，不回退；**不选 Suite** 则不传技能覆盖，保留原生技能行为。正文及资源按原路径读取；已有会话中的历史正文不会被追溯替换，运行中的进程不保证自动重发现元数据。
 

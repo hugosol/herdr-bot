@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { suiteRequest, type Suite, type SuiteList } from '../controllers/suiteController'
+import { suiteRequest, type OmpSkillSource, type Suite, type SuiteList } from '../controllers/suiteController'
 import './suites.css'
 import { NierTitleText } from '../app/NierTitleText'
 
@@ -7,24 +7,49 @@ type Harness = Suite['harness']
 type Resources = { skills: string; extensions: string; mcp: string[] }
 type Draft = {
   id: string; name: string; harness: Harness
-  omp: Resources & { lsp: string; dap: string[] }
+  omp: Resources & { skillCollections: string; lsp: string; dap: string[] }
   pi: Resources & { prompts: string; codemode: 'on' | 'only' }
 }
 const harnessLabels = { omp: 'OMP', pi: 'Pi' } as const
 const emptyResources: Resources = { skills: '', extensions: '', mcp: [] }
 const emptyDraft: Draft = {
   id: '', name: '', harness: 'omp',
-  omp: { ...emptyResources, lsp: '{}', dap: [] },
+  omp: { ...emptyResources, skillCollections: '', lsp: '{}', dap: [] },
   pi: { ...emptyResources, prompts: '', codemode: 'on' },
 }
 function draftFrom(suite: Suite): Draft {
   const { id, name, harness } = suite
-  const resources = { skills: suite.skills.join('\n'), extensions: suite.extensions.join('\n'), mcp: suite.mcp }
-  return suite.harness === 'omp'
-    ? { ...emptyDraft, id, name, harness, omp: { ...resources, lsp: JSON.stringify(suite.lsp, null, 2), dap: suite.dap } }
-    : { ...emptyDraft, id, name, harness, pi: { ...resources, prompts: suite.prompts.join('\n'), codemode: suite.codemode } }
+  const resources = { extensions: suite.extensions.join('\n'), mcp: suite.mcp }
+  if (suite.harness === 'omp') {
+    const paths: Record<OmpSkillSource['kind'], string[]> = { collection: [], skill: [] }
+    for (const { kind, path } of suite.skills) paths[kind].push(path)
+    return { ...emptyDraft, id, name, harness, omp: {
+      ...resources, skills: paths.skill.join('\n'), skillCollections: paths.collection.join('\n'),
+      lsp: JSON.stringify(suite.lsp, null, 2), dap: suite.dap,
+    } }
+  }
+  return { ...emptyDraft, id, name, harness, pi: {
+    ...resources, skills: suite.skills.join('\n'), prompts: suite.prompts.join('\n'), codemode: suite.codemode,
+  } }
 }
 const lines = (text: string) => text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+
+function ompSkillSources(draft: Draft['omp'], previous: OmpSkillSource[]): OmpSkillSource[] {
+  const paths = {
+    collection: new Set(lines(draft.skillCollections)).values(),
+    skill: new Set(lines(draft.skills)).values(),
+  }
+  const skills: OmpSkillSource[] = []
+  // The separate inputs do not display the saved order between kinds.
+  for (const { kind } of previous) {
+    const next = paths[kind].next()
+    if (!next.done) skills.push({ kind, path: next.value })
+  }
+  for (const kind of ['collection', 'skill'] as const) {
+    for (const path of paths[kind]) skills.push({ kind, path })
+  }
+  return skills
+}
 const message = (error: unknown) => error instanceof Error ? error.message : '无法连接 Suite 服务，未确认保存。'
 
 export function SuitesPanel({ active }: { active: boolean }) {
@@ -76,19 +101,22 @@ export function SuitesPanel({ active }: { active: boolean }) {
       const idBase = draft.id.trim().replace(/-(?:omp|pi)$/i, '').trimEnd()
       const nameBase = draft.name.trim().replace(/\s*·\s*(?:omp|pi)$/i, '').trimEnd()
       if (!idBase || !nameBase) throw new Error('请填写非空的 Suite ID 和名称。')
-      const { skills, extensions, mcp } = draft[harness]
+      const { extensions, mcp } = draft[harness]
       const common = {
         id: editing ?? `${idBase}-${harness}`,
         name: `${nameBase} · ${harnessLabels[harness]}`,
-        skills: [...new Set(lines(skills))], extensions: [...new Set(lines(extensions))], mcp,
+        extensions: [...new Set(lines(extensions))], mcp,
       }
       if (harness === 'omp') {
         if (missingDap.length > 0) throw new Error('请先移除失效的 DAP 引用。')
         const lsp: unknown = JSON.parse(draft.omp.lsp)
         if (lsp === null || typeof lsp !== 'object' || Array.isArray(lsp)) throw new Error('LSP 声明必须是 JSON 对象。')
-        suite = { ...common, harness, lsp: lsp as Record<string, unknown>, dap: draft.omp.dap }
+        const previous = data?.suites.find(saved => saved.id === editing)
+        suite = { ...common, harness, skills: ompSkillSources(draft.omp, previous?.harness === 'omp' ? previous.skills : []),
+          lsp: lsp as Record<string, unknown>, dap: draft.omp.dap }
       } else {
-        suite = { ...common, harness, prompts: lines(draft.pi.prompts), codemode: draft.pi.codemode }
+        suite = { ...common, harness, skills: [...new Set(lines(draft.pi.skills))],
+          prompts: lines(draft.pi.prompts), codemode: draft.pi.codemode }
       }
     } catch (error) { setError(message(error)); return }
     setBusy(true)
@@ -191,11 +219,22 @@ export function SuitesPanel({ active }: { active: boolean }) {
           </section>
           <section className="suites-section" aria-label="资源路径"><h3>资源路径</h3>
           <div className="suites-field-grid">
-          <div className="suites-resource-block">
-            <label htmlFor="suite-skills">{harness === 'omp' ? 'OMP 技能集合目录（每行一个路径）' : 'Pi 单技能目录（每行一个路径）'}</label>
-            <textarea id="suite-skills" className="zone-form__input" rows={3} aria-describedby="suite-skills-note" value={draft[harness].skills} onChange={event => setDraft({ ...draft, [harness]: { ...draft[harness], skills: event.target.value } })} />
-            <p className="scope-note" id="suite-skills-note">{harness === 'omp' ? '填写技能集合的父目录：全选直接子目录中含 SKILL.md 的技能，不递归，也不加载父目录自身。每次启动按所选集合生成技能白名单，排除未选中的默认、托管或插件技能；原生发现仍可能扫描默认目录。留空表示禁用技能。' : '每行填写一个直接含 SKILL.md 的单技能根目录，不填写技能集合父目录。仅加载指定技能；留空表示不加载技能。'}路径按 Suite 文件或集中 roots 解析，直接加载真实目录，不复制或创建链接。路径缺失或不可读会报错，不回退到默认来源；不同目录的技能同名会列出路径并报错。</p>
-          </div>
+          {harness === 'omp' ? <>
+            <div className="suites-resource-block">
+              <label htmlFor="suite-omp-collections">OMP 技能集合目录（每行一个路径）</label>
+              <textarea id="suite-omp-collections" className="zone-form__input" rows={3} aria-describedby="suite-omp-collections-note suite-omp-skills-note" value={draft.omp.skillCollections} onChange={event => setDraft({ ...draft, omp: { ...draft.omp, skillCollections: event.target.value } })} />
+              <p className="scope-note" id="suite-omp-collections-note">每次启动选中直接子目录中含 SKILL.md 的技能，不递归，也不加载集合目录自身。增删集合成员无需编辑 Suite。</p>
+            </div>
+            <div className="suites-resource-block">
+              <label htmlFor="suite-omp-skills">OMP 单技能目录（每行一个路径）</label>
+              <textarea id="suite-omp-skills" className="zone-form__input" rows={3} aria-describedby="suite-omp-single-note suite-omp-skills-note" value={draft.omp.skills} onChange={event => setDraft({ ...draft, omp: { ...draft.omp, skills: event.target.value } })} />
+              <p className="scope-note" id="suite-omp-single-note">填写直接含 SKILL.md 的目录。不会自动选中同级目录中的技能。</p>
+            </div>
+          </> : <div className="suites-resource-block">
+            <label htmlFor="suite-skills">Pi 单技能目录（每行一个路径）</label>
+            <textarea id="suite-skills" className="zone-form__input" rows={3} aria-describedby="suite-skills-note" value={draft.pi.skills} onChange={event => setDraft({ ...draft, pi: { ...draft.pi, skills: event.target.value } })} />
+            <p className="scope-note" id="suite-skills-note">每行填写一个直接含 SKILL.md 的单技能根目录，不填写技能集合父目录。仅加载指定技能；留空表示不加载技能。路径按 Suite 文件或集中 roots 解析，直接加载真实目录，不复制或创建链接。路径缺失或不可读会报错，不回退到默认来源；不同目录的技能同名会列出路径并报错。</p>
+          </div>}
           <div className="suites-extensions suites-resource-block">
             <label htmlFor="suite-extensions">{harnessLabels[harness]} Extensions（每行一个具体路径）</label>
             <textarea id="suite-extensions" className="zone-form__input" rows={3} aria-describedby="suite-extensions-note" value={draft[harness].extensions} onChange={event => setDraft({ ...draft, [harness]: { ...draft[harness], extensions: event.target.value } })} />
@@ -206,6 +245,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
             <textarea id="suite-prompts" className="zone-form__input" rows={3} value={draft.pi.prompts} onChange={event => setDraft({ ...draft, pi: { ...draft.pi, prompts: event.target.value } })} />
           </div>}
           </div>
+          {harness === 'omp' && <p className="scope-note" id="suite-omp-skills-note">两处填写的来源共同生成技能白名单，排除未选中的默认、托管或插件技能。原生发现仍可能扫描默认目录。两个字段都留空表示禁用技能。路径按 Suite 文件或集中 roots 解析，直接加载真实目录，不复制或创建链接。路径缺失或不可读会报错，不回退到默认来源；所选技能来自不同目录且同名时，会列出路径并报错。</p>}
           <p className="scope-note">未选择 Suite 时保留宿主原生技能行为。</p>
           </section>
           {harness === 'omp' && <section className="suites-section" aria-label="语言服务"><h3>语言服务</h3>

@@ -1,10 +1,10 @@
 //! Native skill paths, validated before any launch output is published.
-//! OMP consumes collection parents; Pi consumes individual skill roots.
+//! OMP consumes scan directories and selected names; Pi consumes individual skill roots.
 //! Neither disables native MCP or project instructions.
-use std::{collections::HashSet, fs, path::{Path, PathBuf}};
+use std::{borrow::Cow, collections::{HashMap, HashSet, hash_map::Entry}, fs, path::{Path, PathBuf}};
 use serde::Deserialize;
 use crate::{files::FileAccess, paths::Roots, tasks::{Agent, TaskError}};
-use super::{Suite, Suites};
+use super::{OmpSkillSource, Suite, Suites};
 
 #[derive(Deserialize)]
 struct Frontmatter {
@@ -28,52 +28,90 @@ impl Suites {
         let agent = suite.harness();
         let fail = |error: String| TaskError::InvalidSuite(format!("Suite「{id}」技能装配失败：{error}；没有回退为空环境。"));
         let base = self.definition_file.parent().unwrap_or(Path::new("."));
-        let declarations = suite.skills();
-        let mut directories = Vec::with_capacity(declarations.len());
-        let mut seen_directories = HashSet::new();
+        let resolve = |path: &str| -> Result<PathBuf, TaskError> {
+            let resolved = roots.resolve(Path::new(path), base).map_err(|error| fail(error.to_string()))?;
+            fs::canonicalize(&resolved).map_err(|error| fail(format!("{}：{error}", resolved.display())))
+        };
         let mut seen_skills = HashSet::new();
-        let mut names = std::collections::HashMap::<String, PathBuf>::new();
-        'declarations: for declaration in declarations {
-            let resolved = roots.resolve(Path::new(declaration), base).map_err(|error| fail(error.to_string()))?;
-            let directory = fs::canonicalize(&resolved).map_err(|error| fail(format!("{}：{error}", resolved.display())))?;
-            if !seen_directories.insert(directory.clone()) { continue; }
-            let candidates = if agent == Agent::Omp {
-                let mut candidates = Vec::new();
-                for entry in fs::read_dir(&directory).map_err(|error| fail(format!("{}：{error}", directory.display())))? {
-                    let entry = entry.map_err(|error| fail(format!("{}：{error}", directory.display())))?;
-                    if entry.file_name().to_string_lossy().starts_with('.') { continue; }
-                    let path = entry.path();
-                    let metadata = fs::metadata(&path).map_err(|error| fail(format!("{}：{error}", path.display())))?;
-                    if !metadata.is_dir() { continue; }
-                    match fs::metadata(path.join("SKILL.md")) {
-                        Ok(_) => candidates.push(path),
-                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
-                        Err(error) => return Err(fail(format!("{}：{error}", path.display()))),
+        let mut names = HashMap::<String, PathBuf>::new();
+        let mut select = |candidate: &Path| -> Result<bool, TaskError> {
+            let canonical = fs::canonicalize(candidate.join("SKILL.md"))
+                .map_err(|error| fail(format!("{}：{error}", candidate.display())))?;
+            if !seen_skills.insert(canonical.clone()) { return Ok(false); }
+            let Some(skill) = read_skill(candidate, agent)
+                .map_err(|error| fail(format!("{}：{error}", canonical.display())))? else { return Ok(false) };
+            match names.entry(skill.name) {
+                Entry::Vacant(entry) => { entry.insert(canonical); }
+                Entry::Occupied(entry) => return Err(fail(format!(
+                    "所选技能名称重复：{}；{}；{}；请明确选择唯一实体。", entry.key(), entry.get().display(), canonical.display()))),
+            }
+            Ok(true)
+        };
+        let mut seen_directories = HashSet::new();
+        let directories = match suite {
+            Suite::Omp { skills, .. } => {
+                let mut directories = Vec::with_capacity(skills.len());
+                let mut scanned_collections = HashSet::new();
+                for source in skills {
+                    let root = resolve(source.path())?;
+                    let directory = match source {
+                        OmpSkillSource::Collection { .. } => {
+                            if !scanned_collections.insert(root.clone()) { continue; }
+                            for candidate in collection_skills(&root).map_err(&fail)? {
+                                select(&candidate)?;
+                            }
+                            Cow::Owned(root)
+                        }
+                        OmpSkillSource::Skill { .. } => {
+                            select(&root)?;
+                            let parent = root.parent().ok_or_else(|| fail(format!("{} 没有技能父目录。", root.display())))?;
+                            Cow::Borrowed(parent)
+                        }
+                    };
+                    if !seen_directories.contains(directory.as_ref()) {
+                        let directory = directory.into_owned();
+                        seen_directories.insert(directory.clone());
+                        directories.push(directory);
                     }
                 }
-                candidates.sort_by_cached_key(|path| {
-                    let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
-                    (name.to_lowercase(), name)
-                });
-                candidates
-            } else { vec![directory.clone()] };
-            for candidate in candidates {
-                let canonical = fs::canonicalize(candidate.join("SKILL.md")).map_err(|error| fail(format!("{}：{error}", candidate.display())))?;
-                if !seen_skills.insert(canonical.clone()) {
-                    if agent == Agent::Pi { continue 'declarations; }
-                    continue;
-                }
-                let Some(skill) = read_skill(candidate, agent).map_err(|error| fail(format!("{}：{error}", canonical.display())))? else { continue };
-                if let Some(previous) = names.insert(skill.name.clone(), canonical.clone()) {
-                    return Err(fail(format!("所选技能名称重复：{}；{}；{}；请明确选择唯一实体。", skill.name, previous.display(), canonical.display())));
-                }
+                directories
             }
-            directories.push(directory);
-        }
+            Suite::Pi { skills, .. } => {
+                let mut directories = Vec::with_capacity(skills.len());
+                for path in skills {
+                    let directory = resolve(path)?;
+                    if seen_directories.insert(directory.clone()) && select(&directory)? {
+                        directories.push(directory);
+                    }
+                }
+                directories
+            }
+        };
         let mut names = names.into_keys().collect::<Vec<_>>();
         names.sort();
         Ok(Selection { directories, names })
     }
+}
+
+fn collection_skills(directory: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut candidates = Vec::new();
+    for entry in fs::read_dir(directory).map_err(|error| format!("{}：{error}", directory.display()))? {
+        let entry = entry.map_err(|error| format!("{}：{error}", directory.display()))?;
+        if entry.file_name().to_string_lossy().starts_with('.') { continue; }
+        let path = entry.path();
+        let metadata = fs::metadata(&path).map_err(|error| format!("{}：{error}", path.display()))?;
+        if !metadata.is_dir() { continue; }
+        match fs::metadata(path.join("SKILL.md")) {
+            Ok(_) => candidates.push(path),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+            Err(error) => return Err(format!("{}：{error}", path.display())),
+        }
+    }
+    candidates.sort_by_cached_key(|path| {
+        let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        (name.to_lowercase(), name)
+    });
+    Ok(candidates)
 }
 
 pub(super) fn assemble(access: &FileAccess, assembly: &Path, suite: &Suite, skills: &Selection) -> Result<Vec<String>, String> {
@@ -114,7 +152,7 @@ fn literal_skill_pattern(name: &str) -> String {
     pattern
 }
 
-fn read_skill(directory: PathBuf, agent: Agent) -> Result<Option<Skill>, String> {
+fn read_skill(directory: &Path, agent: Agent) -> Result<Option<Skill>, String> {
     let raw = fs::read_to_string(directory.join("SKILL.md")).map_err(|error| error.to_string())?;
     if agent == Agent::Omp {
         let metadata = omp_frontmatter(&raw);
@@ -124,7 +162,7 @@ fn read_skill(directory: PathBuf, agent: Agent) -> Result<Option<Skill>, String>
             .filter(|name| !name.is_empty()).map(str::to_owned)
             .unwrap_or_else(|| directory.file_name().unwrap_or_default().to_string_lossy().into_owned());
         if name.contains(['/', '\\']) { return Ok(None); }
-        check_readable_resources(&directory)?;
+        check_readable_resources(directory)?;
         return Ok(Some(Skill { name }));
     }
     let (opening, remainder) = raw.split_once('\n').ok_or("SKILL.md 缺少原生 YAML frontmatter")?;
@@ -141,7 +179,7 @@ fn read_skill(directory: PathBuf, agent: Agent) -> Result<Option<Skill>, String>
     if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\n', '\r']) {
         return Err("SKILL.md name 不能为空或包含路径分隔符".into());
     }
-    check_readable_resources(&directory)?;
+    check_readable_resources(directory)?;
     Ok(Some(Skill { name }))
 }
 
