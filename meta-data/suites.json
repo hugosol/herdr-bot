@@ -17,8 +17,14 @@
       "id": "codebase-exploration-omp",
       "name": "代码库探索 · OMP",
       "skills": [
-        { "kind": "collection", "path": "${roots.wayfinder_skills}" },
-        { "kind": "collection", "path": "${roots.wayfinder}/dependent-skills/codebase-exploration" }
+        {
+          "kind": "collection",
+          "path": "${roots.wayfinder_skills}"
+        },
+        {
+          "kind": "collection",
+          "path": "${roots.wayfinder}/dependent-skills/codebase-exploration"
+        }
       ],
       "extensions": [
         "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"
@@ -132,8 +138,14 @@
       "id": "code-implementation-omp",
       "name": "代码实现 · OMP",
       "skills": [
-        { "kind": "collection", "path": "${roots.wayfinder_skills}" },
-        { "kind": "collection", "path": "${roots.wayfinder}/dependent-skills/code-implementation" }
+        {
+          "kind": "collection",
+          "path": "${roots.wayfinder_skills}"
+        },
+        {
+          "kind": "collection",
+          "path": "${roots.wayfinder}/dependent-skills/code-implementation"
+        }
       ],
       "extensions": [
         "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts",
@@ -215,7 +227,10 @@
       "id": "pstack-omp",
       "name": "pstack · OMP",
       "skills": [
-        { "kind": "collection", "path": "${roots.toolkit}/pstack-suite/generated/skills" }
+        {
+          "kind": "collection",
+          "path": "${roots.toolkit}/pstack-suite/generated/skills"
+        }
       ],
       "extensions": [
         "${roots.toolkit}/pstack-suite/omp.ts",
@@ -409,11 +424,86 @@
         {
           "kind": "skill",
           "path": "E:/Developer/myhub/UI-skills/taste-skill/skills/taste-skill"
+        },
+        {
+          "kind": "collection",
+          "path": "${roots.wayfinder_skills}"
+        },
+        {
+          "kind": "collection",
+          "path": "${roots.wayfinder}/dependent-skills/codebase-exploration"
         }
       ],
-      "extensions": [],
-      "mcp": [],
-      "lsp": {},
+      "extensions": [
+        "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"
+      ],
+      "mcp": [
+        "codebase-memory-mcp"
+      ],
+      "lsp": {
+        "jdtls": {
+          "args": [],
+          "command": "jdtls",
+          "fileTypes": [
+            ".java"
+          ],
+          "rootMarkers": [
+            "pom.xml",
+            "build.gradle",
+            "build.gradle.kts",
+            "settings.gradle",
+            ".project"
+          ]
+        },
+        "pyright": {
+          "args": [
+            "--stdio"
+          ],
+          "command": "pyright-langserver",
+          "fileTypes": [
+            ".py",
+            ".pyi"
+          ],
+          "rootMarkers": [
+            "pyproject.toml",
+            "pyrightconfig.json",
+            "setup.py",
+            "setup.cfg",
+            "requirements.txt",
+            "Pipfile"
+          ]
+        },
+        "rust-analyzer": {
+          "args": [],
+          "command": "rust-analyzer",
+          "fileTypes": [
+            ".rs"
+          ],
+          "rootMarkers": [
+            "Cargo.toml",
+            "rust-analyzer.toml"
+          ]
+        },
+        "typescript-language-server": {
+          "args": [
+            "--stdio"
+          ],
+          "command": "typescript-language-server",
+          "fileTypes": [
+            ".ts",
+            ".tsx",
+            ".js",
+            ".jsx",
+            ".mjs",
+            ".cjs"
+          ],
+          "rootMarkers": [
+            "package.json",
+            "tsconfig.json",
+            "jsconfig.json"
+          ]
+        }
+      },
       "dap": []
     }
   ]
