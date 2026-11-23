@@ -371,6 +371,18 @@
       "skill": null,
       "prompt": "",
       "suite": "pstack-omp"
+    },
+    {
+      "id": "task-18eab7d1e9b2052c-0",
+      "name": "pstack-grilling",
+      "chatName": "{zone.name} · {task.name} · {chat.id}",
+      "agent": "omp",
+      "taskType": "normal",
+      "model": "gpt-6.1-sol",
+      "thinking": "medium",
+      "skill": "grill-with-docs",
+      "prompt": "",
+      "suite": "pstack-grilling-suite-omp"
     }
   ]
 }
