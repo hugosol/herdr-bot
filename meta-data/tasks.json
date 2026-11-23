@@ -383,6 +383,18 @@
       "skill": "grill-with-docs",
       "prompt": "",
       "suite": "pstack-grilling-suite-omp"
+    },
+    {
+      "id": "task-18eab86c4103e184-1",
+      "name": "界面重构",
+      "chatName": "[UI] {zone.name} · {chat.id}",
+      "agent": "omp",
+      "taskType": "normal",
+      "model": "default",
+      "thinking": "default",
+      "skill": "design-taste-frontend",
+      "prompt": "",
+      "suite": "taste-skill-omp"
     }
   ]
 }

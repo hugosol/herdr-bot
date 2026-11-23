@@ -400,6 +400,21 @@
       "mcp": [],
       "prompts": [],
       "codemode": "only"
+    },
+    {
+      "harness": "omp",
+      "id": "taste-skill-omp",
+      "name": "taste-skill · OMP",
+      "skills": [
+        {
+          "kind": "skill",
+          "path": "E:/Developer/myhub/UI-skills/taste-skill/skills/taste-skill"
+        }
+      ],
+      "extensions": [],
+      "mcp": [],
+      "lsp": {},
+      "dap": []
     }
   ]
 }

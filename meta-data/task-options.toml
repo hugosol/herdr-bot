@@ -77,6 +77,10 @@ native_name = 'expert-translate'
 id = 'retro'
 label = '/retro'
 native_name = 'retro'
+[[skills]]
+id = 'design-taste-frontend'
+label = '/design-taste-frontend'
+native_name = 'design-taste-frontend'
 
 # 相同显示名称在两个 Agent 下是不同稳定标识，不隐式继承。
 # --no-extensions 会关闭默认发现，因此显式保留 Herdr 官方状态与会话引用上报。
