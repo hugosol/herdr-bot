@@ -280,17 +280,17 @@ export function SuitesPanel({ active }: { active: boolean }) {
             }}><option value="omp">OMP</option><option value="pi">Pi</option></select>
           </div>
           </div>
-          <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-harness-note">ID 只能包含英文字母、数字、连字符和下划线，且须全局唯一，不要求宿主后缀。ID 和宿主在保存后不可更改。名称以「· {harnessLabels[harness]}」结尾，保存时自动添加名称后缀。</p></details>
+          <p className="suites-guidance" id="suite-harness-note">ID 只能包含英文字母、数字、连字符和下划线，且须全局唯一，不要求宿主后缀。ID 和宿主在保存后不可更改。名称以「· {harnessLabels[harness]}」结尾，保存时自动添加名称后缀。</p>
           {harness === 'pi' && <fieldset><legend>Pi 配置</legend>
             <label className="suites-choice"><input type="checkbox" checked={draft.pi.codemode === 'only'} onChange={event => setDraft({ ...draft, pi: { ...draft.pi, codemode: event.target.checked ? 'only' : 'on' } })} />Codemode only</label>
-            <details className="suites-form-help"><summary>说明</summary><p className="scope-note">关闭 only 表示明确的 on，不禁用，也不继承全局模式。</p></details>
+            <p className="suites-guidance">关闭 only 表示明确的 on，不禁用，也不继承全局模式。</p>
           </fieldset>}
           </section>
           <section className="suites-section" aria-label="extension"><h3>extension</h3>
           <div className="suites-extensions suites-resource-block">
             <label htmlFor="suite-extensions">{harnessLabels[harness]} extension（每行一个具体路径）</label>
             <textarea id="suite-extensions" className="zone-form__input" rows={3} aria-describedby="suite-extensions-note" value={draft[harness].extensions} onChange={event => setDraft({ ...draft, [harness]: { ...draft[harness], extensions: event.target.value } })} />
-            <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-extensions-note">{harness === 'pi' ? 'Pi 填写具体源入口文件。' : 'OMP 填写源入口文件或原生 extension 目录。'}每行一个路径，按 Suite 文件或集中 roots 解析；直接从源码目录加载，不复制或链接，不表示已经运行。</p></details>
+            <p className="suites-guidance" id="suite-extensions-note">{harness === 'pi' ? 'Pi 填写具体源入口文件。' : 'OMP 填写源入口文件或原生 extension 目录。'}每行一个路径，按 Suite 文件或集中 roots 解析；直接从源码目录加载，不复制或链接，不表示已经运行。</p>
           </div>
           </section>
           <section className="suites-section" aria-label="可用 skill"><h3>可用 skill</h3>
@@ -332,7 +332,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
               </>}
             </div>
           </section>
-          {editing && <div className="suites-danger"><p>删除此工具集前需要确认；被引用的 Suite 仍受服务端保护。</p><button type="button" onClick={() => void remove()}>删除 Suite</button></div>}
+          {editing && <div className="suites-danger"><p className="suites-guidance">删除此工具集前需要确认；被引用的 Suite 仍受服务端保护。</p><button type="button" onClick={() => void remove()}>删除 Suite</button></div>}
         </fieldset>
       </form>}
     </div>

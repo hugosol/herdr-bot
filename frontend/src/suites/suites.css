@@ -78,7 +78,6 @@
 .suites-selection-heading h3 span { font-size: 13px; color: var(--suite-muted); margin-left: 8px; font-weight: 400; }
 .suites-help > summary { cursor: pointer; min-height: 44px; align-content: center; color: var(--suite-muted); font-size: 13px; }
 .suites-selection-heading .suites-help > summary { text-align: right; }
-.suites-form-help > summary { min-height: 44px; align-content: center; cursor: pointer; color: var(--suite-muted); }
 .suites-panel h2[tabindex="-1"]:focus { outline: none; }
 .suites-help p { margin: 0 0 12px; padding: 12px; background: var(--suite-ground); color: var(--suite-muted); }
 .suites-options { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; list-style: none; margin: 0; padding: 0; }
@@ -100,6 +99,8 @@
 .suites-skill-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .suites-skill-grid > :only-child { grid-column: 1 / -1; }
 .suites-guidance { margin: 0 0 20px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--suite-accent) 40%, var(--suite-surface)); border-left: 4px solid var(--suite-accent); border-radius: 0; background: color-mix(in srgb, var(--suite-accent) 10%, var(--suite-raised)); color: var(--suite-ink); font: 13px/1.75 SimSun, 'Songti SC', serif; overflow-wrap: anywhere; }
+.suites-editor :is(.zone-form__input, .suites-field-grid) + .suites-guidance { margin-top: 12px; }
+.suites-option-content .suites-guidance { margin: 8px 0 0; padding: 12px 14px; }
 .suites-guidance strong { font-weight: 700; }
 .suites-guidance p { margin: 6px 0 0; }
 .suites-editor .suites-skill-grid { row-gap: 8px; }
@@ -115,7 +116,7 @@
 .suites-empty { margin: 0; padding: 12px; color: var(--suite-muted); grid-column: 1 / -1; }
 .suites-dap-missing { width: 100%; margin: 0; }
 .suites-danger { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-top: 20px; border-top: 1px solid var(--suite-line); }
-.suites-danger p { color: var(--suite-muted); font-size: 12px; margin: 0; }
+.suites-danger .suites-guidance { flex: 1 1 240px; margin: 0; }
 .suites-danger button { color: var(--suite-negative); }
 .suites-resource-catalog { padding: 24px; background: var(--suite-surface); border-radius: 8px; }
 .suites-resource-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 12px; }

@@ -31,7 +31,6 @@ test('OMP selects and repairs DAP references while Pi saves without DAP', async 
   await expect(dap.getByText(description, { exact: true })).toBeHidden()
   await details.click()
   await expect(dap.getByText(description, { exact: true })).toBeVisible()
-  await dap.getByText('说明', { exact: true }).click()
   await expect(dap.getByText(/不表示已安装或通过调试验证/)).toBeVisible()
   await option.check()
   await dap.getByRole('button', { name: 'CodeLLDB 返回摘要', exact: true }).press('Enter')

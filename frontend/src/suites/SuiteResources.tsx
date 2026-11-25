@@ -25,7 +25,7 @@ function ResourceChoice({ option, selected, onChange }: {
       <span className="suites-selection-state">{selected ? '已选' : '未选'}</span>
       <button type="button" className="suites-detail-toggle" aria-label={`${option.name} ${detailed ? '返回摘要' : '详细'}`} aria-pressed={detailed} onClick={() => setDetailed(value => !value)}>{detailed ? '返回' : '详细'}</button>
     </div>
-    <div className="suites-option-content">{detailed ? <p>{option.description || '暂无用途说明。'}</p> : <code>{option.id}</code>}</div>
+    <div className="suites-option-content">{detailed ? <p className={onChange ? 'suites-guidance' : undefined}>{option.description || '暂无用途说明。'}</p> : <code>{option.id}</code>}</div>
   </li>
 }
 
@@ -35,7 +35,8 @@ export function ResourceChoices({ kind, options, selected, onChange }: {
 }) {
   const missing = selected.filter(id => !options.some(option => option.id === id))
   return <fieldset className="suites-resource-selection" aria-label={`集中 ${kind.toUpperCase()} 选择`}>
-    <div className="suites-selection-heading"><h3>{kind.toUpperCase()} <span>{selected.length} 已选</span></h3><ResourceHelp kind={kind} /></div>
+    <div className="suites-selection-heading"><h3>{kind.toUpperCase()} <span>{selected.length} 已选</span></h3>{!onChange && <ResourceHelp kind={kind} />}</div>
+    {onChange && <p className="suites-guidance">{explanations[kind]}</p>}
     <ul className="suites-options">
       {options.map(option => <ResourceChoice key={option.id} option={option} selected={selected.includes(option.id)} onChange={onChange} />)}
       {missing.map(id => <li className="suites-option suites-missing" key={id} data-selected="true">
