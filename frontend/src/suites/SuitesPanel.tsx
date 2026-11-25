@@ -53,8 +53,8 @@ function ompSkillSources(draft: Draft['omp'], previous: OmpSkillSource[]): OmpSk
 }
 const message = (error: unknown) => error instanceof Error ? error.message : '无法连接 Suite 服务，未确认保存。'
 
-function ResourcePaths({ paths }: { paths: string[] }) {
-  return paths.length ? <ul className="suites-path-list">{paths.map(path => <li key={path}><code>{path}</code></li>)}</ul> : <p className="scope-note">未选择</p>
+function ResourcePaths({ paths, emptyRow = false }: { paths: string[]; emptyRow?: boolean }) {
+  return paths.length || emptyRow ? <ul className="suites-path-list">{paths.length ? paths.map(path => <li key={path}><code>{path}</code></li>) : <li>无</li>}</ul> : <p className="scope-note">未选择</p>
 }
 
 type Scope = Harness | 'all'
@@ -245,9 +245,9 @@ export function SuitesPanel({ active }: { active: boolean }) {
         </section>
         <section className="suites-path-section" aria-label="可用 skill"><h3>可用 skill</h3>
           {selected.harness === 'omp' ? <div className="suites-skill-grid">
-            <section><h4>目录合集</h4><ResourcePaths paths={selected.skills.filter(source => source.kind === 'collection').map(source => source.path)} /></section>
-            <section><h4>单 skill</h4><ResourcePaths paths={selected.skills.filter(source => source.kind === 'skill').map(source => source.path)} /></section>
-          </div> : <section><h4>单 skill</h4><ResourcePaths paths={selected.skills} /></section>}
+            <section><h4>目录合集</h4><ResourcePaths emptyRow paths={selected.skills.filter(source => source.kind === 'collection').map(source => source.path)} /></section>
+            <section><h4>单 skill</h4><ResourcePaths emptyRow paths={selected.skills.filter(source => source.kind === 'skill').map(source => source.path)} /></section>
+          </div> : <section><h4>单 skill</h4><ResourcePaths emptyRow paths={selected.skills} /></section>}
         </section>
         <div className="suites-resource-grid">
           <ResourceChoices kind="mcp" options={data!.mcp} selected={selected.mcp} />
@@ -345,7 +345,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
               <span className="suites-extension-path">{extension.entrypoint}</span>
               <span className="suites-fixed-roles">适用：{extension.roles.map(role => ({ standalone: '普通独立Chat', manager: '管理者', node: 'workflow节点', chief: '需求分流者', 'chief-delegated': 'chief委派独立Chat' })[role]).join('、') || '无适用角色'}</span>
             </li>)}
-          </ul> : <p className="scope-note">此宿主暂无固定 extension。</p>}
+          </ul> : <p className="scope-note">此宿主暂无固定 extension。</p>}
         </section>)}
       </div>}
       </details>
