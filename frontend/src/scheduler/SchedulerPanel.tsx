@@ -221,7 +221,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
       {returnProblem && <p role="alert">{returnProblem}</p>}
       {bots.kind === 'loading' && <p>正在读取共享 Bot 目录……</p>}
       {bots.kind === 'error' && <p role="alert" data-testid="scheduler-bot-error">{bots.message}</p>}
-      {!botView && bots.kind === 'ready' && bots.bots.length === 0 && !bots.problems?.length && <p data-testid="scheduler-bot-empty">共享 Bot 目录没有 Bot JSON 文件。</p>}
+      {!botView && bots.kind === 'ready' && bots.bots.length === 0 && !bots.problems?.length && <p data-testid="scheduler-bot-empty">暂无 Bot，可前往 Bot 页面新增。</p>}
       {(Object.keys(botProblems).length > 0 || (bots.kind === 'ready' && !!bots.problems?.length)) && <section aria-label="Bot 问题" className="scheduler-problems">
         <h3>Bot 问题</h3><ul>
           {bots.kind === 'ready' && bots.problems?.map((problem, index) => <li key={`file-${index}`}>{problem.message}</li>)}
@@ -251,7 +251,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
           </div>
           {bots.kind === 'ready' && <>
             <div className="scheduler-bot-list-meta"><p className="scheduler-filter-count" role="status">显示 {visibleBots.length} / {bots.bots.length} 个 Bot</p>{(botFilter || botGroup !== 'all') && <button type="button" onClick={() => { setBotFilter(''); setBotGroup('all') }}>清除筛选</button>}</div>
-            {bots.bots.length === 0 && !bots.problems?.length && <p data-testid="scheduler-bot-empty">共享 Bot 目录没有 Bot JSON 文件。</p>}
+            {bots.bots.length === 0 && !bots.problems?.length && <p data-testid="scheduler-bot-empty">暂无 Bot，点击 new 新增。</p>}
             {bots.bots.length > 0 && visibleBots.length === 0 && <p>没有匹配的 Bot。清除筛选可查看全部。</p>}
             <EntityGroups items={visibleBots} groupOf={item => item.group} listClass="scheduler-map-list">{(item) => <li key={item.id}>
               <button type="button" disabled={editingBusy} aria-pressed={botId === item.id} aria-label={`${item.name} · ${item.id}`} onClick={event => { botListPosition.current = { top: window.scrollY, button: event.currentTarget }; openBot(item.id) }}><strong>{item.name}</strong><small title={item.id}>{item.id}</small></button>
@@ -322,7 +322,6 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
             <div className="scheduler-map-identity"><p className="scheduler-filename">{file}</p><EditableTitle key={file} value={map.title} label="Map 显示名称" heading="h3" className="scheduler-text" active={active && !botView && !draft} disabled={editingBusy || draft !== null} onSave={renameMap} /></div>
             {file && <div className="scheduler-map-association">{associatedBot(file)}</div>}
             <p className="scheduler-text scheduler-map-description">{map.description}</p>
-            <span className="scheduler-badge">静态定义</span>
           </header>
           <MapGraph map={map} selectedId={selectedId} onSelect={selectNode} botProblems={botProblems} />
           <div className="scheduler-reading">
@@ -337,7 +336,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
                   aria-label={`${node.title} ${id}`} aria-pressed={selectedId === id} onClick={() => selectNode(id)}>
                   <span className="scheduler-node-id">{id}</span><span className="scheduler-node-summary"><strong>{node.title}</strong>
                     <span>{node.blocked_by.length === 0 ? '无前置依赖' : `前置：${node.blocked_by.map((parent) => `${map.nodes[parent].title} · ${parent}`).join('、')}`}</span>
-                    <span>bot_id：{node.bot_id}</span>{botProblems[id] && <span className="scheduler-node-warning">{botProblems[id]}</span>}
+                    <span>Bot：{node.bot_id}</span>{botProblems[id] && <span className="scheduler-node-warning">{botProblems[id]}</span>}
                   </span><span aria-hidden="true">→</span>
                 </button>
               </li>})}</ul>
@@ -348,7 +347,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
               {draft?.kind === 'node' ? editor : selectedId !== null && Object.hasOwn(map.nodes, selectedId) ? <>
                 {!draft && <div className="scheduler-actions"><button type="button" disabled={editingBusy} onClick={() => void beginEdit(selectedId, 'node')}>修改 node</button><button type="button" disabled={editingBusy} onClick={() => void removeSelectedNode()}>删除 node</button></div>}
                 <MapNodeDetails key={`${file}:${selectedId}`} map={map} nodeId={selectedId} onSelect={selectRelatedNode} catalog={bots.kind === 'ready' ? bots : undefined} />
-              </> : <div className="scheduler-placeholder"><h4>选择一个节点</h4><p>查看本次输入、zone ID 引用、前置依赖与共享 Bot。</p></div>}
+              </> : <div className="scheduler-placeholder"><h4>选择一个节点</h4><p>查看输入、执行位置和前置依赖。</p></div>}
             </aside>
           </div>
         </section>}

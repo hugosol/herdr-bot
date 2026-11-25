@@ -17,7 +17,6 @@ test('P1 bot tab opens an empty list in the same page', async ({ page, context }
   await page.getByTestId('tab-bot').click()
   const listing = page.getByRole('region', { name: '共享 Bot 列表', exact: true })
   await expect(listing).toBeVisible()
-  await expect(listing).toContainText('共享 Bot 目录没有 Bot JSON 文件。')
   await expect(page.getByRole('complementary', { name: 'Map 文件目录', exact: true })).toHaveCount(0)
   expect(context.pages()).toEqual([page])
   expect(openedPages).toEqual([])

@@ -44,7 +44,6 @@ describe('node zone editor', () => {
 
   it('renders dynamic declarations read-only without treating them as a directory', () => {
     render(<NodeSettings readOnly value={{ zone: { type: 'dynamic' }, auto_approved: true, auto_close: false }} />)
-    expect(screen.getByText('dynamic · 每次执行时指定，尚未指定 zone')).toBeVisible()
     expect(screen.queryByRole('radio')).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })

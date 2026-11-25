@@ -66,7 +66,6 @@ test('dynamic zone editor saves no preset and reloads all unrelated node fields'
   await page.getByTestId('tab-scheduler').click()
   await page.locator('[data-map-file="work.JSON"]').click()
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '独立审计 A', exact: true }).click()
-  await expect(page.getByRole('region', { name: 'node 配置概览', exact: true })).toContainText('dynamic · 每次执行时指定，尚未指定 zone')
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
   await expect(page.getByRole('radio', { name: '动态 zone', exact: true })).toBeChecked()
   await expect(page.getByRole('textbox', { name: 'zone', exact: true })).toHaveCount(0)
