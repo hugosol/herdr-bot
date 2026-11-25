@@ -395,6 +395,18 @@
       "skill": "design-taste-frontend",
       "prompt": "请审查并重新设计当前项目的其中一个页面\n先运行项目并检查现有页面，保留业务功能、路由和交互\n沿用现有技术栈和品牌主色\n然后看交互和样式有什么优化的地方，需要同时考虑适配PC端和手机端",
       "suite": "taste-skill-omp"
+    },
+    {
+      "id": "task-18eb3964c01e901c-0",
+      "name": "impeccable优化界面",
+      "chatName": "{zone.name} · {task.name} · {chat.id}",
+      "agent": "omp",
+      "taskType": "normal",
+      "model": "gpt-6.1-sol",
+      "thinking": "medium",
+      "skill": null,
+      "prompt": "",
+      "suite": "impeccable-omp"
     }
   ]
 }

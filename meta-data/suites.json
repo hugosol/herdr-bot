@@ -1,6 +1,88 @@
 {
   "suites": [
     {
+      "harness": "omp",
+      "id": "impeccable-omp",
+      "name": "Impeccable · OMP",
+      "skills": [
+        {
+          "kind": "skill",
+          "path": "E:/Developer/myhub/UI-skills/impeccable/.omp/skills/impeccable"
+        }
+      ],
+      "extensions": [
+        "${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"
+      ],
+      "mcp": [
+        "codebase-memory-mcp"
+      ],
+      "lsp": {
+        "jdtls": {
+          "args": [],
+          "command": "jdtls",
+          "fileTypes": [
+            ".java"
+          ],
+          "rootMarkers": [
+            "pom.xml",
+            "build.gradle",
+            "build.gradle.kts",
+            "settings.gradle",
+            ".project"
+          ]
+        },
+        "pyright": {
+          "args": [
+            "--stdio"
+          ],
+          "command": "pyright-langserver",
+          "fileTypes": [
+            ".py",
+            ".pyi"
+          ],
+          "rootMarkers": [
+            "pyproject.toml",
+            "pyrightconfig.json",
+            "setup.py",
+            "setup.cfg",
+            "requirements.txt",
+            "Pipfile"
+          ]
+        },
+        "rust-analyzer": {
+          "args": [],
+          "command": "rust-analyzer",
+          "fileTypes": [
+            ".rs"
+          ],
+          "rootMarkers": [
+            "Cargo.toml",
+            "rust-analyzer.toml"
+          ]
+        },
+        "typescript-language-server": {
+          "args": [
+            "--stdio"
+          ],
+          "command": "typescript-language-server",
+          "fileTypes": [
+            ".ts",
+            ".tsx",
+            ".js",
+            ".jsx",
+            ".mjs",
+            ".cjs"
+          ],
+          "rootMarkers": [
+            "package.json",
+            "tsconfig.json",
+            "jsconfig.json"
+          ]
+        }
+      },
+      "dap": []
+    },
+    {
       "harness": "pi",
       "id": "web-access-pi",
       "name": "网页访问 · Pi",
