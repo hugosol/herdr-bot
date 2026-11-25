@@ -90,7 +90,7 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
   const settings = edit?.settings ?? { zone: node.zone ?? '', auto_approved: node.auto_approved ?? true, auto_close: node.auto_close ?? false, end_node: node.end_node ?? false }
   const endTask = managerLookup?.kind === 'ok' ? managerLookup.tasks.find(task => task.id === bot?.task_id) : undefined
   const endNodeProblem = !edit ? undefined
-    : !bot || botProblem || bot.script != null || bot.map_file != null || !endTask || endTask.taskType !== 'normal' ? '结束节点需选择绑定普通 Task 的 Bot'
+    : !bot || botProblem || bot.script != null || bot.map_file != null || !endTask || endTask.taskType !== 'normal' ? '结束节点需要已核实的普通 normal Task Bot'
       : dependents.length ? '当前节点有后继，不能设为结束节点'
         : Object.entries(map.nodes).some(([key, value]) => key !== nodeId && value.end_node) ? 'Map 已有其他结束节点' : undefined
 
@@ -131,10 +131,10 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
         {managerLookup?.kind === 'ok' && <GroupOptions items={managerLookup.tasks.filter(task => task.taskType === 'manager')} groupOf={task => task.group}>{task => <option key={task.id} value={task.id}>{task.name} · {task.id}</option>}</GroupOptions>}
       </select> : <p className="scheduler-identifier">{typeof definition?.manager_task_id === 'string' ? definition.manager_task_id : '未指定 manager Task'}</p>}
       {edit && managerLookup && managerLookup.kind !== 'ok' && <p role="status">manager Task 列表读取失败；当前配置未改变。</p>}
-      <p className="scheduler-help">为此节点选择子流程的管理者。</p>
+      <p className="scheduler-help">manager_task_id 属于本次调用节点，不保存到 Bot；仅 manager 类型 Task 可管理子 Run。</p>
     </section>}
     <div className="scheduler-node-relations">
-      <section aria-label="blocked_by"><h4><span aria-hidden="true">→ </span>前置依赖</h4>
+      <section aria-label="blocked_by"><h4><span aria-hidden="true">→ </span>前置依赖 <small>blocked_by</small></h4>
         {relatedNodes(prerequisites, '前置')}
         {edit && !showJson && <details className="scheduler-dependency-picker"><summary>选择前置节点</summary>
           <fieldset disabled={edit.disabled} aria-label="前置依赖（blocked_by）">
@@ -142,16 +142,16 @@ export function MapNodeDetails({ map, nodeId, catalog, onSelect, edit }: {
           </fieldset>
         </details>}
       </section>
-      <section aria-label="依赖此节点"><h4><span aria-hidden="true">→ </span>依赖此节点</h4>{relatedNodes(dependents, '后继')}</section>
+      <section aria-label="依赖此节点"><h4><span aria-hidden="true">→ </span>依赖此节点 <small>后继节点</small></h4>{relatedNodes(dependents, '后继')}</section>
     </div>
     <div className="scheduler-node-reference">
       {edit && <div className="scheduler-content-mode"><span>参考内容</span><button type="button" disabled={edit.disabled || (showJson && definition === null)} onClick={() => setJsonMode(!showJson)} aria-controls={`${id}-reference`}>{showJson ? '表单编辑' : 'JSON 编辑'}</button></div>}
       <div id={`${id}-reference`}>
         {showJson && edit ? <div className="scheduler-node-content-json"><label htmlFor={`${id}-json`}>node 内容 JSON</label>
           <textarea id={`${id}-json`} value={edit.content} disabled={edit.disabled} rows={18} spellCheck={false} aria-invalid={error !== null} aria-describedby={`${id}-json-help${error ? ` ${id}-json-error` : ''}`} onChange={event => { setJsonMode(true); edit.onContentChange(event.target.value) }} />
-          <p id={`${id}-json-help`} className="scheduler-field-help">在此编辑文件输入、输出规则等字段。JSON 格式正确后可切回表单。</p>
+          <p id={`${id}-json-help`} className="scheduler-field-help">可编辑 input_rule、output_rule 及其他内容字段。无效 JSON 不会被自动修复或覆盖；有效对象可切换回表单。</p>
           {error && <p id={`${id}-json-error`} className="scheduler-node-content-error" role="status">{error}</p>}
-        </div> : <section aria-label="input"><h4>输入内容</h4>
+        </div> : <section aria-label="input"><h4>输入内容 · input</h4>
           {edit ? <textarea id={`${id}-input`} aria-label="输入内容" value={input} disabled={edit.disabled} rows={6} onChange={event => changeField('input', event.target.value)} /> : <>{input === '' && <p>未填写输入内容。</p>}<pre className="scheduler-text scheduler-prose" data-testid="node-input">{input}</pre></>}
         </section>}
         <TaskPrompt bot={bot} botProblem={botProblem} />

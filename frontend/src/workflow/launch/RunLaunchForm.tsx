@@ -104,7 +104,7 @@ export function RunLaunchForm({ file, declarations = [], requirements = '', acti
   const workspaceName = zones.find(zone => zone.id === input.zone)?.path.replace(/[\\/]+$/, '').split(/[\\/]/).at(-1) ?? ''
   return <form className="scheduler-run-form" aria-label="发起 Run" onSubmit={event => { event.preventDefault(); void check() }}>
     <h3>发起 Run · {file}</h3>
-    <p>校验仅检查配置；启动 Run 才会发起管理者 Chat。</p>
+    <p>选择管理者配置并检查整张 Map。校验不创建 Run 或 Chat；启动 Run 会再次预检，保存本次要求并启动真实管理者，取得标识后进入只读详情。</p>
     <label>管理者 Task<select aria-label="管理者 Task" value={input.managerTaskId} disabled={loading || busy} onChange={event => change({ managerTaskId: event.target.value })}>
       <option value="">请选择管理者 Task</option>
       <GroupOptions items={tasks} groupOf={task => task.group}>{task => <option key={task.id} value={task.id}>{task.name}</option>}</GroupOptions>
@@ -116,7 +116,7 @@ export function RunLaunchForm({ file, declarations = [], requirements = '', acti
     </select></label>
     {!loading && zones.length === 0 && <p>尚未登记 zone。<button type="button" onClick={onZones}>管理 zone 登记</button></p>}
     <label>Workspace<input value={workspaceName} readOnly /></label>
-    <p>管理者 Chat 将在此 Workspace 中打开，名称取自所选 zone 的目录名。</p>
+    <p>Workspace 从管理者 zone 目录名推导；不选择当前或默认 Workspace。实际目标可用性在启动时确认。</p>
     {input.githubExploration ? <>
       <div className="scheduler-github-fields">
         <label>GitHub 仓库链接<input id="run-file-input-github_url" value={input.githubExploration.githubUrl} disabled={busy} onChange={event => change({ githubExploration: { ...input.githubExploration!, githubUrl: event.target.value } })} placeholder="例如 https://github.com/owner/repo" /></label>
@@ -124,9 +124,10 @@ export function RunLaunchForm({ file, declarations = [], requirements = '', acti
         <label>探索方向<textarea rows={2} value={input.githubExploration.explorationDirection} disabled={busy} onChange={event => change({ githubExploration: { ...input.githubExploration!, explorationDirection: event.target.value } })} placeholder="用一句话说明想了解什么，例如：梳理 CLI 入口" /></label>
       </div>
       <p>链接和父目录请一起填写，或一起留空。探索方向可单独填写。留空项可在管理者 Chat 补充。</p>
-    </> : <label>本次要求<textarea value={input.userInput} disabled={busy} onChange={event => change({ userInput: event.target.value })} placeholder="例如：本次要完成的目标、范围和注意事项（可选）" /></label>}
+    </> : <label>本次要求<textarea value={input.userInput} disabled={busy} onChange={event => change({ userInput: event.target.value })} placeholder="可空，支持 Markdown；不改写 node 输入或 Task 固定指示。" /></label>}
     {requirements.trim() && <MapInputRequirements content={requirements} />}
-    {!input.githubExploration && declarations.length > 0 && <fieldset disabled={busy} aria-label="Run 文件输入绑定"><legend>本次文件输入</legend>
+    {!input.githubExploration && <fieldset disabled={busy} aria-label="Run 文件输入绑定"><legend>本次文件输入</legend>
+      {declarations.length === 0 && <p>此 Map 无文件输入声明，无需绑定文件。</p>}
       {declarations.map(declaration => <label key={declaration.id}>{declaration.description?.trim() || `文件输入 ${declaration.id}`}（{declaration.required ? '必需' : '可选'}）<input
         id={`run-file-input-${declaration.id}`} value={input.fileInputs?.find(binding => binding.id === declaration.id)?.path ?? ''}
         onChange={event => change({ fileInputs: [
@@ -139,7 +140,7 @@ export function RunLaunchForm({ file, declarations = [], requirements = '', acti
     {result?.kind === 'rejected' && <div role="alert"><p>{result.message}</p><ul>{result.issues.map((issue, index) => <li key={index}>
       <p>{issue.nodeId && `node ${issue.nodeId}：`}{issue.message}</p><div className="scheduler-actions">{correction(issue)}</div>
     </li>)}</ul></div>}
-    {result?.kind === 'valid' && <p role="status">配置校验通过，Workspace：{result.workspaceName}。尚未启动。</p>}
+    {result?.kind === 'valid' && <p role="status">配置校验通过，Workspace：{result.workspaceName}。尚未启动，未创建 Run 或 Chat。</p>}
     <div className="scheduler-actions">
       <button type="button" disabled={loading || busy} onClick={() => void launch()}>启动 Run</button>
       <button type="submit" disabled={loading || busy}>{busy ? '正在处理……' : '校验启动配置'}</button>

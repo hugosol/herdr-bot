@@ -88,19 +88,11 @@
 .scheduler-workspace .scheduler-status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .scheduler-workspace .scheduler-status-setting { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .scheduler-workspace .scheduler-setting-label { color: var(--nier-detail-label); font-size: 13px; }
-.scheduler-workspace .scheduler-state-mark { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 10px; border-radius: 0; background: var(--scheduler-raised); font-size: 14px; }
+.scheduler-workspace .scheduler-state-mark { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 10px; border-radius: 0; background: var(--scheduler-line); font-size: 14px; }
 .scheduler-workspace .scheduler-state-mark small { font: 12px/1.5 var(--nier-code-font); font-weight: 400; }
 .scheduler-workspace [data-policy="auto"] .scheduler-state-mark,
-.scheduler-workspace [data-auto-close="true"] .scheduler-state-mark { background: var(--scheduler-raised); color: var(--scheduler-ink); }
-.scheduler-workspace [data-policy="manual"] .scheduler-state-mark,
-.scheduler-workspace [data-auto-close="false"] .scheduler-state-mark,
-.scheduler-workspace [data-end-node="true"] .scheduler-state-mark,
-.scheduler-workspace [data-dynamic-zone="true"] .scheduler-state-mark { background: var(--nier-info-bg); color: var(--nier-info); }
-.scheduler-workspace .scheduler-status-setting > .scheduler-setting-choice,
-.scheduler-workspace .scheduler-status-setting .scheduler-policy-options .scheduler-setting-choice { padding: 6px 10px; background: var(--scheduler-raised); color: var(--scheduler-ink); }
-.scheduler-workspace [data-end-node="true"] > .scheduler-setting-choice,
-.scheduler-workspace [data-policy="manual"] .scheduler-setting-choice:has(input:checked),
-.scheduler-workspace [data-dynamic-zone="true"] .scheduler-setting-choice:has(input:checked) { background: var(--nier-info-bg); color: var(--nier-info); }
+.scheduler-workspace [data-auto-close="true"] .scheduler-state-mark { background: var(--nier-warning-bg); color: var(--scheduler-warning); }
+.scheduler-workspace [data-policy="manual"] .scheduler-state-mark { background: var(--nier-info-bg); color: var(--nier-info); }
 .scheduler-workspace .scheduler-zone-setting { grid-column: 1 / -1; }
 .scheduler-workspace .scheduler-node-relations { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .scheduler-workspace .scheduler-node-relations > section { min-width: 0; }

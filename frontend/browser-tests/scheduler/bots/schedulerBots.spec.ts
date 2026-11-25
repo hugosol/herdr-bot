@@ -231,7 +231,7 @@ test('P7 shared bot default creates empty parents and preserves existing definit
   expect(fs.existsSync(directory)).toBe(false)
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
-  await expect(page.getByTestId('scheduler-bot-empty')).toBeVisible()
+  await expect(page.getByTestId('scheduler-bot-empty')).toHaveText('共享 Bot 目录没有 Bot JSON 文件。')
   expect(fs.readdirSync(directory)).toEqual([])
   const first = await page.request.get(`${server.baseURL}/api/scheduler/bots`)
   expect(first.status()).toBe(200)
