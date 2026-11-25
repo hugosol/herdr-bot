@@ -411,6 +411,7 @@ Task 编辑第二步提供 **Suite（至多一个）** 单选，只提供当前 
 | `codebase-exploration-pi` | Pi | 逐技能探索、扩展、集中 MCP，codemode 为 on |
 | `code-implementation-omp` | OMP | 实现技能集合、扩展、四语言 LSP 与集中 MCP |
 | `web-access-pi` | Pi | 独立网页访问扩展，codemode 为 on |
+| `scrapling-pi` | Pi | 官方 Scrapling MCP，codemode 为 on |
 | `pstack-omp` | OMP | pstack 生成技能集合、持续模式入口及 persona 生成目录 |
 | `pi-codemode-pi` | Pi | codemode only |
 
@@ -419,6 +420,37 @@ OMP 集合新增有效直接子技能会参与后续发现，不承诺固定技�
 `pstack-omp` 不叠加探索／实现 Suite，也不替代 Task 固定扩展或项目指令。将 `[roots].toolkit` 指向含 `pstack-suite` 交付资源的 toolkit，Task 选择该 Suite 后发起 Chat。更新生成资源前先结束使用同一包的 pstack 会话，按 toolkit 的 `pstack-suite/README.md` 操作；发起不负责生成或更新资源。
 
 `web-access-pi` 与 `codebase-exploration-pi` 的 `extensions` 均直接声明 `${roots.pi_extensions}/pi-web-access/index.ts`，能力不是某个 Suite 专属的开关，不从包 manifest 推导入口。依赖须事先准备，启动不执行 npm 安装或更新。网页访问 Suite 的技能、模板、集中 MCP 选择为空，仍保留 Task 固定扩展与原生 MCP 合并行为，不改变 Task 模型、思考级别或初始提示词。`pi-web-access` 源码包 `0.41.0` 的工具指引和内部模型提示由扩展提供；注册不证明工具全部 active、搜索服务或凭据可用。源码入口与发布包 `./dist` 不可直接互换。
+
+### Scrapling MCP 安装与更新
+
+`scrapling-pi` 只选择集中 `scrapling` MCP，使用 `codemode: "on"`，不附加可选技能、扩展或模板。它不会修改现有 Task 的 Suite 选择。
+
+通过 uv 安装官方 PyPI 包并准备浏览器依赖：
+
+```powershell
+uv tool install "scrapling[ai]"
+scrapling install
+```
+
+集中定义使用 `command: "scrapling-mcp"`，不依赖源码目录、根路径配置或 exe 绝对路径。运行 herdr-bot 与 Pi 的进程必须能通过 PATH 找到 uv 的工具入口目录；可用 `uv tool dir --bin` 查看。安装不代表已有服务进程已获得更新后的 PATH。
+
+更新前结束使用 Scrapling 的 Chat，再执行：
+
+```powershell
+uv tool upgrade scrapling
+scrapling install --force
+```
+
+Scrapling 0.5.1 的安装器下载 Playwright Chromium，但浏览器 MCP 工具使用 Patchright；两者版本不一致时还需安装 Patchright 对应的 Chromium。首次安装和升级后，在 Windows 上执行：
+
+```powershell
+$ScraplingPython = Join-Path (uv tool dir) 'scrapling/Scripts/python.exe'
+& $ScraplingPython -m patchright install chromium
+```
+
+此命令从 uv 查询环境位置，不把本机绝对路径写入 MCP 定义。
+
+重新发起选择该 Suite 的 Task。uv 管理包环境，浏览器使用安装器的默认存储位置；启动 Chat 不自动安装或升级。官方说明见 [Scrapling MCP](https://scrapling.readthedocs.io/en/latest/ai/mcp-server.html)。
 
 ### 从多宿主 Suite 一次性切换
 

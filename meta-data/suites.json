@@ -1,6 +1,16 @@
 {
   "suites": [
     {
+      "harness": "pi",
+      "id": "scrapling-pi",
+      "name": "Scrapling · Pi",
+      "skills": [],
+      "extensions": [],
+      "mcp": ["scrapling"],
+      "prompts": [],
+      "codemode": "on"
+    },
+    {
       "harness": "omp",
       "id": "impeccable-omp",
       "name": "Impeccable · OMP",
