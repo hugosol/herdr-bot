@@ -419,6 +419,18 @@
       "skill": null,
       "prompt": "",
       "suite": "scrapling-pi"
+    },
+    {
+      "id": "task-18eb4e193a411cd4-1",
+      "name": "taste-skill-grilling",
+      "chatName": "{zone.name} · {task.name} · {chat.id}",
+      "agent": "omp",
+      "taskType": "normal",
+      "model": "gpt-6-astra",
+      "thinking": "medium",
+      "skill": "design-taste-frontend",
+      "prompt": "请审查并重新设计当前项目的其中一个页面\n先运行项目并检查现有页面，保留业务功能、路由和交互\n沿用现有技术栈和品牌主色\n然后看交互和样式有什么优化的地方，需要同时考虑适配PC端和手机端\n开始修改代码前，请先调用skill: grill-with-docs 与用户对齐信息",
+      "suite": "taste-skill-omp"
     }
   ]
 }
