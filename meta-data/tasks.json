@@ -407,6 +407,18 @@
       "skill": null,
       "prompt": "",
       "suite": "impeccable-omp"
+    },
+    {
+      "id": "task-18eb44dbf50ba51c-0",
+      "name": "Scrapling",
+      "chatName": "{zone.name} · {task.name} · {chat.id}",
+      "agent": "pi",
+      "taskType": "normal",
+      "model": "gpt-6.1-sol",
+      "thinking": "medium",
+      "skill": null,
+      "prompt": "",
+      "suite": "scrapling-pi"
     }
   ]
 }

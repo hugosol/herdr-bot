@@ -5,8 +5,12 @@
       "id": "scrapling-pi",
       "name": "Scrapling · Pi",
       "skills": [],
-      "extensions": [],
-      "mcp": ["scrapling"],
+      "extensions": [
+        "${roots.pi_extensions}/pi-web-access/index.ts"
+      ],
+      "mcp": [
+        "scrapling"
+      ],
       "prompts": [],
       "codemode": "on"
     },
