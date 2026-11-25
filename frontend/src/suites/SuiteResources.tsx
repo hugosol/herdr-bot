@@ -12,6 +12,23 @@ export function ResourceHelp({ kind }: { kind: ResourceKind }) {
   return <details className="suites-help"><summary aria-label={`${kind.toUpperCase()} 说明`}>说明</summary><p>{explanations[kind]}</p></details>
 }
 
+function ResourceChoice({ option, selected, onChange }: {
+  option: ResourceOption; selected: boolean; onChange?: (id: string, checked: boolean) => void
+}) {
+  const [detailed, setDetailed] = useState(false)
+  return <li className="suites-option" data-selected={selected} data-detail={detailed}>
+    <div className="suites-option-heading">
+      {onChange ? <label className="suites-choice">
+        <input type="checkbox" checked={selected} onChange={event => onChange(option.id, event.target.checked)} />
+        <span>{option.name}</span>
+      </label> : <span className="suites-choice suites-choice-readonly">{option.name}</span>}
+      <span className="suites-selection-state">{selected ? '已选' : '未选'}</span>
+      <button type="button" className="suites-detail-toggle" aria-label={`${option.name} ${detailed ? '返回摘要' : '详细'}`} aria-pressed={detailed} onClick={() => setDetailed(value => !value)}>{detailed ? '返回' : '详细'}</button>
+    </div>
+    <div className="suites-option-content">{detailed ? <p>{option.description || '暂无用途说明。'}</p> : <code>{option.id}</code>}</div>
+  </li>
+}
+
 export function ResourceChoices({ kind, options, selected, onChange }: {
   kind: ResourceKind; options: ResourceOption[]; selected: string[]
   onChange?: (id: string, checked: boolean) => void
@@ -19,22 +36,14 @@ export function ResourceChoices({ kind, options, selected, onChange }: {
   const missing = selected.filter(id => !options.some(option => option.id === id))
   return <fieldset className="suites-resource-selection" aria-label={`集中 ${kind.toUpperCase()} 选择`}>
     <div className="suites-selection-heading"><h3>{kind.toUpperCase()} <span>{selected.length} 已选</span></h3><ResourceHelp kind={kind} /></div>
-    <div className="suites-options">
-      {options.map(option => <div className="suites-option" key={option.id} data-selected={selected.includes(option.id)}>
-        {onChange ? <label className="suites-choice">
-          <input type="checkbox" checked={selected.includes(option.id)} onChange={event => onChange(option.id, event.target.checked)} />
-          <span>{option.name}</span>
-        </label> : <div className="suites-choice suites-choice-readonly"><span>{option.name}</span><span className="suites-selection-state">{selected.includes(option.id) ? '已选' : '未选'}</span></div>}
-        <details className="suites-option-detail"><summary aria-label={`${option.name} 详情`}>详情</summary>
-          <div><p>{option.description || '暂无用途说明。'}</p><code>{option.id}</code></div>
-        </details>
-      </div>)}
-      {missing.map(id => <div className="suites-option suites-missing" key={id}>
+    <ul className="suites-options">
+      {options.map(option => <ResourceChoice key={option.id} option={option} selected={selected.includes(option.id)} onChange={onChange} />)}
+      {missing.map(id => <li className="suites-option suites-missing" key={id} data-selected="true">
         {onChange ? <label className="suites-choice"><input type="checkbox" checked onChange={() => onChange(id, false)} /><span>{id}（失效）</span></label>
           : <p>{id}（失效：配置不存在）</p>}
-      </div>)}
-      {options.length === 0 && missing.length === 0 && <p className="suites-empty">暂无 {kind.toUpperCase()} 配置。</p>}
-    </div>
+      </li>)}
+      {options.length === 0 && missing.length === 0 && <li className="suites-empty">暂无 {kind.toUpperCase()} 配置。</li>}
+    </ul>
   </fieldset>
 }
 
@@ -80,7 +89,7 @@ export function ResourceCatalog({ data, onSaved, guard }: {
     finally { setBusy(false) }
   }
 
-  return <section className="suites-resource-catalog" aria-label="组件配置">
+  return <section className="suites-resource-catalog" aria-label="配置">
     <div className="suites-filters" role="group" aria-label="配置类别">
       {resourceKinds.map(value => <button type="button" key={value} aria-pressed={kind === value} disabled={busy} onClick={() => {
         if (kind === value || guard.current?.() === false) return
@@ -112,7 +121,7 @@ export function ResourceCatalog({ data, onSaved, guard }: {
               setRaw(original.current); setEditing(option); setError(''); setNotice('')
               requestAnimationFrame(() => editor.current?.focus())
             }}>Edit</button></div>
-          <details className="suites-definition-detail"><summary aria-label={`${option.name} 详情`}>用途说明</summary><p>{option.description || '暂无用途说明。'}</p></details>
+          <p className="suites-definition-description">{option.description || '暂无用途说明。'}</p>
         </article>)}
         {data[kind].length === 0 && <p className="suites-empty">暂无 {kind.toUpperCase()} 配置。</p>}
       </div>

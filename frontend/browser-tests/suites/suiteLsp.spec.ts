@@ -30,7 +30,7 @@ test('P38 distinguishes an LSP declaration from a running native language servic
   await expect(overview.getByRole('checkbox')).toHaveCount(0)
   await expect(overview.getByText('rust-analyzer', { exact: true }).first()).toBeVisible()
   await expect(description).toBeHidden()
-  await overview.getByLabel('rust-analyzer 详情', { exact: true }).click()
+  await overview.getByLabel('rust-analyzer 详细', { exact: true }).click()
   await expect(description).toBeVisible()
   await overview.getByLabel('LSP 说明', { exact: true }).click()
   await expect(overview.getByText(/保留默认、用户和项目配置的原生优先级.*不是语言服务白名单.*不会自动安装/)).toBeVisible()

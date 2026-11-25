@@ -53,6 +53,10 @@ function ompSkillSources(draft: Draft['omp'], previous: OmpSkillSource[]): OmpSk
 }
 const message = (error: unknown) => error instanceof Error ? error.message : '无法连接 Suite 服务，未确认保存。'
 
+function ResourcePaths({ paths }: { paths: string[] }) {
+  return paths.length ? <ul className="suites-path-list">{paths.map(path => <li key={path}><code>{path}</code></li>)}</ul> : <p className="scope-note">未选择</p>
+}
+
 type Scope = Harness | 'all'
 const hosts = ['omp', 'pi'] as const
 
@@ -74,7 +78,7 @@ function SuiteCatalog({ data, scope, setScope, editing, busy, error, open }: {
           {suites.length === 0 ? <p>尚未定义 Suite</p> : suites.map(suite => <button className="suites-row" key={suite.id} type="button" disabled={busy}
             aria-label={`${suite.name} · ${suite.id}`} aria-pressed={editing === suite.id} onClick={() => open(suite)}>
             <span className="suites-row-identity"><span className="suites-list-name">{suite.name}</span><span className="suites-list-id">{suite.id}</span></span>
-            <span className="suites-list-meta">{suite.skills.length} 技能来源 · {suite.mcp.length} MCP</span>
+            <span className="suites-list-meta">{suite.skills.length} skill 来源 · {suite.mcp.length} MCP</span>
           </button>)}
         </section>
       })}
@@ -213,7 +217,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
 
   return <section className="suites-panel" aria-label="Suite 管理" data-detail={draft !== null || selected !== undefined}>
     <header className="suites-toolbar suites-page-header">
-      <div><h1>Suite</h1><p className="suites-subtitle">按宿主组合技能与工具。</p></div>
+      <div><h1>Suite</h1><p className="suites-subtitle">按宿主组合 skill 与工具。</p></div>
       <button ref={createButton} className={draft || selected || view === 'resources' ? undefined : "suites-primary"} type="button" disabled={busy} onClick={() => open()}>创建 Suite</button>
       <button type="button" disabled={busy} onClick={() => void reload()}>重新读取 Suite</button>
     </header>
@@ -221,9 +225,9 @@ export function SuitesPanel({ active }: { active: boolean }) {
     {notice && <p role="status">{notice}</p>}
     <div className="suites-view-switch" role="group" aria-label="Suite 内容">
       <button type="button" aria-pressed={view === 'suites'} onClick={() => { if (view !== 'suites' && canLeave()) { setView('suites'); setError(''); setNotice('') } }}>工具集</button>
-      <button type="button" aria-pressed={view === 'resources'} onClick={() => { if (view !== 'resources' && canLeave()) { setDraft(null); setView('resources'); setError(''); setNotice('') } }}>组件配置</button>
+      <button type="button" aria-pressed={view === 'resources'} onClick={() => { if (view !== 'resources' && canLeave()) { setDraft(null); setView('resources'); setError(''); setNotice('') } }}>配置</button>
     </div>
-    {view === 'resources' ? data ? <ResourceCatalog key={resourceRevision} data={data} onSaved={setData} guard={resourceGuard} /> : <p>正在读取组件配置…</p> : <>
+    {view === 'resources' ? data ? <ResourceCatalog key={resourceRevision} data={data} onSaved={setData} guard={resourceGuard} /> : <p>正在读取配置…</p> : <>
     <div className="suites-layout">
       <SuiteCatalog data={data} scope={scope} setScope={setScope} editing={editing} busy={busy} error={error} open={open} />
       {selected && !draft && <section className="suites-overview" aria-label="Suite 概览">
@@ -233,9 +237,18 @@ export function SuitesPanel({ active }: { active: boolean }) {
           <button type="button" onClick={closeEditor}>返回 Suite 列表</button>
         </header>
         <div className="suites-overview-facts">
-          <span>{harnessLabels[selected.harness]} 宿主</span><span>{selected.skills.length} 技能来源</span><span>{selected.extensions.length} 扩展</span>
+          <span>{harnessLabels[selected.harness]} 宿主</span><span>{selected.skills.length} skill 来源</span><span>{selected.extensions.length} extension</span>
           {selected.harness === 'pi' && <span>Codemode {selected.codemode}</span>}
         </div>
+        <section className="suites-path-section" aria-label="extension"><h3>extension</h3>
+          <ResourcePaths paths={selected.extensions} />
+        </section>
+        <section className="suites-path-section" aria-label="可用 skill"><h3>可用 skill</h3>
+          {selected.harness === 'omp' ? <div className="suites-skill-grid">
+            <section><h4>目录合集</h4><ResourcePaths paths={selected.skills.filter(source => source.kind === 'collection').map(source => source.path)} /></section>
+            <section><h4>单 skill</h4><ResourcePaths paths={selected.skills.filter(source => source.kind === 'skill').map(source => source.path)} /></section>
+          </div> : <section><h4>单 skill</h4><ResourcePaths paths={selected.skills} /></section>}
+        </section>
         <div className="suites-resource-grid">
           <ResourceChoices kind="mcp" options={data!.mcp} selected={selected.mcp} />
           {selected.harness === 'omp' && <>
@@ -243,12 +256,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
             <ResourceChoices kind="dap" options={data!.dap} selected={selected.dap} />
           </>}
         </div>
-        <details className="suites-path-summary"><summary>技能与扩展路径</summary>
-          <dl><dt>技能来源</dt><dd>{selected.skills.length ? <ul>{selected.skills.map((source, index) => <li key={index}>{typeof source === 'string' ? source : `${source.kind === 'collection' ? '集合' : '单技能'} · ${source.path}`}</li>)}</ul> : '未选择'}</dd>
-            <dt>扩展</dt><dd>{selected.extensions.length ? <ul>{selected.extensions.map(path => <li key={path}>{path}</li>)}</ul> : '未选择'}</dd>
-            {selected.harness === 'pi' && <><dt>Prompt templates</dt><dd>{selected.prompts.length ? <ul>{selected.prompts.map(path => <li key={path}>{path}</li>)}</ul> : '未选择'}</dd></>}
-          </dl>
-        </details>
+        {selected.harness === 'pi' && <section className="suites-path-section" aria-label="Prompt templates"><h3>Prompt templates</h3><ResourcePaths paths={selected.prompts} /></section>}
       </section>}
       {draft && <form className="suites-editor" onSubmit={event => void save(event)} aria-label="Suite 编辑">
         <fieldset disabled={busy}>
@@ -278,36 +286,38 @@ export function SuitesPanel({ active }: { active: boolean }) {
             <details className="suites-form-help"><summary>说明</summary><p className="scope-note">关闭 only 表示明确的 on，不禁用，也不继承全局模式。</p></details>
           </fieldset>}
           </section>
-          <section className="suites-section" aria-label="资源路径"><h3>资源路径</h3>
-          <div className="suites-field-grid">
+          <section className="suites-section" aria-label="extension"><h3>extension</h3>
+          <div className="suites-extensions suites-resource-block">
+            <label htmlFor="suite-extensions">{harnessLabels[harness]} extension（每行一个具体路径）</label>
+            <textarea id="suite-extensions" className="zone-form__input" rows={3} aria-describedby="suite-extensions-note" value={draft[harness].extensions} onChange={event => setDraft({ ...draft, [harness]: { ...draft[harness], extensions: event.target.value } })} />
+            <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-extensions-note">{harness === 'pi' ? 'Pi 填写具体源入口文件。' : 'OMP 填写源入口文件或原生 extension 目录。'}每行一个路径，按 Suite 文件或集中 roots 解析；直接从源码目录加载，不复制或链接，不表示已经运行。</p></details>
+          </div>
+          </section>
+          <section className="suites-section" aria-label="可用 skill"><h3>可用 skill</h3>
+          <div className="suites-skill-grid">
           {harness === 'omp' ? <>
             <div className="suites-resource-block">
-              <label htmlFor="suite-omp-collections">OMP 技能集合目录（每行一个路径）</label>
+              <label htmlFor="suite-omp-collections">OMP 目录合集（每行一个路径）</label>
               <textarea id="suite-omp-collections" className="zone-form__input" rows={3} aria-describedby="suite-omp-collections-note suite-omp-skills-note" value={draft.omp.skillCollections} onChange={event => setDraft({ ...draft, omp: { ...draft.omp, skillCollections: event.target.value } })} />
-              <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-omp-collections-note">每次启动选中直接子目录中含 SKILL.md 的技能，不递归，也不加载集合目录自身。增删集合成员无需编辑 Suite。</p></details>
+              <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-omp-collections-note">每次启动选中直接子目录中含 SKILL.md 的 skill，不递归，也不加载集合目录自身。增删集合成员无需编辑 Suite。</p></details>
             </div>
             <div className="suites-resource-block">
-              <label htmlFor="suite-omp-skills">OMP 单技能目录（每行一个路径）</label>
+              <label htmlFor="suite-omp-skills">OMP 单 skill（每行一个路径）</label>
               <textarea id="suite-omp-skills" className="zone-form__input" rows={3} aria-describedby="suite-omp-single-note suite-omp-skills-note" value={draft.omp.skills} onChange={event => setDraft({ ...draft, omp: { ...draft.omp, skills: event.target.value } })} />
-              <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-omp-single-note">填写直接含 SKILL.md 的目录。不会自动选中同级目录中的技能。</p></details>
+              <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-omp-single-note">填写直接含 SKILL.md 的目录。不会自动选中同级目录中的 skill。</p></details>
             </div>
           </> : <div className="suites-resource-block">
-            <label htmlFor="suite-skills">Pi 单技能目录（每行一个路径）</label>
+            <label htmlFor="suite-skills">Pi 单 skill（每行一个路径）</label>
             <textarea id="suite-skills" className="zone-form__input" rows={3} aria-describedby="suite-skills-note" value={draft.pi.skills} onChange={event => setDraft({ ...draft, pi: { ...draft.pi, skills: event.target.value } })} />
-            <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-skills-note">每行填写一个直接含 SKILL.md 的单技能根目录，不填写技能集合父目录。仅加载指定技能；留空表示不加载技能。路径按 Suite 文件或集中 roots 解析，直接加载真实目录，不复制或创建链接。路径缺失或不可读会报错，不回退到默认来源；不同目录的技能同名会列出路径并报错。</p></details>
+            <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-skills-note">每行填写一个直接含 SKILL.md 的单 skill 根目录，不填写 skill 集合父目录。仅加载指定 skill；留空表示不加载 skill。路径按 Suite 文件或集中 roots 解析，直接加载真实目录，不复制或创建链接。路径缺失或不可读会报错，不回退到默认来源；不同目录的 skill 同名会列出路径并报错。</p></details>
           </div>}
-          <div className="suites-extensions suites-resource-block">
-            <label htmlFor="suite-extensions">{harnessLabels[harness]} Extensions（每行一个具体路径）</label>
-            <textarea id="suite-extensions" className="zone-form__input" rows={3} aria-describedby="suite-extensions-note" value={draft[harness].extensions} onChange={event => setDraft({ ...draft, [harness]: { ...draft[harness], extensions: event.target.value } })} />
-            <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-extensions-note">{harness === 'pi' ? 'Pi 填写具体源入口文件。' : 'OMP 填写源入口文件或原生扩展目录。'}每行一个路径，按 Suite 文件或集中 roots 解析；直接从源码目录加载，不复制或链接，不表示已经运行。</p></details>
-          </div>
           {harness === 'pi' && <div className="suites-resource-block">
             <label htmlFor="suite-prompts">Prompt templates（每行一个路径）</label>
             <textarea id="suite-prompts" className="zone-form__input" rows={3} value={draft.pi.prompts} onChange={event => setDraft({ ...draft, pi: { ...draft.pi, prompts: event.target.value } })} />
           </div>}
           </div>
-          {harness === 'omp' && <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-omp-skills-note">两处填写的来源共同生成技能白名单，排除未选中的默认、托管或插件技能。原生发现仍可能扫描默认目录。两个字段都留空表示禁用技能。路径按 Suite 文件或集中 roots 解析，直接加载真实目录，不复制或创建链接。路径缺失或不可读会报错，不回退到默认来源；所选技能来自不同目录且同名时，会列出路径并报错。</p></details>}
-          <details className="suites-form-help"><summary>说明</summary><p className="scope-note">未选择 Suite 时保留宿主原生技能行为。</p></details>
+          {harness === 'omp' && <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-omp-skills-note">两处填写的来源共同生成 skill 白名单，排除未选中的默认、托管或插件 skill。原生发现仍可能扫描默认目录。两个字段都留空表示禁用 skill。路径按 Suite 文件或集中 roots 解析，直接加载真实目录，不复制或创建链接。路径缺失或不可读会报错，不回退到默认来源；所选 skill 来自不同目录且同名时，会列出路径并报错。</p></details>}
+          <details className="suites-form-help"><summary>说明</summary><p className="scope-note">未选择 Suite 时保留宿主原生 skill 行为。</p></details>
           </section>
           <section className="suites-section" aria-label="组件选择"><h3>组件选择</h3>
             <div className="suites-resource-grid">
@@ -322,12 +332,12 @@ export function SuitesPanel({ active }: { active: boolean }) {
         </fieldset>
       </form>}
     </div>
-    <section className="suites-fixed" aria-label="全局固定扩展" aria-describedby="suite-fixed-note">
+    <section className="suites-fixed" aria-label="全局固定 extension" aria-describedby="suite-fixed-note">
       <details>
-      <summary>全局固定扩展 <span>只读{data && ` · ${data.fixedExtensions.length} 项`}</span></summary>
-      <p className="scope-note" id="suite-fixed-note">固定扩展按宿主和执行角色加载，不受 Suite 选择影响；未选 Suite 的 Task 也会加载。这里展示已配置的入口与适用角色，不表示已连接或正在运行。</p>
-      {data === null ? <p>{error ? '未能读取固定扩展，请重新读取。' : '正在读取固定扩展…'}</p> : <div className="suites-fixed-groups">
-        {hosts.map(agent => <section key={agent} aria-label={`${agent.toUpperCase()} 固定扩展`}>
+      <summary>全局固定 extension <span>只读{data && ` · ${data.fixedExtensions.length} 项`}</span></summary>
+      <p className="scope-note" id="suite-fixed-note">固定 extension 按宿主和执行角色加载，不受 Suite 选择影响；未选 Suite 的 Task 也会加载。这里展示已配置的入口与适用角色，不表示已连接或正在运行。</p>
+      {data === null ? <p>{error ? '未能读取固定 extension，请重新读取。' : '正在读取固定 extension…'}</p> : <div className="suites-fixed-groups">
+        {hosts.map(agent => <section key={agent} aria-label={`${agent.toUpperCase()} 固定 extension`}>
           <h4>{harnessLabels[agent]}</h4>
           {data.fixedExtensions.some(extension => extension.agent === agent) ? <ul>
             {data.fixedExtensions.filter(extension => extension.agent === agent).map(extension => <li key={extension.id}>
@@ -335,7 +345,7 @@ export function SuitesPanel({ active }: { active: boolean }) {
               <span className="suites-extension-path">{extension.entrypoint}</span>
               <span className="suites-fixed-roles">适用：{extension.roles.map(role => ({ standalone: '普通独立Chat', manager: '管理者', node: 'workflow节点', chief: '需求分流者', 'chief-delegated': 'chief委派独立Chat' })[role]).join('、') || '无适用角色'}</span>
             </li>)}
-          </ul> : <p className="scope-note">此宿主暂无固定扩展。</p>}
+          </ul> : <p className="scope-note">此宿主暂无固定 extension。</p>}
         </section>)}
       </div>}
       </details>
