@@ -294,30 +294,34 @@ export function SuitesPanel({ active }: { active: boolean }) {
           </div>
           </section>
           <section className="suites-section" aria-label="可用 skill"><h3>可用 skill</h3>
+          <aside className="suites-guidance" id="suite-skills-common-note" aria-label="skill 共同说明">
+            <strong>共同说明</strong>
+            <p>路径按 Suite 文件或集中 roots 解析，直接加载真实目录，不复制或创建链接。路径缺失或不可读会报错，不回退到默认来源；不同目录的 skill 同名时，会列出路径并报错。</p>
+            {harness === 'omp' && <p>两类来源共同生成 skill 白名单，排除未选中的默认、托管或插件 skill。原生发现仍可能扫描默认目录。两处都留空表示禁用 skill。</p>}
+            <p>未选择 Suite 时保留宿主原生 skill 行为。</p>
+          </aside>
           <div className="suites-skill-grid">
           {harness === 'omp' ? <>
             <div className="suites-resource-block">
-              <label htmlFor="suite-omp-collections">OMP 目录合集（每行一个路径）</label>
-              <textarea id="suite-omp-collections" className="zone-form__input" rows={3} aria-describedby="suite-omp-collections-note suite-omp-skills-note" value={draft.omp.skillCollections} onChange={event => setDraft({ ...draft, omp: { ...draft.omp, skillCollections: event.target.value } })} />
-              <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-omp-collections-note">每次启动选中直接子目录中含 SKILL.md 的 skill，不递归，也不加载集合目录自身。增删集合成员无需编辑 Suite。</p></details>
+              <label htmlFor="suite-omp-collections">目录合集</label>
+              <p className="suites-guidance" id="suite-omp-collections-note">每行一个路径，填写合集目录。每次启动选中直接子目录中含 SKILL.md 的 skill，不递归，也不加载合集目录自身。增删合集成员无需编辑 Suite。</p>
+              <textarea id="suite-omp-collections" className="zone-form__input" rows={3} aria-describedby="suite-omp-collections-note suite-skills-common-note" value={draft.omp.skillCollections} onChange={event => setDraft({ ...draft, omp: { ...draft.omp, skillCollections: event.target.value } })} />
             </div>
             <div className="suites-resource-block">
-              <label htmlFor="suite-omp-skills">OMP 单 skill（每行一个路径）</label>
-              <textarea id="suite-omp-skills" className="zone-form__input" rows={3} aria-describedby="suite-omp-single-note suite-omp-skills-note" value={draft.omp.skills} onChange={event => setDraft({ ...draft, omp: { ...draft.omp, skills: event.target.value } })} />
-              <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-omp-single-note">填写直接含 SKILL.md 的目录。不会自动选中同级目录中的 skill。</p></details>
+              <label htmlFor="suite-omp-skills">单 skill</label>
+              <p className="suites-guidance" id="suite-omp-single-note">每行一个路径，填写直接含 SKILL.md 的目录。不会自动选中同级目录中的 skill。</p>
+              <textarea id="suite-omp-skills" className="zone-form__input" rows={3} aria-describedby="suite-omp-single-note suite-skills-common-note" value={draft.omp.skills} onChange={event => setDraft({ ...draft, omp: { ...draft.omp, skills: event.target.value } })} />
             </div>
           </> : <div className="suites-resource-block">
-            <label htmlFor="suite-skills">Pi 单 skill（每行一个路径）</label>
-            <textarea id="suite-skills" className="zone-form__input" rows={3} aria-describedby="suite-skills-note" value={draft.pi.skills} onChange={event => setDraft({ ...draft, pi: { ...draft.pi, skills: event.target.value } })} />
-            <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-skills-note">每行填写一个直接含 SKILL.md 的单 skill 根目录，不填写 skill 集合父目录。仅加载指定 skill；留空表示不加载 skill。路径按 Suite 文件或集中 roots 解析，直接加载真实目录，不复制或创建链接。路径缺失或不可读会报错，不回退到默认来源；不同目录的 skill 同名会列出路径并报错。</p></details>
+            <label htmlFor="suite-skills">单 skill</label>
+            <p className="suites-guidance" id="suite-skills-note">每行一个路径，填写直接含 SKILL.md 的单 skill 根目录，不填写合集父目录。仅加载指定 skill；留空表示不加载 skill。</p>
+            <textarea id="suite-skills" className="zone-form__input" rows={3} aria-describedby="suite-skills-note suite-skills-common-note" value={draft.pi.skills} onChange={event => setDraft({ ...draft, pi: { ...draft.pi, skills: event.target.value } })} />
           </div>}
           {harness === 'pi' && <div className="suites-resource-block">
             <label htmlFor="suite-prompts">Prompt templates（每行一个路径）</label>
             <textarea id="suite-prompts" className="zone-form__input" rows={3} value={draft.pi.prompts} onChange={event => setDraft({ ...draft, pi: { ...draft.pi, prompts: event.target.value } })} />
           </div>}
           </div>
-          {harness === 'omp' && <details className="suites-form-help"><summary>说明</summary><p className="scope-note" id="suite-omp-skills-note">两处填写的来源共同生成 skill 白名单，排除未选中的默认、托管或插件 skill。原生发现仍可能扫描默认目录。两个字段都留空表示禁用 skill。路径按 Suite 文件或集中 roots 解析，直接加载真实目录，不复制或创建链接。路径缺失或不可读会报错，不回退到默认来源；所选 skill 来自不同目录且同名时，会列出路径并报错。</p></details>}
-          <details className="suites-form-help"><summary>说明</summary><p className="scope-note">未选择 Suite 时保留宿主原生 skill 行为。</p></details>
           </section>
           <section className="suites-section" aria-label="组件选择"><h3>组件选择</h3>
             <div className="suites-resource-grid">

@@ -99,6 +99,13 @@
 .suites-path-section { margin-bottom: 24px; }
 .suites-skill-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .suites-skill-grid > :only-child { grid-column: 1 / -1; }
+.suites-guidance { margin: 0 0 20px; padding: 12px 14px; border: 1px solid var(--suite-muted); border-radius: 4px; background: var(--suite-raised); color: var(--suite-ink); font: 13px/1.75 SimSun, 'Songti SC', serif; overflow-wrap: anywhere; }
+.suites-guidance strong { font-weight: 700; }
+.suites-guidance p { margin: 6px 0 0; }
+.suites-editor .suites-skill-grid { row-gap: 8px; }
+.suites-editor .suites-skill-grid > .suites-resource-block { display: grid; gap: 8px; align-content: start; }
+.suites-editor .suites-skill-grid:has(#suite-omp-collections) > .suites-resource-block { grid-template-rows: subgrid; grid-row: span 3; }
+.suites-editor .suites-skill-grid :is(label, .suites-guidance, .zone-form__input) { margin: 0; }
 .suites-skill-grid > section, .suites-skill-grid > div { min-width: 0; }
 .suites-skill-grid h4 { font-size: 14px; font-weight: 500; margin: 0 0 8px; }
 .suites-path-list { list-style: none; margin: 0; padding: 0; }
