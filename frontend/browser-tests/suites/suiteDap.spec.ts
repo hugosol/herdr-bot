@@ -9,13 +9,13 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 test('OMP selects and repairs DAP references while Pi saves without DAP', async ({ page }, info) => {
   server = await startServer({ separateCwd: true })
   const authority = path.join(path.dirname(server.configPath), 'meta-data')
-  const dapFile = path.join(authority, 'dap.json')
+  const dapFile = path.join(authority, 'dap', 'code-lldb-windows.json')
   const command = path.join(authority, 'CodeLLDB Windows x64', 'adapter', 'codelldb.exe')
   const description = '仅限 Windows x64，需手动解压完整 CodeLLDB 安装包。'
-  const catalog = JSON.stringify({ adapters: { 'code-lldb-windows': { name: 'CodeLLDB', description, config: {
+  const catalog = JSON.stringify({ name: 'CodeLLDB', description, config: {
     command, languages: ['c', 'cpp', 'rust', 'zig'], args: ['--liblldb', 'native.dll'], connectMode: 'stdio',
-  } } } })
-  fs.mkdirSync(authority, { recursive: true })
+  } })
+  fs.mkdirSync(path.dirname(dapFile), { recursive: true })
   fs.writeFileSync(dapFile, catalog)
 
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -29,13 +29,9 @@ test('OMP selects and repairs DAP references while Pi saves without DAP', async 
   const reload = page.getByRole('button', { name: '重新读取 Suite', exact: true })
   await expect(option).toBeVisible()
   await expect(dap.getByText(description, { exact: true })).toBeHidden()
-  await expect(dap.getByText(command, { exact: true })).toBeHidden()
-  await expect(dap.getByText('c、cpp、rust、zig', { exact: true })).toBeHidden()
   await details.click()
   await expect(dap.getByText(description, { exact: true })).toBeVisible()
-  await expect(dap.getByText(command, { exact: true })).toBeVisible()
-  await expect(dap.getByText('c、cpp、rust、zig', { exact: true })).toBeVisible()
-  await expect(dap.getByText(/--liblldb/)).toBeVisible()
+  await dap.getByText('说明', { exact: true }).click()
   await expect(dap.getByText(/不表示已安装或通过调试验证/)).toBeVisible()
   await option.check()
   for (const [name, width] of [['desktop', 1440], ['tablet', 768], ['mobile', 390]] as const) {
@@ -57,11 +53,14 @@ test('OMP selects and repairs DAP references while Pi saves without DAP', async 
   await page.reload()
   await page.getByTestId('tab-suite').click()
   await page.getByRole('button', { name: '调试工具 · OMP · debug-omp', exact: true }).click()
+  const edit = page.getByRole('button', { name: '编辑 Suite', exact: true })
+  await edit.click()
   await expect(option).toBeChecked()
 
-  fs.writeFileSync(dapFile, '{"adapters":{}}')
+  fs.unlinkSync(dapFile)
   await reload.click()
-  const stale = dap.getByRole('checkbox', { name: 'code-lldb-windows（失效：集中 DAP 定义不存在）', exact: true })
+  await edit.click()
+  const stale = dap.getByRole('checkbox', { name: /code-lldb-windows.*失效/ })
   await expect(stale).toBeChecked()
   await expect(save).toBeDisabled()
   const staleCatalog = await (await page.request.get(`${server.baseURL}/api/suites`)).json()
@@ -77,8 +76,8 @@ test('OMP selects and repairs DAP references while Pi saves without DAP', async 
 
   fs.writeFileSync(dapFile, catalog)
   await reload.click()
-  await expect(option).toBeVisible()
   await page.getByRole('button', { name: '创建 Suite', exact: true }).click()
+  await expect(option).toBeVisible()
   await option.check()
   await page.getByLabel('适用宿主', { exact: true }).selectOption('pi')
   await expect(dap).toHaveCount(0)
@@ -90,4 +89,51 @@ test('OMP selects and repairs DAP references while Pi saves without DAP', async 
   expect(piSaved.ok()).toBe(true)
   expect(piSaved.request().postDataJSON()).toMatchObject({ harness: 'pi' })
   expect(piSaved.request().postDataJSON()).not.toHaveProperty('dap')
+})
+
+// Real HTTP and option files: a save that updates only the catalog UI,
+// rewrites Suite selections, or creates a new option would fail this trace.
+test('edits one existing resource without changing Suite selections or sibling files', async ({ page }) => {
+  server = await startServer({ separateCwd: true })
+  const authority = path.join(path.dirname(server.configPath), 'meta-data')
+  const directory = path.join(authority, 'dap')
+  const target = path.join(directory, 'debugger.json')
+  const sibling = path.join(directory, 'other.json')
+  const suites = path.join(authority, 'suites.json')
+  const before = { name: 'Debugger', description: 'Previous option details', config: { command: 'debug-adapter', args: [] } }
+  const after = { name: 'Updated Debugger', description: 'New option details', config: { command: 'debug-adapter', args: ['--stdio'], launchDefaults: { stopOnEntry: true } } }
+  const siblingBytes = '{"name":"Other","description":"Leave unchanged","config":{"command":"other-adapter"}}\n'
+  const suiteBytes = JSON.stringify({ suites: [{ id: 'debug-omp', name: 'Debug · OMP', harness: 'omp', skills: [], extensions: [], mcp: [], lsp: [], dap: ['debugger'] }] })
+  fs.mkdirSync(directory, { recursive: true })
+  fs.writeFileSync(target, JSON.stringify(before))
+  fs.writeFileSync(sibling, siblingBytes)
+  fs.writeFileSync(suites, suiteBytes)
+
+  await page.goto(`${server.baseURL}?layout=expanded`)
+  await page.getByTestId('tab-suite').click()
+  await page.getByRole('button', { name: '组件配置', exact: true }).click()
+  await page.getByRole('button', { name: 'DAP 配置', exact: true }).click()
+  const edit = page.getByRole('button', { name: '编辑 Debugger 配置', exact: true })
+  const json = page.getByLabel('配置 JSON', { exact: true })
+  await edit.click()
+  expect(JSON.parse(await json.inputValue())).toEqual(before)
+  await json.fill(JSON.stringify(after))
+  page.once('dialog', dialog => dialog.accept())
+  await page.getByRole('button', { name: '取消编辑', exact: true }).click()
+  await expect(json).toHaveCount(0)
+  expect(JSON.parse(fs.readFileSync(target, 'utf8'))).toEqual(before)
+
+  await edit.click()
+  await json.fill(JSON.stringify(after))
+  const save = page.waitForResponse(response => response.url().endsWith('/api/suites/resources/dap/debugger') && response.request().method() === 'PUT')
+  await page.getByRole('button', { name: '保存配置', exact: true }).click()
+  expect((await save).ok()).toBe(true)
+  await expect(page.getByRole('button', { name: '编辑 Updated Debugger 配置', exact: true })).toBeVisible()
+  expect(JSON.parse(fs.readFileSync(target, 'utf8'))).toEqual(after)
+  expect(fs.readFileSync(sibling, 'utf8')).toBe(siblingBytes)
+  expect(fs.readFileSync(suites, 'utf8')).toBe(suiteBytes)
+  expect(fs.readdirSync(directory).sort()).toEqual(['debugger.json', 'other.json'])
+  const catalog = await (await page.request.get(`${server.baseURL}/api/suites`)).json()
+  expect(catalog.dap).toContainEqual({ id: 'debugger', ...after })
+  expect(catalog.suites).toMatchObject([{ id: 'debug-omp', dap: ['debugger'] }])
 })

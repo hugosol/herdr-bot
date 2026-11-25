@@ -22,7 +22,7 @@ async fn unreadable_selected_skill_rejects_public_launch_before_herdr() {
     config.tasks.storage_file = root.path().join("tasks.json");
     config.zones.registry_file = root.path().join("zones.json");
     config.suites.definition_file = root.path().join("suites.json");
-    config.suites.mcp_file = root.path().join("mcp.json");
+    config.suites.mcp_directory = root.path().join("mcp");
     config.suites.generated_directory = root.path().join("generated");
     config.herdr.executable = herdr.executable().to_path_buf();
     let skill = root.path().join("selected parents/unreadable skill");
@@ -61,7 +61,7 @@ async fn blocked_assembly_directory_rejects_public_launch_before_herdr() {
     config.tasks.storage_file = root.path().join("tasks.json");
     config.zones.registry_file = root.path().join("zones.json");
     config.suites.definition_file = root.path().join("suites.json");
-    config.suites.mcp_file = root.path().join("mcp.json");
+    config.suites.mcp_directory = root.path().join("mcp");
     config.suites.generated_directory = root.path().join("blocked");
     config.herdr.executable = herdr.executable().to_path_buf();
     fs::create_dir_all(root.path().join("selected parents/readable skill")).unwrap();
@@ -100,7 +100,7 @@ async fn omp_direct_children_canonical_parents_empty_no_fallback_and_name_collis
     config.tasks.storage_file = root.path().join("tasks.json");
     config.zones.registry_file = root.path().join("zones.json");
     config.suites.definition_file = root.path().join("suites.json");
-    config.suites.mcp_file = root.path().join("mcp.json");
+    config.suites.mcp_directory = root.path().join("mcp");
     config.suites.generated_directory = root.path().join("generated");
     config.herdr.executable = herdr.executable().to_owned();
     let parent = root.path().join("selected parents");

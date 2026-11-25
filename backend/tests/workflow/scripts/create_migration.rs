@@ -152,7 +152,7 @@ async fn migrated_workflow(fault: Option<&str>) {
     let original_tasks: Value = serde_json::from_str(before["meta-data/tasks.json"].as_str().unwrap()).unwrap();
     let tasks = source("meta-data/tasks.json");
     for (path, original) in before.as_object().unwrap() {
-        if ["meta-data/tasks.json", "meta-data/suites.json", "meta-data/bots/bot-1793348060748020300-25960-2.json", "meta-data/workflow-maps/create-bot-wrapper.json", "meta-data/workflow-maps/create-bot-task-workflow--bc-61ce48b80a4c.json"].contains(&path.as_str()) { continue; }
+        if ["meta-data/tasks.json", "meta-data/suites.json", "meta-data/mcp.json", "meta-data/bots/bot-1793348060748020300-25960-2.json", "meta-data/workflow-maps/create-bot-wrapper.json", "meta-data/workflow-maps/create-bot-task-workflow--bc-61ce48b80a4c.json"].contains(&path.as_str()) { continue; }
         // The portable archive was captured with universal-newline reads.
         // Normalize checkout line endings only, never parsed field/text bytes.
         let original = original.as_str().unwrap();

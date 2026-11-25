@@ -219,8 +219,9 @@ pub fn app_with_state(
     ));
     let suites = Arc::new(suites::Suites::new(
         config.suites.definition_file.clone(),
-        config.suites.mcp_file.clone(),
-        config.suites.dap_file.clone(),
+        config.suites.mcp_directory.clone(),
+        config.suites.lsp_directory.clone(),
+        config.suites.dap_directory.clone(),
         config.suites.generated_directory.clone(),
     ));
     let chief = Arc::new(chief::Authority::new(config.sessions.history_file.with_extension("chief.json")));
@@ -295,6 +296,7 @@ pub fn app_with_state(
         // 请求只携带服务器上的目录路径；执行目标仍只来自服务端配置。
         .route("/api/zones", get(controllers::zones_controller::list_zones).post(controllers::zones_controller::register_zone).put(controllers::zones_controller::rebind_zone).delete(controllers::zones_controller::unregister_zone))
         .route("/api/suites", get(controllers::suites_controller::list).post(controllers::suites_controller::create))
+        .route("/api/suites/resources/{kind}/{id}", axum::routing::put(controllers::suites_controller::update_resource))
         .route("/api/suites/{id}", get(controllers::suites_controller::get).put(controllers::suites_controller::update).delete(controllers::suites_controller::delete))
         .route("/api/scheduler/maps", get(controllers::scheduler_controller::list_maps))
         .route("/api/scheduler/maps/{name}", get(controllers::scheduler_controller::get_map))

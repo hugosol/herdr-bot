@@ -30,70 +30,12 @@
       "mcp": [
         "codebase-memory-mcp"
       ],
-      "lsp": {
-        "jdtls": {
-          "args": [],
-          "command": "jdtls",
-          "fileTypes": [
-            ".java"
-          ],
-          "rootMarkers": [
-            "pom.xml",
-            "build.gradle",
-            "build.gradle.kts",
-            "settings.gradle",
-            ".project"
-          ]
-        },
-        "pyright": {
-          "args": [
-            "--stdio"
-          ],
-          "command": "pyright-langserver",
-          "fileTypes": [
-            ".py",
-            ".pyi"
-          ],
-          "rootMarkers": [
-            "pyproject.toml",
-            "pyrightconfig.json",
-            "setup.py",
-            "setup.cfg",
-            "requirements.txt",
-            "Pipfile"
-          ]
-        },
-        "rust-analyzer": {
-          "args": [],
-          "command": "rust-analyzer",
-          "fileTypes": [
-            ".rs"
-          ],
-          "rootMarkers": [
-            "Cargo.toml",
-            "rust-analyzer.toml"
-          ]
-        },
-        "typescript-language-server": {
-          "args": [
-            "--stdio"
-          ],
-          "command": "typescript-language-server",
-          "fileTypes": [
-            ".ts",
-            ".tsx",
-            ".js",
-            ".jsx",
-            ".mjs",
-            ".cjs"
-          ],
-          "rootMarkers": [
-            "package.json",
-            "tsconfig.json",
-            "jsconfig.json"
-          ]
-        }
-      },
+      "lsp": [
+        "jdtls",
+        "pyright",
+        "rust-analyzer",
+        "typescript-language-server"
+      ],
       "dap": []
     },
     {
@@ -128,70 +70,12 @@
       "mcp": [
         "codebase-memory-mcp"
       ],
-      "lsp": {
-        "jdtls": {
-          "args": [],
-          "command": "jdtls",
-          "fileTypes": [
-            ".java"
-          ],
-          "rootMarkers": [
-            "pom.xml",
-            "build.gradle",
-            "build.gradle.kts",
-            "settings.gradle",
-            ".project"
-          ]
-        },
-        "pyright": {
-          "args": [
-            "--stdio"
-          ],
-          "command": "pyright-langserver",
-          "fileTypes": [
-            ".py",
-            ".pyi"
-          ],
-          "rootMarkers": [
-            "pyproject.toml",
-            "pyrightconfig.json",
-            "setup.py",
-            "setup.cfg",
-            "requirements.txt",
-            "Pipfile"
-          ]
-        },
-        "rust-analyzer": {
-          "args": [],
-          "command": "rust-analyzer",
-          "fileTypes": [
-            ".rs"
-          ],
-          "rootMarkers": [
-            "Cargo.toml",
-            "rust-analyzer.toml"
-          ]
-        },
-        "typescript-language-server": {
-          "args": [
-            "--stdio"
-          ],
-          "command": "typescript-language-server",
-          "fileTypes": [
-            ".ts",
-            ".tsx",
-            ".js",
-            ".jsx",
-            ".mjs",
-            ".cjs"
-          ],
-          "rootMarkers": [
-            "package.json",
-            "tsconfig.json",
-            "jsconfig.json"
-          ]
-        }
-      },
+      "lsp": [
+        "jdtls",
+        "pyright",
+        "rust-analyzer",
+        "typescript-language-server"
+      ],
       "dap": []
     },
     {
@@ -250,70 +134,12 @@
       "mcp": [
         "codebase-memory-mcp"
       ],
-      "lsp": {
-        "jdtls": {
-          "args": [],
-          "command": "jdtls",
-          "fileTypes": [
-            ".java"
-          ],
-          "rootMarkers": [
-            "pom.xml",
-            "build.gradle",
-            "build.gradle.kts",
-            "settings.gradle",
-            ".project"
-          ]
-        },
-        "pyright": {
-          "args": [
-            "--stdio"
-          ],
-          "command": "pyright-langserver",
-          "fileTypes": [
-            ".py",
-            ".pyi"
-          ],
-          "rootMarkers": [
-            "pyproject.toml",
-            "pyrightconfig.json",
-            "setup.py",
-            "setup.cfg",
-            "requirements.txt",
-            "Pipfile"
-          ]
-        },
-        "rust-analyzer": {
-          "args": [],
-          "command": "rust-analyzer",
-          "fileTypes": [
-            ".rs"
-          ],
-          "rootMarkers": [
-            "Cargo.toml",
-            "rust-analyzer.toml"
-          ]
-        },
-        "typescript-language-server": {
-          "args": [
-            "--stdio"
-          ],
-          "command": "typescript-language-server",
-          "fileTypes": [
-            ".ts",
-            ".tsx",
-            ".js",
-            ".jsx",
-            ".mjs",
-            ".cjs"
-          ],
-          "rootMarkers": [
-            "package.json",
-            "tsconfig.json",
-            "jsconfig.json"
-          ]
-        }
-      },
+      "lsp": [
+        "jdtls",
+        "pyright",
+        "rust-analyzer",
+        "typescript-language-server"
+      ],
       "dap": [
         "codelldb"
       ]
@@ -336,70 +162,12 @@
       "mcp": [
         "codebase-memory-mcp"
       ],
-      "lsp": {
-        "jdtls": {
-          "args": [],
-          "command": "jdtls",
-          "fileTypes": [
-            ".java"
-          ],
-          "rootMarkers": [
-            "pom.xml",
-            "build.gradle",
-            "build.gradle.kts",
-            "settings.gradle",
-            ".project"
-          ]
-        },
-        "pyright": {
-          "args": [
-            "--stdio"
-          ],
-          "command": "pyright-langserver",
-          "fileTypes": [
-            ".py",
-            ".pyi"
-          ],
-          "rootMarkers": [
-            "pyproject.toml",
-            "pyrightconfig.json",
-            "setup.py",
-            "setup.cfg",
-            "requirements.txt",
-            "Pipfile"
-          ]
-        },
-        "rust-analyzer": {
-          "args": [],
-          "command": "rust-analyzer",
-          "fileTypes": [
-            ".rs"
-          ],
-          "rootMarkers": [
-            "Cargo.toml",
-            "rust-analyzer.toml"
-          ]
-        },
-        "typescript-language-server": {
-          "args": [
-            "--stdio"
-          ],
-          "command": "typescript-language-server",
-          "fileTypes": [
-            ".ts",
-            ".tsx",
-            ".js",
-            ".jsx",
-            ".mjs",
-            ".cjs"
-          ],
-          "rootMarkers": [
-            "package.json",
-            "tsconfig.json",
-            "jsconfig.json"
-          ]
-        }
-      },
+      "lsp": [
+        "jdtls",
+        "pyright",
+        "rust-analyzer",
+        "typescript-language-server"
+      ],
       "dap": [
         "codelldb"
       ]
@@ -434,70 +202,12 @@
       "mcp": [
         "codebase-memory-mcp"
       ],
-      "lsp": {
-        "jdtls": {
-          "args": [],
-          "command": "jdtls",
-          "fileTypes": [
-            ".java"
-          ],
-          "rootMarkers": [
-            "pom.xml",
-            "build.gradle",
-            "build.gradle.kts",
-            "settings.gradle",
-            ".project"
-          ]
-        },
-        "pyright": {
-          "args": [
-            "--stdio"
-          ],
-          "command": "pyright-langserver",
-          "fileTypes": [
-            ".py",
-            ".pyi"
-          ],
-          "rootMarkers": [
-            "pyproject.toml",
-            "pyrightconfig.json",
-            "setup.py",
-            "setup.cfg",
-            "requirements.txt",
-            "Pipfile"
-          ]
-        },
-        "rust-analyzer": {
-          "args": [],
-          "command": "rust-analyzer",
-          "fileTypes": [
-            ".rs"
-          ],
-          "rootMarkers": [
-            "Cargo.toml",
-            "rust-analyzer.toml"
-          ]
-        },
-        "typescript-language-server": {
-          "args": [
-            "--stdio"
-          ],
-          "command": "typescript-language-server",
-          "fileTypes": [
-            ".ts",
-            ".tsx",
-            ".js",
-            ".jsx",
-            ".mjs",
-            ".cjs"
-          ],
-          "rootMarkers": [
-            "package.json",
-            "tsconfig.json",
-            "jsconfig.json"
-          ]
-        }
-      },
+      "lsp": [
+        "jdtls",
+        "pyright",
+        "rust-analyzer",
+        "typescript-language-server"
+      ],
       "dap": [
         "codelldb"
       ]
@@ -536,70 +246,12 @@
       "mcp": [
         "codebase-memory-mcp"
       ],
-      "lsp": {
-        "jdtls": {
-          "args": [],
-          "command": "jdtls",
-          "fileTypes": [
-            ".java"
-          ],
-          "rootMarkers": [
-            "pom.xml",
-            "build.gradle",
-            "build.gradle.kts",
-            "settings.gradle",
-            ".project"
-          ]
-        },
-        "pyright": {
-          "args": [
-            "--stdio"
-          ],
-          "command": "pyright-langserver",
-          "fileTypes": [
-            ".py",
-            ".pyi"
-          ],
-          "rootMarkers": [
-            "pyproject.toml",
-            "pyrightconfig.json",
-            "setup.py",
-            "setup.cfg",
-            "requirements.txt",
-            "Pipfile"
-          ]
-        },
-        "rust-analyzer": {
-          "args": [],
-          "command": "rust-analyzer",
-          "fileTypes": [
-            ".rs"
-          ],
-          "rootMarkers": [
-            "Cargo.toml",
-            "rust-analyzer.toml"
-          ]
-        },
-        "typescript-language-server": {
-          "args": [
-            "--stdio"
-          ],
-          "command": "typescript-language-server",
-          "fileTypes": [
-            ".ts",
-            ".tsx",
-            ".js",
-            ".jsx",
-            ".mjs",
-            ".cjs"
-          ],
-          "rootMarkers": [
-            "package.json",
-            "tsconfig.json",
-            "jsconfig.json"
-          ]
-        }
-      },
+      "lsp": [
+        "jdtls",
+        "pyright",
+        "rust-analyzer",
+        "typescript-language-server"
+      ],
       "dap": []
     }
   ]

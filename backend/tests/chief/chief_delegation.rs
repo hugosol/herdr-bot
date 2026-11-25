@@ -70,7 +70,7 @@ impl Fixture {
         config.scheduler.map_directory = root.path().join("maps");
         config.scheduler.run_directory = root.path().join("runs");
         config.suites.definition_file = root.path().join("suites.json");
-        config.suites.mcp_file = root.path().join("mcp.json");
+        config.suites.mcp_directory = root.path().join("mcp");
         config.herdr.executable = herdr.executable().to_owned();
         if app {
             fs::write(herdr.path().join("chat-app-mode"), "").unwrap();

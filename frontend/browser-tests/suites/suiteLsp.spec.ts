@@ -12,16 +12,26 @@ test.afterEach(async () => { await server?.cleanup(); server = null })
 test('P38 distinguishes an LSP declaration from a running native language service', async ({ page }) => {
   server = await startServer({ separateCwd: true })
   const authority = path.join(path.dirname(server.configPath), 'meta-data')
-  fs.mkdirSync(authority, { recursive: true })
+  fs.mkdirSync(path.join(authority, 'lsp'), { recursive: true })
+  fs.writeFileSync(path.join(authority, 'lsp', 'rust-analyzer.json'), JSON.stringify({
+    name: 'rust-analyzer', description: 'Rust 声明，不表示已安装或正在运行。',
+    config: { command: path.join(authority, 'never-installed-language-server.exe'),
+      args: [], fileTypes: ['.rs'], rootMarkers: ['Cargo.toml'] },
+  }))
   fs.writeFileSync(path.join(authority, 'suites.json'), JSON.stringify({ suites: [{
     id: 'missing-lsp-omp', name: '缺程序的声明 · OMP', harness: 'omp', skills: [], extensions: [], mcp: [],
-    lsp: { 'rust-analyzer': { command: path.join(authority, 'never-installed-language-server.exe'),
-      args: [], fileTypes: ['.rs'], rootMarkers: ['Cargo.toml'] } },
+    lsp: ['rust-analyzer'],
   }] }))
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-suite').click()
   await page.getByRole('button', { name: '缺程序的声明 · OMP · missing-lsp-omp', exact: true }).click()
-  await expect(page.getByLabel('LSP 声明（JSON）', { exact: true })).toHaveValue(/never-installed-language-server\.exe/)
-  await expect(page.getByText('LSP 声明不表示已启用或正在运行。OMP 按项目标记和可执行程序原生发现；缺少程序时不会启动，不会自动安装或修改 PATH。', { exact: true })).toBeVisible()
-  await expect(page.getByText('保留 OMP 默认、用户及项目配置的原生优先级；Suite 不是语言服务白名单。', { exact: true })).toBeVisible()
+  const overview = page.getByRole('region', { name: 'Suite 概览', exact: true })
+  const description = overview.getByText('Rust 声明，不表示已安装或正在运行。', { exact: true })
+  await expect(overview.getByRole('checkbox')).toHaveCount(0)
+  await expect(overview.getByText('rust-analyzer', { exact: true }).first()).toBeVisible()
+  await expect(description).toBeHidden()
+  await overview.getByLabel('rust-analyzer 详情', { exact: true }).click()
+  await expect(description).toBeVisible()
+  await overview.getByLabel('LSP 说明', { exact: true }).click()
+  await expect(overview.getByText(/保留默认、用户和项目配置的原生优先级.*不是语言服务白名单.*不会自动安装/)).toBeVisible()
 })

@@ -431,11 +431,19 @@ pub fn config_with_countdown(
         git: herdr_bot::GitConfig::default(),
         scheduler: herdr_bot::SchedulerConfig::default(),
         suites: herdr_bot::config::SuitesConfig {
-            dap_file: working_directory.join("dap.json"),
+            dap_directory: working_directory.join("dap"),
             generated_directory: working_directory.join("generated-suites"),
             ..herdr_bot::config::SuitesConfig::default()
         },
     }
+}
+
+pub fn write_suite_resource(directory: &Path, id: &str, config: serde_json::Value) -> PathBuf {
+    fs::create_dir_all(directory).unwrap();
+    let path = directory.join(format!("{id}.json"));
+    let definition = serde_json::json!({"name":id, "description":"Controlled fixture", "config":config});
+    fs::write(&path, definition.to_string()).unwrap();
+    path
 }
 
 /// 经 HTTP interface 请求一个固定操作：裸 POST，不带请求体或查询串。
@@ -635,19 +643,26 @@ pub async fn request_json_over_tcp(
     path: &str,
     body: Option<&str>,
 ) -> HttpResponse {
+    request_json_with_origin(addr, method, path, body, None).await
+}
+
+pub async fn request_json_with_origin(
+    addr: SocketAddr, method: &str, path: &str, body: Option<&str>, origin: Option<&str>,
+) -> HttpResponse {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     let mut stream = tokio::net::TcpStream::connect(addr)
         .await
         .expect("连接测试服务器");
+    let origin = origin.map_or_else(String::new, |origin| format!("Origin: {origin}\r\n"));
     let request = match body {
         Some(body) => format!(
-            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\
+            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\n{origin}Connection: close\r\n\
              Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
             body.len()
         ),
         None => format!(
-            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\n{origin}Connection: close\r\nContent-Length: 0\r\n\r\n"
         ),
     };
     stream

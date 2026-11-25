@@ -10,13 +10,14 @@ use std::fs;
 fn config(root: &TempDir) -> herdr_bot::Config {
     let mut config = common::config(std::path::Path::new("unused.bat"), root.path());
     config.suites.definition_file = root.path().join("definitions with spaces").join("suites.json");
-    config.suites.mcp_file = root.path().join("central-mcp.json");
-    config.suites.dap_file = root.path().join("central-dap.json");
+    config.suites.mcp_directory = root.path().join("central-mcp");
+    config.suites.lsp_directory = root.path().join("central-lsp");
+    config.suites.dap_directory = root.path().join("central-dap");
     config
 }
 
 #[tokio::test]
-async fn dap_catalog_is_read_only_and_only_omp_suites_can_select_ids() {
+async fn dap_catalog_is_edit_only_and_only_omp_suites_can_select_ids() {
     let root = TempDir::new("Suite DAP catalog");
     let config = config(&root);
     let server = TestServer::start(&config).await;
@@ -27,15 +28,20 @@ async fn dap_catalog_is_read_only_and_only_omp_suites_can_select_ids() {
     // Declaration only: the root and adapter executable are intentionally absent.
     let native = json!({"command":"${roots.dap_fixture}/missing.exe", "languages":["rust"], "connectMode":"stdio"});
     let definition = json!({"name":"Fixture adapter", "description":"Windows x64 fixture", "config":native});
-    let catalog = json!({"adapters":{"codelldb":definition}}).to_string();
-    fs::write(&config.suites.dap_file, &catalog).unwrap();
+    let dap_path = config.suites.dap_directory.join("codelldb.json");
+    fs::create_dir_all(&config.suites.dap_directory).unwrap();
+    fs::write(&dap_path, definition.to_string()).unwrap();
+    let sibling = common::write_suite_resource(&config.suites.dap_directory, "other", json!({"command":"other-adapter"}));
+    let mcp = common::write_suite_resource(&config.suites.mcp_directory, "codelldb", json!({"command":"other-kind"}));
+    let lsp = common::write_suite_resource(&config.suites.lsp_directory, "codelldb", json!({"command":"server"}));
+    let before_neighbors = [&sibling, &mcp, &lsp].map(|path| fs::read(path).unwrap());
     let expected = json!([{"id":"codelldb", "name":"Fixture adapter", "description":"Windows x64 fixture", "config":native}]);
     let mut suite = json!({"id":"debug-omp", "name":"Debug · OMP", "harness":"omp", "dap":["codelldb"]});
     for (method, url) in [("POST", "/api/suites"), ("PUT", "/api/suites/debug-omp")] {
         let response = request_json_over_tcp(server.addr(), method, url, Some(&suite.to_string())).await;
         assert_eq!(response.status, 200, "{}", response.body);
         let body: Value = serde_json::from_str(&response.body).unwrap();
-        assert_eq!(body["dap"], expected);
+        assert_eq!(body["dap"][0], expected[0]);
         assert_eq!(body["suites"][0]["dap"], json!(["codelldb"]));
         suite["name"] = json!("Debug edited · OMP");
     }
@@ -50,13 +56,49 @@ async fn dap_catalog_is_read_only_and_only_omp_suites_can_select_ids() {
     let response = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&pi.to_string())).await;
     assert_eq!(response.status, 400, "{}", response.body);
     assert_eq!(fs::read_to_string(&config.suites.definition_file).unwrap(), stored);
-    assert_eq!(fs::read_to_string(&config.suites.dap_file).unwrap(), catalog);
+    assert_eq!(fs::read_to_string(&dap_path).unwrap(), definition.to_string());
 
-    for malformed in [
-        r#"{"adapters":{"bad":{"name":"Bad","description":"Wrong type","config":{"command":"dap","languages":"rust"}}}}"#,
-        r#"{"adapters":{"bad":{"name":"Bad","description":"Duplicate ID","config":{"command":"old"}},"bad":{"name":"Bad","description":"Duplicate ID","config":{"command":"new"}}}}"#,
+    let endpoint = "/api/suites/resources/dap/codelldb";
+    let changed = json!({"name":"Updated adapter", "description":"Still the same ID", "config":{
+        "command":"./updated.exe", "languages":["rust"], "futureNativeOption":{"preserve":true}
+    }});
+    let changed_json = changed.to_string();
+    for (method, path, body, status) in [
+        ("PUT", "/api/suites/resources/dap/new-id", Some(changed_json.as_str()), 404),
+        ("PUT", "/api/suites/resources/dap/CODELLDB", Some(changed_json.as_str()), 404),
+        ("PUT", "/api/suites/resources/dap/..%2Fcodelldb", Some(changed_json.as_str()), 400),
+        ("POST", endpoint, Some(changed_json.as_str()), 405),
+        ("DELETE", endpoint, None, 405),
+        ("PUT", endpoint, Some(r#"{"name":"Bad","description":"Bad config","config":{"command":"dap","languages":"rust"}}"#), 400),
+        ("PUT", endpoint, Some(r#"{"id":"renamed","name":"Bad","description":"ID is not editable","config":{"command":"dap"}}"#), 400),
+        ("PUT", endpoint, Some(r#"["positional","not an object",{"command":"dap"}]"#), 400),
     ] {
-        fs::write(&config.suites.dap_file, malformed).unwrap();
+        let response = request_json_over_tcp(server.addr(), method, path, body).await;
+        assert_eq!(response.status, status, "{method} {path}: {}", response.body);
+        assert_eq!(fs::read_to_string(&dap_path).unwrap(), definition.to_string());
+    }
+    assert!(!config.suites.dap_directory.join("new-id.json").exists());
+    let cross_host = common::request_json_with_origin(server.addr(), "PUT", endpoint, Some(&changed_json), Some("http://foreign.example")).await;
+    assert_eq!(cross_host.status, 403, "{}", cross_host.body);
+    assert_eq!(fs::read_to_string(&dap_path).unwrap(), definition.to_string());
+    let origin = format!("http://{}", server.addr());
+    let response = common::request_json_with_origin(server.addr(), "PUT", endpoint, Some(&changed_json), Some(&origin)).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let body: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(body["dap"][0], json!({"id":"codelldb","name":"Updated adapter","description":"Still the same ID","config":changed["config"]}));
+    assert_eq!(body["suites"][0]["dap"], json!(["codelldb"]));
+    assert_eq!(serde_json::from_slice::<Value>(&fs::read(&dap_path).unwrap()).unwrap(), changed);
+    assert_eq!(fs::read_to_string(&config.suites.definition_file).unwrap(), stored);
+    assert_eq!([&sibling, &mcp, &lsp].map(|path| fs::read(path).unwrap()), before_neighbors);
+    let read_back = get_over_tcp(server.addr(), "/api/suites").await;
+    assert_eq!(serde_json::from_str::<Value>(&read_back.body).unwrap(), body);
+
+    let malformed_path = config.suites.dap_directory.join("bad.json");
+    for malformed in [
+        r#"{"name":"Bad","description":"Wrong type","config":{"command":"dap","languages":"rust"}}"#,
+        r#"{"name":"Bad","name":"Duplicate field","description":"Duplicate name","config":{"command":"dap"}}"#,
+    ] {
+        fs::write(&malformed_path, malformed).unwrap();
         let response = get_over_tcp(server.addr(), "/api/suites").await;
         assert_eq!(response.status, 500, "{}", response.body);
         assert!(response.body.contains("DAP") && response.body.contains("bad"), "{}", response.body);
@@ -64,10 +106,10 @@ async fn dap_catalog_is_read_only_and_only_omp_suites_can_select_ids() {
         assert_eq!(response.status, 500, "{}", response.body);
         assert_eq!(fs::read_to_string(&config.suites.definition_file).unwrap(), stored);
     }
-    fs::write(&config.suites.dap_file, &catalog).unwrap();
+    fs::remove_file(&malformed_path).unwrap();
     let response = request_json_over_tcp(server.addr(), "DELETE", "/api/suites/debug-omp", None).await;
     assert_eq!(response.status, 200, "{}", response.body);
-    assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["dap"], expected);
+    assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["dap"], body["dap"]);
 }
 
 fn shared_metadata(root: &TempDir, config: &mut herdr_bot::Config) -> String {
@@ -117,7 +159,7 @@ async fn suite_paths_save_without_resources_and_fixed_catalog_preserves_roles() 
     let mut choices = [
         json!({"id":"shared-pi","name":"Shared choices · Pi","harness":"pi","codemode":"on","skills":[],"mcp":[],"prompts":[],
             "extensions":["${roots.pi_extensions}/pi-web-access/index.ts","packages with spaces/entry.ts"]}),
-        json!({"id":"shared-omp","name":"Shared choices · OMP","harness":"omp","skills":[],"mcp":[],"lsp":{},"dap":[],
+        json!({"id":"shared-omp","name":"Shared choices · OMP","harness":"omp","skills":[],"mcp":[],"lsp":[],"dap":[],
             "extensions":["custom-omp.ts"]}),
     ];
     for (suite, label) in choices.iter_mut().zip(["Pi", "OMP"]) {
@@ -199,7 +241,8 @@ async fn invalid_response_catalogs_reject_all_suite_writes_before_persistence() 
         assert_eq!(get_over_tcp(server.addr(), "/api/suites/existing-omp").await.status, 200);
     }
     fs::write(&config.tasks.metadata_file, metadata).unwrap();
-    fs::write(&config.suites.mcp_file, "{broken central catalog").unwrap();
+    fs::create_dir_all(&config.suites.mcp_directory).unwrap();
+    fs::write(config.suites.mcp_directory.join("broken.json"), "{broken central catalog").unwrap();
     for (method, url, body) in [
         ("POST", "/api/suites", Some(new.to_string())),
         ("PUT", "/api/suites/existing-omp", Some(edited.to_string())),
@@ -300,7 +343,7 @@ async fn suite_harness_cannot_change_after_save() {
     let root = TempDir::new("immutable suite harness");
     let config = config(&root);
     let server = TestServer::start(&config).await;
-    let omp = json!({"id":"tools-omp","name":"Tools · OMP","harness":"omp","skills":[],"extensions":["keep.ts"],"mcp":[],"lsp":{},"dap":[]});
+    let omp = json!({"id":"tools-omp","name":"Tools · OMP","harness":"omp","skills":[],"extensions":["keep.ts"],"mcp":[],"lsp":[],"dap":[]});
     let saved = request_json_over_tcp(server.addr(), "POST", "/api/suites", Some(&omp.to_string())).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let before = fs::read(&config.suites.definition_file).unwrap();
@@ -329,7 +372,8 @@ async fn suite_rejects_wrong_harness_fields_and_legacy_wire_shape() {
     let before = fs::read(&config.suites.definition_file).unwrap();
     for (suite, key, value) in [
         (&omp, "prompts", json!([])), (&omp, "codemode", json!("on")),
-        (&pi, "lsp", json!({})), (&pi, "lsp", json!(null)),
+        (&pi, "lsp", json!([])), (&pi, "lsp", json!(null)),
+        (&omp, "lsp", json!({"legacy":{"command":"native"}})),
         (&omp, "agents", json!(["omp"])), (&pi, "pi", json!({"codemode":"on"})),
         (&pi, "extensions", json!({"pi":[]})),
         (&omp, "harness", json!(["omp"])),
@@ -406,7 +450,7 @@ async fn external_authority_damage_is_not_hidden_or_overwritten() {
     let root = TempDir::new("suite external authority damage");
     let config = config(&root);
     fs::create_dir_all(config.suites.definition_file.parent().unwrap()).unwrap();
-    let literal = r#"{"suites":[{"id":"external-omp","name":"Independent definition · OMP","harness":"omp","skills":[],"extensions":[],"lsp":{},"mcp":[]}]}"#;
+    let literal = r#"{"suites":[{"id":"external-omp","name":"Independent definition · OMP","harness":"omp","skills":[],"extensions":[],"lsp":[],"mcp":[]}]}"#;
     fs::write(&config.suites.definition_file, literal).unwrap();
     let server = TestServer::start(&config).await;
     assert_eq!(get_over_tcp(server.addr(), "/api/suites/external-omp").await.status, 200);

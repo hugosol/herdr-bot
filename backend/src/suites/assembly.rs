@@ -2,7 +2,7 @@
 //! is returning native launch arguments, not creating the directory. No live
 //! tree is rewritten or reclaimed while an agent may still consume it.
 use crate::{paths::Roots, tasks::{Agent, TaskError}};
-use super::{Suite, Suites, skills};
+use super::{ResourceKind, Suite, Suites, skills};
 
 impl Suites {
     pub(crate) fn prepare_environment(&self, suite: Option<&Suite>, agent: Agent, roots: &Roots) -> Result<Vec<String>, TaskError> {
@@ -19,13 +19,13 @@ impl Suites {
         let skills = self.select_skills(suite, roots)?;
         let extensions = self.select_extensions(suite, roots)?;
         let mcp = match suite {
-            Suite::Omp { mcp, .. } => self.select_omp_mcp(id, mcp, roots)?,
+            Suite::Omp { mcp, .. } => self.native_document(id, ResourceKind::Mcp, mcp, roots)?,
             Suite::Pi { .. } => None,
         };
         let (lsp, dap) = match suite {
             Suite::Omp { lsp, dap, .. } => (
-                (!lsp.is_empty()).then_some(lsp),
-                self.select_omp_dap(id, dap, roots)?,
+                self.native_document(id, ResourceKind::Lsp, lsp, roots)?,
+                self.native_document(id, ResourceKind::Dap, dap, roots)?,
             ),
             Suite::Pi { .. } => (None, None),
         };
@@ -43,10 +43,8 @@ impl Suites {
                 let mut args = skills::assemble(access, &assembly, suite, &skills)
                     .map_err(|error| format!("技能装配失败：{error}"))?;
                 // Native plugin discovery keeps defaults and user/project precedence.
-                if let Some(lsp) = lsp {
-                    let bytes = serde_json::to_vec_pretty(&serde_json::json!({"servers": lsp}))
-                        .map_err(|error| error.to_string())?;
-                    access.create(assembly.join("lsp.json"), &bytes).map_err(|error| error.to_string())?;
+                if let Some(bytes) = &lsp {
+                    access.create(assembly.join("lsp.json"), bytes).map_err(|error| error.to_string())?;
                 }
                 if let Some(bytes) = &dap {
                     access.create(assembly.join("dap.json"), bytes).map_err(|error| error.to_string())?;

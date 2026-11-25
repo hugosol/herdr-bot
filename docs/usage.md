@@ -239,11 +239,11 @@ Suite 页面统一展示全局只读的 **Task 固定扩展**，各 Suite 的扩
 
 `connect-bot` 已加入两宿主的固定扩展，分别使用 `${roots.toolkit}/entrypoints/omp-auto/connect-bot.ts` 和 `${roots.toolkit}/entrypoints/pi-auto/connect-bot.ts`；不再是 Suite 可选项。它与其他无角色限定的固定扩展一样适用于普通独立 Chat、manager 与 workflow node，不新增角色例外。auto 入口在新进程第一次主会话启动时异步尝试连接登记，收到有效回执才是已连接；可用 `/connect-bot off` 关闭，失败不会自动重试，新进程恢复不继承旧连接状态。不要同时加载 manual 和 auto 两个入口。
 
-`suite` 默认按 OMP 和 Pi 分组列出工具集，可筛选单一宿主；在筛选结果中创建 Suite 时，表单预选该宿主。每项显示名称、稳定 ID、技能来源与 MCP 数量。全局固定扩展是独立的只读清单，默认折叠；展开可查入口路径和适用角色，不改变加载行为。桌面上选择工具集后可对照目录编辑，手机和平板切换到单栏表单，关闭编辑返回目录。保存与关闭位于编辑区顶部，删除仍需确认；读取失败可重新读取。
+`suite` 默认按 OMP 和 Pi 分组列出工具集，可筛选单一宿主；在筛选结果中创建 Suite 时，表单预选该宿主。每项显示名称、稳定 ID、技能来源与 MCP 数量。全局固定扩展是独立的只读清单，默认折叠；展开可查入口路径和适用角色，不改变加载行为。选择工具集先查看只读概览；MCP／LSP／DAP 显示选项名称与选中状态；类别“说明”和单项“详情”默认折叠。点击“编辑 Suite”进入配置表单，保存使用“保存 Suite”；“返回 Suite 列表”可退出详情。删除仍需确认；读取失败可重新读取。
 
-在 `suite` 入口创建、列表查看、编辑或删除场景工具集。Suite ID 由作者指定，使用英文字母、数字、`-`、`_`；保存后不能改 ID。harness 只能选择 Pi 或 OMP，保存后不可切换；需要另一宿主时新建 Suite。ID 非空且全局唯一，不要求 `-pi`／`-omp` 后缀；宿主匹配依据 `harness`。读取权威文件与创建、编辑时均执行通用校验。显示名称仍以 `· Pi`／`· OMP` 结尾。Task 只能选择匹配其 agent 的 Suite；更换 agent 后原选择不兼容时，必须显式重选或取消后才能保存，不自动配对或清空。Skills 和 Prompt templates 按行声明具体资源位置；Extensions 按 OMP／Pi 在文本框逐行填写入口路径，不扫描整个来源目录或导入默认集合；LSP 使用服务名到原生配置对象的 JSON 声明。页面显示声明不表示语言服务或 MCP 已经运行，资源装配与原生消费是另外的启动步骤。
+在 `suite` 入口创建、列表查看、编辑或删除场景工具集。Suite ID 由作者指定，使用英文字母、数字、`-`、`_`；保存后不能改 ID。harness 只能选择 Pi 或 OMP，保存后不可切换；需要另一宿主时新建 Suite。ID 非空且全局唯一，不要求 `-pi`／`-omp` 后缀；宿主匹配依据 `harness`。读取权威文件与创建、编辑时均执行通用校验。显示名称仍以 `· Pi`／`· OMP` 结尾。Task 只能选择匹配其 agent 的 Suite；更换 agent 后原选择不兼容时，必须显式重选或取消后才能保存，不自动配对或清空。Skills 和 Prompt templates 按行声明具体资源位置；Extensions 按 OMP／Pi 在文本框逐行填写入口路径，不扫描整个来源目录或导入默认集合；MCP／LSP／DAP 通过勾选资源选项保存稳定 ID，不提供 Suite 整体 JSON 编辑。页面显示声明不表示语言服务或 MCP 已经运行，资源装配与原生消费是另外的启动步骤。
 
-OMP 发起或以新进程恢复有 Suite 的 Chat 时，会将非空 `lsp` 声明写入本次私有生成目录的原生 `lsp.json`，通过 `--plugin-dir` 增量发现，不覆盖项目或用户的 LSP 文件。保留 OMP bundled defaults、HOME 根配置、插件、用户及项目的原生合并规则；用户／项目配置可覆盖 Suite，Suite 不是排除其他服务的白名单。Pi Suite 不接受 LSP 字段，不使用 Pi 结果证明 OMP 已通过。
+OMP 发起或以新进程恢复有 Suite 的 Chat 时，会按 `lsp` ID 读取集中配置，将非空选择写入本次私有生成目录的原生 `lsp.json`，通过 `--plugin-dir` 增量发现，不覆盖项目或用户的 LSP 文件。保留 OMP bundled defaults、HOME 根配置、插件、用户及项目的原生合并规则；用户／项目配置可覆盖 Suite，Suite 不是排除其他服务的白名单。Pi Suite 不接受 LSP 字段，不使用 Pi 结果证明 OMP 已通过。
 
 批准的四种服务如下（字段名采用 OMP 原生 `command`、`args`、`fileTypes`、`rootMarkers`）：
 
@@ -261,7 +261,9 @@ OMP 发起或以新进程恢复有 Suite 的 Chat 时，会将非空 `lsp` 声�
 ```toml
 [suites]
 definition_file = 'meta-data/suites.json'
-mcp_file = 'meta-data/mcp.json'
+mcp_directory = 'meta-data/mcp'
+lsp_directory = 'meta-data/lsp'
+dap_directory = 'meta-data/dap'
 generated_directory = '.data/suites'
 ```
 
@@ -282,7 +284,8 @@ generated_directory = '.data/suites'
       ],
       "extensions": ["${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"],
       "mcp": ["catalog-search"],
-      "lsp": {}
+      "lsp": ["rust-analyzer"],
+      "dap": []
     },
     {
       "id": "review-tools-pi",
@@ -334,27 +337,29 @@ OMP 的 `omp-skills.json` 使用现有全局安装已支持的原生 `--config`�
 
 Pi Suite 使用原生 `--no-skills` 和逐项 `--skill`，不关闭 builtin MCP。技能参数直接使用 `skills` 中的原目录，不创建链接；明确空 Suite 与不选 Suite 不同，后者不添加技能／模板覆盖。Pi Suite 的 `extensions` 必须填写具体入口文件；后端逐个传原始源码绝对路径 `--extension`，不解析包的 `pi.extensions`，也不创建包链接。依赖和资产留在原目录，由 Pi 原生加载。Pi 本地模板通过原生 `--prompt-template` 逐项选择，初始化不展开；LSP 不传给 Pi。
 
-交付目录的 `pi-suite` 是固定扩展，无须 Suite 重复声明。`--no-extensions` 同时关闭 builtin 自动发现，因此发起／恢复路径显式保留 `builtin:mcp` 与 `builtin:tool-search`；无 Suite 时还保留 `builtin:codemode`，有 Suite 时由 pi-suite 使用本次明确模式，避免两个 codemode 实例。配置产物为 `generated_directory/<suite-id>/<本次装配>/pi-suite.json`，通过 toolkit **公开工厂期 `--pi-suite-config <绝对路径>`** 通道交付；部署必须包含支持该 flag 的 toolkit，旧的仅环境变量通道不能由 Herdr 的 `agent start` 参数自动替代。配置只含版本、模式和本次引用解析出的 `mcpServers`，不会写全局模式、项目 `mcp.json` 或移动认证、模型、会话存储。MCP 的 `cwd`、带根引用或 `./`／`../` 的 command 以集中 MCP 文件目录解析，裸 command 保持 PATH 查找，args/env/url 保持原生字面语义。
+交付目录的 `pi-suite` 是固定扩展，无须 Suite 重复声明。`--no-extensions` 同时关闭 builtin 自动发现，因此发起／恢复路径显式保留 `builtin:mcp` 与 `builtin:tool-search`；无 Suite 时还保留 `builtin:codemode`，有 Suite 时由 pi-suite 使用本次明确模式，避免两个 codemode 实例。配置产物为 `generated_directory/<suite-id>/<本次装配>/pi-suite.json`，通过 toolkit **公开工厂期 `--pi-suite-config <绝对路径>`** 通道交付；部署必须包含支持该 flag 的 toolkit，旧的仅环境变量通道不能由 Herdr 的 `agent start` 参数自动替代。配置只含版本、模式和本次引用解析出的 `mcpServers`，不会写全局模式、项目 `mcp.json` 或移动认证、模型、会话存储。MCP 的 `cwd`、带根引用或 `./`／`../` 的 command 以对应 MCP 选项文件所在目录解析，裸 command 保持 PATH 查找，args/env/url 保持原生字面语义。
 
 开发真实烟测见[测试指引](agents/testing.md#pi-suite-启动开发烟测)。它不替代 Pi 完整资源／MCP／模式／模板契约矩阵；缺宿主能力或尚未交付的 toolkit flag 时应明确记为未验证，不能以参数或产物存在宣称原生消费通过。
 
-### 宿主适用配置与集中 MCP
+### 宿主适用配置与集中资源选项
 
 Pi Suite 必须明确保存顶层 `codemode: "on"` 或 `"only"`。勾选 **Codemode only** 保存 `only`，取消保存明确的 `on`，不表示关闭 codemode 或继承全局 only。Pi 独有 `prompts` 与 `codemode`，OMP 独有 `lsp` 与 `dap`；另一宿主的字段即使为空也拒绝，不静默跳过。编辑器只显示当前 harness 的配置；不再接受旧 `agents`、宿主键资源对象或嵌套 `pi` 字段。
 
-MCP 连接仍由维护者在集中文件编辑，界面只选择 ID，不新增 MCP 编辑平台或进程 manager。例如 `mcp_file` 内容：
+MCP、LSP、DAP 分别使用 `mcp_directory`、`lsp_directory`、`dap_directory`。每个资源选项是一份 `<id>.json`，文件名（不含 `.json`）是稳定 ID，文件正文为 `{name, description, config}`，其中 `config` 是原生配置对象。例如 `meta-data/mcp/catalog-search.json`：
 
 ```json
-{"mcpServers":{"catalog-search":{"command":"search-server","args":["--stdio"]}}}
+{"name":"目录搜索","description":"通过标准输入输出连接搜索服务。","config":{"command":"search-server","args":["--stdio"]}}
 ```
 
-Suite 的 `mcp` 只保存引用，不保存连接配置副本；空数组表示不追加，不禁用宿主原生 MCP。定义页只读此集中目录，不执行其中的命令。保存 Suite 会重新读取集中目录并拒绝不存在的 MCP ID。外部删除 MCP 定义后，重新读取的 Suite 编辑器仍保留已选 ID，并标出“失效”；不会静默丢弃引用。只有显式取消该失效项或恢复集中定义后才能保存。
+在 Suite 页面打开“组件配置”，选择类别后点击资源旁的“编辑 <名称> 配置”可编辑已有选项的完整 JSON，“保存配置”只写回该选项的文件；“取消编辑”放弃改动。修改是共享的，引用该 ID 的其他 Suite 也会在后续装配时使用新定义，不会重配已有进程。页面和 HTTP API 不创建或删除资源选项；维护者按需在对应目录手工添加或移除文件。资源编辑不执行配置中的命令。
+
+Suite 的 `mcp`、`lsp`、`dap` 只保存引用，不保存配置副本；空数组表示不追加，不禁用宿主原生资源。保存 Suite 时重新检查资源引用。外部删除某个选项后，重新读取的 Suite 表单仍保留已选 ID 并标出“失效”；须显式取消或恢复定义才能保存。
 
 ### OMP 原生增量 MCP
 
 选择 Suite 发起或新进程恢复 Chat 时，后端把引用的集中定义发布为只含 `.mcp.json` 的独占资源包，通过原生 `--extension` 追加给 OMP。不向项目写入配置，不替换整个 agent 配置目录，也不建立另一套 MCP manager；连接、工具、资源列举／读取、服务器 prompts、通知刷新、instructions 与 `/mcp` 管理交互均由原生 OMP 提供。Suite 本地 prompt templates 的省略不影响 MCP 服务器 prompts。
 
-MCP 的 `command` 支持 `${roots.name}`；`./`、`../` 等路径式命令及 `cwd` 相对 **集中 MCP 文件** 所在目录解析，不随 Chat cwd 或生成位置改变。裸命令仍由 PATH 查找，其余原生连接字段原样交给 OMP；命令参数仍遵循服务器／宿主语义，不逐个猜测为文件路径。
+MCP 的 `command` 支持 `${roots.name}`；`./`、`../` 等路径式命令及 `cwd` 相对 **MCP 选项文件** 所在目录解析，不随 Chat cwd 或生成位置改变。裸命令仍由 PATH 查找，其余原生连接字段原样交给 OMP；命令参数仍遵循服务器／宿主语义，不逐个猜测为文件路径。
 
 不读取或合并用户／项目 MCP 配置；同名胜者、异名等价连接去重、不同参数的独立连接、项目 `enabled: false` 及用户 `disabledServers` 都遵循 OMP 原生规则。合法的覆盖或禁用不是失效引用，不强制 Suite 胜出或重启服务器。空 MCP 清单不生成额外包，用户与项目原生服务器照常可用。
 
@@ -362,13 +367,13 @@ MCP 的 `command` 支持 `${roots.name}`；`./`、`../` 等路径式命令及 `c
 
 ### OMP Suite 调试器（DAP）
 
-集中定义由 `[suites].dap_file` 指定，默认 `meta-data/dap.json`。维护者编辑文件，OMP Suite 仅保存 `dap: ["codelldb"]` 引用；Pi 不接受 `dap`。列表只显示调试器名称，展开详情查看完整语言、说明和原生配置。语言来自 `config.languages`，是适配器声明，不是逐语言实测保证。旧 OMP Suite 省略 `dap` 等同空数组；交付的「代码实现 · OMP」（`code-implementation-omp`）选择 CodeLLDB，使用前需配置本机 `roots.codelldb`。其他 Suite 不自动勾选。
+例如 `meta-data/dap/codelldb.json` 定义 CodeLLDB；OMP Suite 用 `dap: ["codelldb"]` 引用，Pi 不接受 `dap`。`config.languages` 是适配器声明，不是逐语言实测保证。OMP Suite 省略 `dap` 等同空数组；交付的「代码实现 · OMP」（`code-implementation-omp`）选择 CodeLLDB，使用前需配置本机 `roots.codelldb`。
 
 ```json
-{"adapters":{"codelldb":{"name":"CodeLLDB","description":"Windows x64 Rust；PDB 下 enum 显示有限。","config":{"command":"${roots.codelldb}/extension/adapter/codelldb.exe","args":[],"connectMode":"stdio","languages":["c","cpp","rust","zig"],"launchDefaults":{"stopOnEntry":true,"sourceLanguages":["rust"]}}}}}
+{"name":"CodeLLDB","description":"Windows x64 Rust；PDB 下 enum 显示有限。","config":{"command":"${roots.codelldb}/extension/adapter/codelldb.exe","args":[],"connectMode":"stdio","languages":["c","cpp","rust","zig"],"launchDefaults":{"stopOnEntry":true,"sourceLanguages":["rust"]}}}
 ```
 
-`name`、`description` 是目录展示信息，只有 `config` 进入 OMP 原生 `dap.json`。适配器 `command` 支持 `${roots.*}`，带 `./`、`../`、`.\\`、`..\\` 的路径以**集中 DAP 文件父目录**解析；绝对路径保持原意，裸命令由 PATH 查找。参数及 launch/attach defaults 保持原生语义，不猜测哪些字符串是路径，也不展开原生 `${port}`。使用绝对路径或明确根引用可避免 Chat cwd 改变带来的歧义。
+`name`、`description` 是目录展示信息，只有 `config` 进入 OMP 原生 `dap.json`。适配器 `command` 支持 `${roots.*}`，带 `./`、`../`、`.\\`、`..\\` 的路径以**DAP 选项文件所在目录**解析；绝对路径保持原意，裸命令由 PATH 查找。参数及 launch/attach defaults 保持原生语义，不猜测哪些字符串是路径，也不展开原生 `${port}`。使用绝对路径或明确根引用可避免 Chat cwd 改变带来的歧义。
 
 每次发起或需要新进程的来源 Task 恢复重新装配所选定义，在本次独占目录生成 `dap.json`，通过 `--plugin-dir` 注入；没有 LSP 声明时也生效。有 LSP 时共用同一插件目录。不会写入项目或用户配置，不修改原生覆盖优先级，也不是调试器白名单。集中定义删除后保留失效引用供显式修正；保存、选用与装配重新校验，不静默丢弃。
 
@@ -389,21 +394,21 @@ MCP 的 `command` 支持 `${roots.name}`；`./`、`../` 等路径式命令及 `c
 
 Task 编辑第二步提供 **Suite（至多一个）** 单选，只提供当前 agent 兼容的 Suite 和“不选 Suite”。多个 Task 可以引用同一个 Suite；引用保存为 Task 的可选 `suite` 字符串（稳定 Suite ID），不复制 Suite 内容。`null` 或省略表示明确不选，数组、多选、不存在的 ID、空字符串或不兼容的选择会被直接 HTTP 拒绝。
 
-- Task 列表与编辑器重新读取当前权威定义和集中 MCP 目录；失效引用仍显示原 ID 及原因。切换 agent 不会偷偷清空或改选 Suite，不兼容的原选择保留为不可用项，必须显式修正。
-- Task 保存及发起 Chat 前均重新验证 Suite 存在、宿主兼容和集中 MCP 引用。发起后新进程恢复与 workflow manager/node 启动也验证来源 Task 的 Suite 引用。验证失败会明确拒绝，不以空环境继续，不删除引用；原生 MCP 的运行期连接状态仍由宿主处理，不新增“所有 MCP 已就绪”门禁。
+- Task 列表与编辑器重新读取当前 Suite 权威定义；失效引用仍显示原 ID 及原因。切换 agent 不会偷偷清空或改选 Suite，不兼容的原选择保留为不可用项，必须显式修正。
+- Task 保存及发起 Chat 前均重新验证 Suite 存在、宿主兼容和集中资源引用。发起后新进程恢复与 workflow manager/node 启动也验证来源 Task 的 Suite 引用。验证失败会明确拒绝，不以空环境继续，不删除引用；原生 MCP 的运行期连接状态仍由宿主处理，不新增“所有 MCP 已就绪”门禁。
 - Suite 不替换 Task 的初始 Skill、固定 prompt、模型、思考级别或命名规则。修改定义不会主动重配已运行的 Chat。
 - 删除仍被引用的 Suite 返回 `409 suite-in-use`，界面列出引用它的 Task 名称与稳定 ID。先显式编辑或删除这些 Task，再删除 Suite；拒绝后 Suite 和所有 Task 引用保持不变。读取 Task 失败时也不会冒险删除 Suite。
 - 同一进程内新增／修改 Task 引用与删除 Suite 共用既有文件协调范围，不能同时成功留下悬空引用。手工编辑在下一次读取／保存／启动时重新检查；不承诺跨文件事务或多进程写入协议。
 
 `GET /api/tasks` 的 `options.suites` 提供当前 Suite 定义，`options.mcp` 提供集中 ID 清单；Task POST/PUT 的 `suite` 字段与读取字段一致。引用校验失败返回 `400 task-suite-invalid` 和具体原因。读取失效 Task 本身仍成功，以便保留并显式修正引用。
 
-公开 HTTP 入口：`GET /api/suites` 返回 `{suites, mcp, dap, fixedExtensions}`（`mcp` 为集中 ID 清单，`dap` 为调试器详情数组，每项含 `id`、`name`、`description`、原生 `config`；`fixedExtensions` 为只读固定目录，条目含 `id`、`label`、`agent`、`kind: "fixed"`、解析后的 `entrypoint` 和 `roles`，角色值为 `standalone`／`manager`／`node`）；`POST /api/suites` 创建；`GET /api/suites/{id}` 返回 `{suite}`；`PUT /api/suites/{id}` 修改同一 ID；`DELETE /api/suites/{id}` 删除。创建、更新与删除成功均返回相同的 `{suites, mcp, dap, fixedExtensions}` 列表形状。保存请求体使用上例的单个 Suite 对象，不接受查询参数或未知字段，删除不接受请求体。错误以 JSON `code` / `message` 返回；只有成功写入权威文件才显示已保存。
+公开 HTTP 入口：`GET /api/suites` 返回 `{suites, mcp, lsp, dap, fixedExtensions}`。`mcp`、`lsp`、`dap` 均为资源选项数组，每项含 `id`、`name`、`description`、原生 `config`；`fixedExtensions` 仍为全局只读目录，条目含 `id`、`label`、`agent`、`kind: "fixed"`、解析后的 `entrypoint` 和 `roles`。`POST /api/suites` 创建 Suite，`GET /api/suites/{id}` 返回 `{suite}`，`PUT /api/suites/{id}` 修改同一 Suite，`DELETE /api/suites/{id}` 删除 Suite。创建、更新、删除 Suite 成功均返回与列表相同的结构。Suite 保存请求体使用上例的单个 Suite 对象，不接受查询参数或未知字段；删除不接受请求体。`PUT /api/suites/resources/{kind}/{id}` 仅编辑对应类别（`mcp`、`lsp`、`dap`）中已有的资源文件，请求体与文件正文相同（`{name, description, config}`，不含 `id`），成功返回更新后的列表。错误以 JSON `code` / `message` 返回；只有成功写入权威文件才显示已保存。
 
 定义管理的可复跑隔离验收为 `cargo test --manifest-path backend/Cargo.toml --test suites` 与 `npm --prefix frontend run test:browser:build -- suites.spec.ts --workers=1`。Task 引用完整性验收为 `cargo test --manifest-path backend/Cargo.toml --test suite_references` 与 `npm --prefix frontend run test:browser:build -- suiteReferences.spec.ts --workers=1`，覆盖单选及复用、集中引用失效后的读回／保存／启动拒绝、删除保护及受控并发请求；启动负例使用独占 Herdr 记录夹具确认没有外部启动调用，不宣称原生资源消费通过。浏览器用例独占临时配置、声明、动态回环端口和后端进程，真实操作页面并独立读取文件；包含外部修改及实际进程重启，不需要用户凭据或原生 agent 启动。它们证明定义管理和模式持久化，不证明原生 agent 已消费资源。
 
 ### 当前交付定义与旧格式更新
 
-交付的 `meta-data/suites.json` 和 `meta-data/mcp.json` 是当前默认权威定义，Task 通过稳定 ID 引用 Suite。当前清单为：
+交付的 `meta-data/suites.json` 与 `meta-data/mcp/`、`meta-data/lsp/`、`meta-data/dap/` 是默认权威定义。Task 通过稳定 ID 引用 Suite。升级自聚合文件的自定义部署应先备份并停止服务写入：将旧 MCP 和 DAP 聚合定义拆为每项一个文件，将 OMP Suite 的内嵌 LSP 配置移入 LSP 目录并改为 ID 数组，再切换到三个目录配置键；旧 `mcp_file`／`dap_file` 不再受理。含相对路径命令或 `cwd` 的既有 MCP／DAP 配置，移动文件后须确保仍解析到原目标。Pi Suite 本身无须改写。当前常用 Suite 包括：
 
 | Suite ID | harness | 资源职责 |
 | --- | --- | --- |

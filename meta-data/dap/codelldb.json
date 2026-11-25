@@ -1,0 +1,14 @@
+{
+  "name": "CodeLLDB",
+  "description": "Windows x64：使用完整 codelldb-win32-x64.vsix 解压目录，保留 adapter、lldb 及配套运行库。适用于 Rust MSVC；PDB 下 Rust enum 显示有限。本次支持范围为 Rust，其他语言仅为适配器声明。配置不代表安装或调试验证通过。",
+  "config": {
+    "command": "${roots.codelldb}/extension/adapter/codelldb.exe",
+    "args": [],
+    "connectMode": "stdio",
+    "languages": ["c", "cpp", "rust", "zig"],
+    "fileTypes": [".c", ".cc", ".cpp", ".cxx", ".rs", ".zig"],
+    "rootMarkers": ["Cargo.toml", "CMakeLists.txt", "Makefile", "compile_commands.json", "build.zig"],
+    "launchDefaults": {"request": "launch", "stopOnEntry": true, "sourceLanguages": ["rust"], "terminal": "console"},
+    "attachDefaults": {"request": "attach", "sourceLanguages": ["rust"]}
+  }
+}

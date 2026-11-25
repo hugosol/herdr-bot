@@ -1,0 +1,10 @@
+{
+  "name": "JDT LS",
+  "description": "提供 Java 语言服务；需要兼容的 JDK 和 JDT LS 安装。",
+  "config": {
+    "args": [],
+    "command": "jdtls",
+    "fileTypes": [".java"],
+    "rootMarkers": ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", ".project"]
+  }
+}

@@ -24,7 +24,7 @@ fn next_launch_and_recreated_runtime_use_latest_suite_paths_and_deduplicate_sour
     let suite_file = definitions.join("suites.json");
     let mut declaration = json!({"suites":[{"id":"web-pi","name":"Web · Pi","harness":"pi","codemode":"on","extensions":["../source entries/first.ts", first]}]});
     fs::write(&suite_file, declaration.to_string()).unwrap();
-    let make_runtime = || Tasks::new(root.path().join("tasks.json"), common::test_metadata_file(), Default::default(), Arc::new(Suites::new(suite_file.clone(), root.path().join("mcp.json"), root.path().join("dap.json"), root.path().join("generated"))));
+    let make_runtime = || Tasks::new(root.path().join("tasks.json"), common::test_metadata_file(), Default::default(), Arc::new(Suites::new(suite_file.clone(), root.path().join("mcp"), root.path().join("lsp"), root.path().join("dap"), root.path().join("generated"))));
     let runtime = make_runtime();
     let sources = |args: Vec<String>| -> Vec<String> { args.windows(2).filter(|pair| pair[0] == "--extension" && pair[1].ends_with(".ts")).map(|pair| pair[1].clone()).collect() };
     assert_eq!(sources(runtime.prepare_environment(&task()).unwrap()), vec![first.to_string_lossy().into_owned()]);
@@ -57,7 +57,7 @@ fn connect_bot_loads_once_with_or_without_suite_for_each_host_and_execution_role
         {"id":"web-pi","name":"Selected · Pi","harness":"pi","codemode":"on"}
     ]}).to_string()).unwrap();
     let runtime = Tasks::new(root.path().join("tasks.json"), common::test_metadata_file(), Default::default(),
-        Arc::new(Suites::new(suite_file, root.path().join("mcp.json"), root.path().join("dap.json"), root.path().join("generated"))));
+        Arc::new(Suites::new(suite_file, root.path().join("mcp"), root.path().join("lsp"), root.path().join("dap"), root.path().join("generated"))));
     for agent in [Agent::Omp, Agent::Pi] {
         let compatible = match agent { Agent::Omp => "web-omp", Agent::Pi => "web-pi" };
         for suite in [None, Some(compatible)] {
@@ -91,7 +91,7 @@ async fn missing_entries_allow_definition_task_save_and_preview_but_reject_launc
         config.tasks.storage_file = root.path().join("tasks.json");
         config.zones.registry_file = root.path().join("zones.json");
         config.suites.definition_file = root.path().join("suites.json");
-        config.suites.mcp_file = root.path().join("mcp.json");
+        config.suites.mcp_directory = root.path().join("mcp");
         config.suites.generated_directory = root.path().join("generated");
         config.herdr.executable = herdr.executable().to_path_buf();
         let server = TestServer::start(&config).await;

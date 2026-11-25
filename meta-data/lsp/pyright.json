@@ -1,0 +1,10 @@
+{
+  "name": "Pyright",
+  "description": "提供 Python 语言服务。",
+  "config": {
+    "args": ["--stdio"],
+    "command": "pyright-langserver",
+    "fileTypes": [".py", ".pyi"],
+    "rootMarkers": ["pyproject.toml", "pyrightconfig.json", "setup.py", "setup.cfg", "requirements.txt", "Pipfile"]
+  }
+}
