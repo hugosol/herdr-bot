@@ -24,13 +24,13 @@
 
 示例使用未登记的稳定 ID `example/travel`，不是目录。仅浏览无需登记；实际启动前显式将该 ID 登记到本机已有目录，另一台机器可为同一 ID 登记不同目录。Map 不保存本机绑定；Run 启动时冻结所需绑定。直接 File 输入使用 `{"id":"source","type":"file","zone_id":"example/travel","path":"inputs/source.txt"}`，其中 path 是以 `/` 分隔的相对路径，省略 zone_id 时使用管理者 zone，不使用 node zone。
 
-旧定义须在停服并备份后显式更新为上述格式，不能把旧路径当成新 ID；正常启动不会自动迁移旧格式。历史离线迁移工具已归档，不再随仓库提供。更新时须明确稳定 ID 与本机绑定；绝对 File 输入须改为明确的 zone_id 与相对路径，多个包含根有歧义时不猜最近父目录。不要为浏览示例凭空登记或创建目录，也不要改写历史 Run／Chat。
+更新旧定义前先停止服务并备份。显式为本机目录指定稳定 zone ID，把绝对文件引用改成选定 zone 内的相对路径；有多个候选根时不猜，也不改写历史 Run 或 Chat。仅浏览示例不用登记 zone。
 
 ## 在隔离目录运行
 
 以下 PowerShell 从**仓库根目录**执行；先按根 [README](../../README.md#构建与运行) 安装依赖。所有可变数据均写入新建临时目录，不使用用户的 Task、zone、Map 或 Bot。不将样例自动安装到用户数据。
 
-先构建页面和现有安全关机壳；它与交付程序使用同一应用及读取接口，但不会真的关机。固定操作使用已有无害夹具。此页面仅供本机体验，不进行 LAN／mDNS 验收，也不要从此页面发起 Chat。
+先构建页面和现有安全关机壳；它与交付程序使用同一应用及读取接口，但不会真的关机。固定操作使用已有无害夹具。此页面仅供本机预览。不要点击固定操作、发起 Chat 或用于 LAN／mDNS 验收。
 
 ```powershell
 npm --prefix frontend run build
@@ -41,6 +41,7 @@ cargo build --manifest-path backend/Cargo.toml --bins --example safe_shutdown_sh
 
 ```powershell
 $repo = (Get-Location).Path
+$target = if ($env:CARGO_TARGET_DIR) { (Resolve-Path -LiteralPath $env:CARGO_TARGET_DIR).Path } else { Join-Path $repo 'backend/target' }
 $demo = Join-Path ([IO.Path]::GetTempPath()) ('herdr-map-preview-' + [guid]::NewGuid())
 $work = Join-Path $demo 'process-cwd'
 New-Item -ItemType Directory -Path $work | Out-Null
@@ -78,7 +79,7 @@ bot_directory = 'process-cwd/capabilities'
 Write-Host "隔离目录：$demo"
 Push-Location $work
 try {
-    & "$repo/backend/target/debug/examples/safe_shutdown_shell.exe" --config $config
+    & (Join-Path $target 'debug/examples/safe_shutdown_shell.exe') --config $config
 } finally {
     Pop-Location
 }
@@ -88,116 +89,36 @@ try {
 
 ### 依次操作
 
-1. 初始是 `chat`；点击左上角展开导航后选择 `scheduler`，或在顶部导航条左滑到配置组再选择。列表恰有 `another-trip.json` 和 `trip-readiness.json`，不应出现三个 Bot 文件。
-2. 选择 `trip-readiness.json`，默认显示节点清单与详情空态，依赖图在节点清单上方常驻展开。核对 A、B、C、D 标题与 ID，以及 C 的 A／B 前置关系。可在目录输入文件名筛选；没有匹配项时仍保留当前 Map 和 node，清空筛选恢复目录。
-3. 从节点清单逐项选择 A、B、C、D，与上表核对本次输入、zone 和依赖。详情展示关联 Bot 绑定 Task 的固定 `prompt`（Task prompt）与 `node.input` 原文（本次输入），不展示 `node_guide`；Bot 缺失或无效、未绑定 Task、Task 不存在或读取失败时应有对应提示，空 `prompt` 应明确标识为空。前置与后继节点可点击定位，关闭详情后焦点回到节点清单。点“Bot 明细”进入共享 Bot 预览，外侧同步选中 `bot`，点外侧 `scheduler` 入口继续核对工作；不再内联展开。也可从外侧 `bot` 入口打开共享列表，再按名称与 ID 预览。在依赖图核对 A → C、B → C，D 独立；图与清单选中联动。图自动适应视口，可拖动图内空白处平移；不拖动编辑节点或创建连接。
-4. A、B 进入同一个「目的地天气摘要」预览（ID 为 `destination-weather`）；每次通过外侧 `scheduler` 入口回到节点清单。分别切换 `when`、`plan_guide`、`node_guide` 阅读三份独立文档，允许任意顺序；`json` 只读展示完整 JSON。左侧列表始终保留，可按名称或 ID 筛选；筛选无匹配时右侧仍保留已选 Bot。C 为「出行准备清单汇总」，D 为「额度恢复时间估算」。逐项文本以交付 Bot JSON 为准；它们都是预期说明，不是实际结果。
-5. 选择 `another-trip.json` 与 E，核对广州、日期和同一「目的地天气摘要」。可以在隔离 capabilities 内重命名 weather 文件，点击“刷新全部”，关联仍按 id 成立。
-6. 在 Bot 预览点 `edit`：独立 ID 只读，JSON 只加载当前真实内容且不含顶层 id。修改 name 或 plan_guide 后显式保存，直接显示新预览，无需 `refresh`；外侧 `scheduler` 入口重读来源并保留仍存在的 node 选择。来源 node 或 Map 被外部移除则显示失效原因。所有引用同 ID 的 A、B、E 都读取同一份共享能力，不产生 Bot 副本。若用外部编辑器改文件，显式刷新可重读；刷新会清除 node 选择，依赖图仍常驻展示（Bot 页按钮为 `refresh`，Map 页为“刷新全部”）。**避免在页面提交期间直接修改相关定义**，不承诺与不参与协调的外部编辑器跨文件原子提交。
-   直接点页面上方 `new`（空列表也可新增）：ID 初始为空，JSON 预填天气示例除 id 外的完整内容。该示例随应用编译打包，以本目录 weather-capability.json 为单一内容来源，不要求部署时存在开发仓库。可以删改条目但保留必需结构；打开或放弃不会写文件。页面不要求文件名，保存后自动使用安全且不覆盖既有文件的名称，编辑已有 Bot 保留原名。无效 JSON、结构错误、重复 ID 或旧版本冲突均保留原始草稿并显示原因，不跳到成功预览；需要重新加载时先复制草稿，再放弃并重开。修改后返回、切换 tab／server、刷新全部或浏览器刷新均确认放弃，取消继续编辑。
-7. 在当前 Map 点“新增 node”：独立 ID 初始为空，JSON 预填本目录 trip-readiness.json 的 A（上海、2026-11-01、步行／带伞说明、`auto_approved: true`、示例 zone 与空 blocked_by），示例随应用打包，部署不依赖仓库。先放弃确认文件未变化，再重新打开，填入不同 ID 并实际删改示例后保存。不会自动安装 destination-weather Bot。选中已有 node 点“修改 node”，ID 只读且 JSON 只来自真实 node。改变标题、input、zone 或 blocked_by，保存后不点刷新，核对当前 Map、选中 node、列表、详情和依赖图立即更新。其他 node 的输入、zone 与依赖、Map 标题说明和其他 Map 文件不应改变（当前 Map 排版可变化）。
-   node 只在所属 Map 内唯一，不同 Map 可复用同一 ID；整个 Map 的未知前置、自依赖或环均被拒绝，不自动修复。字符串 input（包括 Markdown）、未登记 zone／Task、缺失 Bot 引用仍可保存，但页面明确提示缺失 Bot。失败保留独立 ID 与原始 JSON；整个 Map 文件是冲突单位，即使只改另一 node，旧草稿也须重新加载，不自动合并。离开编辑器、选择其他 Map、Bot 管理、切换页面或刷新均沿用草稿保护。**页面提交期间不要直接修改相关定义**。
-   将另一个 JSON 副本放入隔离 plans，点击“刷新全部”看到新增文件；删除该副本后刷新则移除。刷新也重新读取当前 Map 与 Bot；不自动监听文件。
-8. 从 scheduler 点右上角 `server`，原页面内进入独立内容页，再点右上角原位置的“返回”。不要用新窗口或在功能分组中寻找 server。
-9. 窄屏使用约 390 × 844 viewport；按文件目录 → 节点清单 → node 详情纵向访问，再进入 Bot 预览；通过外侧 `scheduler` 入口往返，图按需展开。滑动滚动页面；可用 Tab／Shift+Tab、Enter／Space 操作，图内聚焦节点会按需移入视口，顶部 tab 另支持方向键、Home／End。
+1. 从配置组进入 **scheduler**。目录只有两张 Map，不包含 Bot 文件。选 **出行准备核对（人工示例）**（`trip-readiness.json`），在常驻依赖图中核对 A → C、B → C 和独立的 D。逐项选择节点，对照上表的 ID、输入和依赖。图可选中节点，不能拖动节点改定义或创建连线。
+2. 从外侧 **bot** 入口选择 `destination-weather`。按任意顺序阅读 `when`、`plan_guide`、`node_guide`，在 `json` 查看原始定义。它们是说明，不是工作结果。回到 **scheduler** 打开另一张 Map，核对 E 仍引用同一个 ID。在隔离 `capabilities` 目录改天气 Bot 的文件名，回到 **scheduler** 点 **刷新全部**，核对关联不变。
+3. 在 **bot** 里修改天气 Bot 的 `plan_guide` 并显式保存。已有 ID 只读，内容 JSON 不含顶层 `id`。A、B、E 仍引用同一份定义。Bot 页 **refresh** 重读 Bot；Map 页 **刷新全部** 重读目录、当前 Map 与 Bot，并保留仍存在的节点选择。
+4. 回到 `trip-readiness.json`，选 **新增 node**，在独立 ID 控件填 `manual-node`。设为固定 zone `example/travel`，在独立的成果批准设置选自动，保持自动关闭和结束节点未勾选。切到 **JSON 编辑**，填入下面的内容并保存。再次打开节点，核对设置和文字；A、B、C、D 的定义和依赖不变，也不应启动 Chat。
+
+   ```json
+   {"title":"人工新增核对","bot_id":"destination-weather","input":"城市：杭州；业务说明：人工核对。","blocked_by":[]}
+   ```
+
+5. 从 **scheduler** 打开 **server**，再用 **返回** 回到原页面。
 
 ### 默认目录及错误对照
 
-两个 scheduler 字段可各自省略；默认分别为配置文件目录下的 `meta-data/workflow-maps/` 和 `meta-data/bots/`。普通相对目录均按**配置文件所在目录**解析，与启动 cwd 无关。绝对路径和命名根引用也可用，规则见 [本机根目录](../../README.md#本机根目录与解析规则)。配置修改需重启；目录文件变化只需显式刷新或重载。
+目录基准与默认值见 [scheduler 目录配置](../scheduler.md#目录与定义管理)。要观察正常空态，在新隔离目录中删去 `[scheduler]` 配置段且不复制示例。Map 与 Bot 页应显示空态，不会安装样例。文件错误不是空态；排查见[共享 Bot 问题](../scheduler.md#共享-bot-问题排查)。
 
-首次读取自动创建缺失的配置目录及父目录，保留已有文件，不覆盖定义，也不安装这份样例。要观察默认空态，在另一份新临时目录中按上述配置运行但删去整个 `[scheduler]` 段，不复制样例；进入 scheduler 应有明确的 Map／Bot 空态，而不是样例图。服务还会维护自己的既有持久数据；scheduler 的只读约束专指 Map／Bot 定义。
+## 本例使用的格式子集
 
-- 目录路径被普通文件占据、权限不足或无法创建／读取：明确显示目录错误，不冒充空目录。先停止服务或在隔离目录内修复，再刷新。
-- Map JSON、结构或依赖无效：清除旧图与详情，显示文件及可用字段位置；仍可选择其他有效 Map。
-- Bot 缺失、不可读、格式无效：保留合法 Map 图和输入并提示问题，不捏造说明或默认 Task。重复 id 列出冲突文件，不任选其一；正常 Bot 仍可查看。
-- Bot 目录出错与单文件问题分开提示。修复后刷新或重载读取当前文件；具体排查见 [共享 Bot 问题排查](../scheduler.md#共享-bot-问题排查)。
-- 两个目录均只扫描顶层 JSON（后缀不区分大小写），不递归；链接、目录联接和其他重解析点不能绕过读取范围。
-
-## 受支持格式（生成者也使用同一种格式）
-
-字段名固定为 **snake_case**；只支持新格式，拒绝全部旧字段与 schema_version（包括 1）。每张 Map、每个 Bot 独立保存；没有专供图形展示的 edges、位置或 Bot 副本。
-
-|对象|必需字段与类型|
-|---|---|
-|Map|`title`、`description`: 字符串；`nodes`: Map 内 ID 到 node 的对象|
-|node|`title`、`bot_id`、`input`、`zone`: 字符串；`blocked_by`: 同图前置 ID 字符串数组；可选 `auto_approved`: 布尔，缺省 `true`|
-|Bot|`id`、`name`、`when`、`plan_guide`、`node_guide`: 字符串；可选 `task_id`: Task ID 字符串，省略或 `null` 表示未绑定|
-
-示例显式填写全部 node 的 `auto_approved`：A、B、D、E 为 `true`，C 为 `false`。自动模式由执行者主动批准成果，人工模式由原生确认的显式 Yes 批准；派发时都尚未批准。报告随时可发，不要求发送确认，也不改变批准事实。批准不自动完成 node；管理者仍须验收最新可交接报告与约定交付并显式 complete。静态预览不会因此执行工作。
-
-三份 Bot 显式填写 `task_id: null`，保留可浏览但不可执行的未绑定状态；读取或保存后的服务响应会省略无绑定字段。需要执行时，应改为本机真实存在的 `normal` Task ID，并配置有效 zone，而不是假设示例 ID 已登记。
-
-node ID 是 `nodes` 的 key，共享 Bot 按 `id` 而非文件名关联。Bot 只引用 Task，不复制 Task 配置或 Chat；静态定义不保存执行状态、报告和运行历史。`zone` 是用户输入的稳定 ID；本机登记将该 ID 绑定到绝对目录。相同 Map 可在不同主机绑定到不同目录。
-
-Bot 的 `when`、`plan_guide`、`node_guide` 分别指引能力选用、规划安排与填写 `node.input`，可任意顺序独立读取、独立保存空文本；三份指南保留在 Bot 预览中，不自动注入节点执行提示词。节点详情展示关联 Task 的固定 `prompt` 与本次 `node.input`，不以 `node_guide` 替代。Markdown 不是结构校验或业务门禁。`input` 是原文字符串，不做 JSON 解析，指南也不会自动补全输入。预览与保存保留 `${key}` 原文；实际发给 agent 时，仅指定模板字段从最新本机提示词字典展开，`$${key}` 表示字面量，缺键会在发送前报错。用户输入、报告及文件内容不展开。预览中的路径和指令只作文本展示，不读取或执行。
-
-结构检查拒绝未知字段、错误类型、缺必需字段及非法依赖，拒绝前保留原定义。`nodes: {}`、`blocked_by: []`、字符串 `""` 合法，必需字段不能缺省或为 null。Bot 可以暂缺 task_id，也可保存尚不存在的 Task；node 可引用缺失 Bot、未登记或失效的 zone，不补默认绑定。完整职责与接口见 [scheduler 参考](../scheduler.md#定义职责与唯一格式)。
+A、B、D、E 使用自动成果批准，C 使用人工成果批准。浏览预览不会批准成果、提交报告或执行节点。三份 Bot 的 `task_id` 均为 `null`；页面不补默认执行目标或 zone 登记。完整格式见 [scheduler 参考](../scheduler.md#定义职责与唯一格式)，运行时的批准与报告见[运行说明](../workflow-runtime.md#节点报告与独立通知)。
 
 ## 体验材料与保留项（P33）
 
-浏览器验收 `frontend/browser-tests/scheduler/maps/schedulerExamples.spec.ts` 直接复制本目录文件，经 S1 真实主界面核对上表、全部 Bot 明细、跨 Map 复用、重载、刷新和 server 返回；不使用专供文档的读取接口。项目完整回归入口见 [测试指引](../agents/testing.md)。
-
-**P33 仍待用户确认**：在全部自动工作完成后，按上述可运行步骤检查并反馈：
-
-- 静态图的并行、汇合、独立 node 布局与箭头是否容易核对。
-- 桌面与窄屏的 node 标题、ID、输入、zone 及 Bot 说明是否可读。
-- 先看具体工作、再进入 Bot 预览的层次与返回导航是否清楚；窄屏纵向滚动是否顺畅。
-
-用户未确认前，既有 P33 的主观项不能仅凭截图标为通过。
+在桌面和约 390 × 844 的窄屏窗口分别按上面的教程操作。核对并行、汇合及独立节点布局、标题与 ID、输入与 Bot 指南的可读性，以及进入详情和返回的导航。用 Tab、Shift+Tab、Enter、Space 核对键盘可达性，检查窄屏能否滚动到输入、错误、保存与返回。自动结果和截图不能代替用户对清晰度与可用性的判断。
 
 ## 定义管理体验验收（P36）
 
-**人工部分未验收，尚无用户确认。** 自动操作事实、用户体验判断与未检查项应分别记录。所有自动工作（含跨操作验证）结束后，才向用户发起最终体验确认；若其后页面或数据行为改变，须刷新构建、复查受影响流程并重新生成相应截图。自动脚本或截图不能代替用户判断。
+只用本轮独占 `$demo` 的副本，不发起 Chat、不点击固定操作。以[定义保存与校验](../scheduler.md#保存与校验边界)作为独立预期：
 
-### 可运行页面与自动复现
+1. 编辑 `manual-node`，输入无效 JSON 后保存。错误应可读，ID 和原始草稿应保留。改回合法草稿，尝试离开或刷新，取消放弃后继续编辑；再次操作并确认后才离开。
+2. 保留一份合法草稿，在隔离的 `plans` 目录单独修改该 Map 的 `description`。外部编辑结束后再保存页面草稿。旧草稿应因版本冲突保留，原文件不应被覆盖。先复制要留的草稿，再放弃并重新加载，不自动合并。
+3. 在 **bot** 里新建自己的无绑定 Bot，保存后核对列表与预览，确认未改其他定义。在隔离 `capabilities` 中添加一个损坏 JSON，再点 **refresh**。错误应标明文件，其他健康 Bot 仍可查看。移除该故障文件后重新读取。
+4. 尝试删除天气 Bot 和 A，分别核对跨 Map 引用与 C 的依赖使删除失败。只删除本轮新增且无引用的对象，先取消、确认未删，再显式确认删除；不级联修改其他定义。
 
-沿用上面的隔离 PowerShell 启动步骤，页面为日志中实际打印的 `http://127.0.0.1:<动态端口>/`，不要使用真实配置或将样例复制到用户目录。服务进程、cwd、定义目录和持久路径均属于这一轮 `$demo`；关闭服务后可保留该目录核对修改。样例中的天气／额度／清单只是静态说明，**不要发起 Chat、点击固定操作或执行工作**。
-
-自动检查从仓库根目录执行，保留 npm 网络护栏：
-
-```powershell
-# 开发时定向重现 P36（先构建实际交付页面与后端）
-npm --prefix frontend run test:browser:build -- schedulerUsability.spec.ts --workers=1
-# 交付时执行完整浏览器入口，不使用过滤器
-npm --prefix frontend run test:browser:build -- --workers=1
-```
-
-`frontend/browser-tests/scheduler/maps/schedulerUsability.spec.ts` 在 1280 × 900 与 390 × 844 下分别启动独占真实应用，使用本目录上海 Map 与天气 Bot 的副本，加一个独立损坏 Bot 以核对诊断。该自动场景故意不复制 C／D 的 Bot，因此截图同时显示 `trip-summary`／`quota-estimate` 缺失；上方人工启动步骤复制全部 Bot，不应显示这两条缺失。它通过实际 Tab／Enter、键盘输入、浏览器确认框、真实校验错误和外部文件冲突验证两类对象新增／修改、Bot 往返和草稿恢复；不模拟后端响应，不使用用户数据。截图保存在 Playwright 打印的 `frontend/test-results/` 下对应 `scheduler/maps/schedulerUsability.spec.ts` 的用例目录中（文件名以 `desktop-`／`narrow-` 开头）。
-
-最终体验验收应重新生成与待验收构建一致的截图；单次定向通过不能声称全部浏览器回归通过。完整回归会重新生成测试输出目录，分享材料应取自最后一次成功执行，避免链接到旧截图。
-
-### 人工操作步骤与独立核对点
-
-桌面与窄屏各执行一次；窄屏使用 390 × 844。可用浏览器设备工具设置 viewport，不要求真实 LAN。只用 Tab／Shift+Tab 走到目标，Enter／Space 激活按钮；JSON 用键盘全选、输入与上下移动，观察输入、错误和保存／返回按钮能否通过纵向滚动访问。
-
-1. 从外侧 `scheduler` 入口进入 `trip-readiness.json`，选择「上海出行天气 A」。点「Bot 明细」，核对 Bot ID 为 `destination-weather`，分别阅读 `when`、`plan_guide` 和 `node_guide`，点 `edit`，ID 应只读，JSON 无顶层 id。仅修改 plan_guide 后保存，应立即预览新说明；通过外侧 `scheduler` 返回后仍选中 A，再次进入可看到新说明。
-2. 返回并「修改 node」，确认 JSON 来自真实上海工作而非新增示例，改变 title 后保存，应立即选中新的标题。点「新增 node」，ID 初始为空，填 `manual-node`，把 JSON 改成下面的内容后保存；检查选中 `manual-node`、input 原文包含杭州和业务说明，zone ID 原样保存，且不发起 Chat。
-
-   ```json
-   {"title":"人工新增核对","bot_id":"destination-weather","input":"城市：杭州；业务说明：人工核对。","zone":"example/travel","blocked_by":[]}
-   ```
-
-3. 修改该 node，在 JSON 中输入 `{ "title": ` 后保存，检查错误可读、ID 仍为 `manual-node` 且原始输入未丢。改回合法内容，改变 title 后点「放弃编辑」：先取消，草稿必须保留；再操作并确认放弃，回到原持久内容。不要把“放弃”理解成撤销已保存的内容。
-4. 再修改该 node 并保留一份合法未保存草稿。在另一个编辑器中打开本轮 `$work/plans/trip-readiness.json`，只改变 Map description 并保存。回页面保存旧草稿，检查提示重新加载且没有成功预览，ID 与 JSON 仍在。**先复制需要保留的草稿**，放弃并重开后核对外部说明，再重做修改保存。Map 是冲突单位，即使改的是另一个 node 也会冲突；没有自动合并或自动重试。
-5. 点外侧 `bot` → `new`，填 `manual-capability`，JSON 删除顶层 id（若手工粘入）并保持 name、when、plan_guide、node_guide 的必需字符串结构；task_id 可省略，三份文档可分别清空。不要保留 schema_version 或旧字段。可把天气示例改为自己的静态核对说明，保存后应直接进入新 Bot 预览，左侧列表同步更新，可直接选择其他 Bot 再选回核对。编辑时列表仍保留；修改草稿后选择另一 Bot，取消放弃应保留原草稿，确认才切换。
-6. 在本轮隔离 `$work/capabilities` 新建 `broken.json`，内容为 `{ invalid JSON`，点击 `refresh`，检查问题明确列出该文件及结构错误，其他合法 Bot 仍可打开。删除这个隔离故障文件并刷新，错误应消失；页面不会自动修复它。Map 中 C／D 的 Bot 都已在上方完整启动步骤复制，因此不应凭空出现缺失错误。
-7. 尝试删除天气 Bot，应列出 `trip-readiness.json` 的 A／B 和 `another-trip.json` 的 E 等引用并阻止删除。选择 C 依赖的 A 尝试删除 node，应列出后继 C，不改写依赖。只删除刚建且无引用的 `manual-node`／`manual-capability`：先取消最终确认，核对仍存在；再确认，核对当前 Map 保留、node 详情清除／Bot 回到列表。不提供强制删除、级联或撤销。
-8. 编辑一份新草稿，试切换外侧入口、刷新全部及浏览器刷新；node 编辑还可试「返回 Map」；取消放弃应继续处理原草稿，确认则执行所选动作。浏览器刷新使用原生提示，文案由浏览器决定。结束前不要将未保存草稿当作已持久化结果。
-
-### 请用户评价（等待所有自动工作结束后）
-
-请分别反馈桌面与窄屏的：
-
-- 阅读舒适度：标题、ID、输入、zone、Bot 能力说明与诊断能否方便核对？
-- 编辑顺手程度：ID 与 JSON 分离、键盘移动、保存和返回、取消／确认放弃是否顺手？
-- 提示易懂程度：能否分清 JSON 校验失败、文件读取问题和冲突？是否清楚何时需先复制草稿再重新加载？删除引用提示是否足够明确？
-
-反馈请带上 viewport、操作步骤、相关截图及期望；未收到反馈或尚需修正的维度保持未验收。修改后复查受影响的完整流程并再次请求确认，只有用户明确确认后 P36 才全部完成。
-
-### 当前能力与已知限制
-
-支持当前 Map 的 node 及共享 Bot 新增、修改、安全删除；ID 只读意味着不提供重命名。引用检查覆盖整个配置 Map 目录，损坏／不可读 Map 会阻止 Bot 删除；不能把检查失败当零引用，不删引用者或创建副本。无引用对象仍需最终确认，提交时复核版本与引用。
-
-不提供 node 跨 Map 搬移、独立 node 库、文件名输入、Map JSON 编辑、内容搜索、自动文件监听或 Bot 快照；仅提供 Map 文件名本地筛选。所有文本与 JSON 都作数据处理，scheduler 不调度或执行工作。浏览与打开草稿不安装示例或自动修复定义。
-
-同一应用实例协调写入；node 以整个 Map 为冲突单位，Bot 保留原文件与 ID 关联。提交前检查已发生的外部变化，但**不承诺任意外部编辑器与页面提交之间的跨文件原子性**；避免在页面提交期间直接编辑相关定义。文件写到一半可报错，写完后显式重载。窄屏纵向布局需要滚动，不据此声称任意大图均可读或性能达标。本机回环自动检查也不代表真实手机、LAN／mDNS 或主观舒适度已验收。
+测试入口与通用安全规则见[测试指引](../agents/testing.md)。分别记录自动事实、用户体验判断和未检查项。用户反馈应注明视口、步骤、实际提示及预期；不能以一次抽检或截图替代用户确认。

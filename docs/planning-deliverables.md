@@ -1,14 +1,5 @@
 # 规划交付契约
 
-黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
-
-```powershell
-$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
-$BOT = 'E:/Developer/myhub/herdr-bot'
-```
-
-验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
-
 概要规划者编写文档、Map 生成者核验方案时使用本契约。Task 型能力的稳定执行步骤在各自 Task.prompt，Map 型能力复用已核实的目标图与输入接口；本次目标与额外限制在调用 node.input。文件来源、交付标识与业务输入分工见 [node.input 的业务职责](scheduler.md#nodeinput-的业务职责)，workflow 文件读写遵循[统一文件交接约定](workflow-runtime.md#统一文件交接约定)。
 
 ## 共同身份
@@ -21,7 +12,7 @@ $BOT = 'E:/Developer/myhub/herdr-bot'
 
 规划者交付《能力建设需求》或《概要方案》时使用本节；转换者读取方案时核实其身份、确认范围及完整内容。workflow 文件地址与报告协议由初始化和运行时约定提供；独立 Chat 未要求文件时可直接交付完整 Markdown 正文。
 
-要求文件时，先核实本次材料写入授权、真实路径及父路径的链接安全，避免越界或覆盖其他产物；指定正式位置优先，workflow 内部材料使用初始化提供的位置。独立 Chat 要求文件但缺位置或授权时澄清，不自行选目录。以 UTF-8 完整保存，每份完整读回并与预期逐字比较。修订已有文件前重读基线，出现并发变化即停止。失败或效果不明先查询现场，保留原错误及已发生效果，区分已生效、未生效和无法确认，不盲重试或自动回滚。
+要求文件时，按[文件安全与完整读回](business-materials.md#文件与独立-chat)核实授权、位置、路径和内容。修订已有方案前重读基线；版本或内容已经变化时停止。交接时明确当前版本和有效确认范围，不能以旧版本的确认代替。
 
 完成条件：材料完整可读，身份及确认状态准确；要求文件时安全保存且完整读回一致。文档保存、业务批准、报告发送和管理者接受交接是不同结论。
 
@@ -85,19 +76,15 @@ Map 型 Bot 只复用 Map 引用，不保存 manager 或每次业务要求。调
 
 只有服务已接受定义，且本次明确提供外层根 Run 的 `managerTaskId`、zone、userInput（可明确为空）及必需文件绑定时，才执行只读 preflight；否则报告未执行及缺项，不代选、不借用规划 Run 配置。Map 型调用自身缺 manager 等条件不属于根启动豁免。保存、预检和真实业务验证分别说明，业务启动由用户另行决定。
 
-启用回归为 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch plan_workflow:: -- --nocapture`：公开读取实际交付的规划 Task／Bot，保存并读回 Task 型＋Map 型混合节点，核对同名子输入、父输出与下游映射，预检真实目标存在／移除后的接受／拒绝，并观察没有 Run／宿主调用。共享材料的实际受控派发由 `shared_business::` 检查；两类能力的真实模型选择与完整规划场景由独立 P03 验收拥有，不以提示词存在或上述确定形状检查替代。运行准备与最小原生共享 Task 材料烟测见[测试指引](agents/testing.md#共享-bot-指南材料的启用检查)。
-
-[原生规划场景](workflow-runtime.md#plan_workflow-的业务文件交接)使用验证项目的 `test-workflow-file-handoff --scenario plan-workflow`，随当前三节点定义部署优化者及 writing-for-agents 技能；在优化 Chat 确认当前成果，独立发送报告并核对最终 Map 文件与保存定义一致；旧报告发送确认不再适用。隔离场景将实际写入边界收窄为新业务 Map，相关 Task／Bot／文档只读；它不覆盖共享对象修改分支。定义回归与脚本语法检查不证明该真实模型场景通过。
+[共享材料启用检查](agents/testing.md#共享-bot-指南材料的启用检查)与外部 `test-workflow-file-handoff --scenario plan-workflow` 验证的范围不同。原生交接场景须确认优化成果、独立报告，并核对最终 Map 文件与服务读回一致；该隔离场景只写新业务 Map，不覆盖修改共享对象的分支。定义回归不等于真实宿主读取材料。
 
 ## 两类能力的真实原生规划验收
 
-`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-planning` 独立拥有 P03，不能用上述确定形状回归、提示词检查或旧外层包装案例代替。公开边界为真实规划／转换 Task 的 Chat HTTP、原生工具和 SessionManager 历史、实际授权模型传输、Map 完整严格查询与只读 preflight、Run 目录及所属 OS 进程。入口不增加产品测试 API、不替模型选择 Bot、不提供生成的 JSON。
-
-先在当前 herdr-bot worktree 配置独立绝对 `CARGO_TARGET_DIR`，构建当前静态页面和二进制；toolkit 使用指定 worktree 的源码、锁文件和 Bun 1.4.4。缺依赖时才安装：
+按[外部验收的配置和授权](agents/testing.md)设置 `$TESTER`、`$BOT`。本入口使用实际授权模型和原生 Chat，不能用定义回归或提示词检查代替。指定本次 Toolkit worktree，从产品 worktree 构建页面与二进制，使用独占绝对 `CARGO_TARGET_DIR`：
 
 ```powershell
 $TOOLKIT_WT = 'D:/worktrees/toolkit'
-$env:CARGO_TARGET_DIR = Join-Path $BOT 'backend/target/planning-acceptance'
+$env:CARGO_TARGET_DIR = 'D:/isolated-build/planning-acceptance-target'
 Set-Location $BOT
 bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
@@ -133,6 +120,4 @@ native_shell = 'D:/Program Files/Git/bin/bash.exe'
 
 每个正例先保存草案，证明尚未生成 Map，再通过真实 Herdr 原生输入提交当前版本的明确确认。转换者独立读取已确认方案、生成 Map、通过公开严格查询及恰好一次只读预检。缺口场景缺生产目标决定、实现、凭据和授权，只能交付明确 G1 阻塞，不能补建 Task/Bot、生成 Map 或自主启动。全过程观察真实 HTTP、空 Run 列表、显式 Chat 请求、全部原生 Session 轨迹（包括允许的只读子代理）、既有定义哈希和所属进程；子代理 Session 不等于额外 Herdr Chat，模型自述“不启动”不算证据。读取概要方案中引用的指南文字不算重读实际能力：分别要求当前原生 Chat 的真实 Bot／目标 HTTP 响应及原生 JSON 读取结果。
 
-证据目录必须不存在，由入口排他创建。Windows 安装版 Herdr 的 socket／原生存储目录仍受其实际路径支持限制；使用有足够空间的短绝对目录（例如 `E:/Temp/p03-<唯一标识>`），不要将深层源码路径再叠加长运行标识。路径或磁盘错误必须保留失败，不能改连用户 daemon。原生 worker broker 可能在 Herdr 退出后短暂保留；入口对已持有句柄的所属进程逐项停止并确认退出，不只检查主进程。根 `evidence.json` 包含两仓根／revision／修改身份、锁文件、Cargo depfile／产物及静态页面身份、安装宿主身份、声明／实际宿主映射和每组证据位置；组内包含原始用户输入及确认、原生历史和实际文件字节、完整模型及工具／HTTP 请求结果、OS 观察、逐场景结论、原始错误与单独清理错误。HOME／APPDATA／XDG／原生存储、命名 Herdr、业务定义／运行目录和动态数值回环端口均独占，不启用 mDNS/LAN、不连接用户 Chat、不执行关机。成功和失败均停止并等待所属进程，清理失败保持非零。
-
-先设置 `$env:HERDR_BOT_WORKTREE = $BOT` 和 `$env:PLANNING_ACCEPTANCE_TOOLKIT = $TOOLKIT_WT`，再运行 `python "$TESTER/scripts/accept-workflow-nesting-planning.test.py"`。该回归只核对公开 CLI 缺构建时不启动、不伪报 P03 的安全边界；不是上述真实模型专项通过。缺安装宿主、专用模型授权、能力或隔离／清理失败，专项必须非零且 P03 保持未验证。两仓完整检查仍按[测试指引](agents/testing.md)及各仓规范分别执行；专项成功也不替代它们。
+`--evidence-dir` 必须尚不存在；在 Windows 上使用短绝对路径，避免原生存储和 socket 超长。保存当前版本确认、源指南和方案的实际读取、原始文件、公开 HTTP 及逐场景结果。清理时确认所有所属进程退出，原始失败与清理错误分开记录。缺安装、授权、证据或隔离条件不判通过；CLI 拒绝回归也不证明真实模型行为。

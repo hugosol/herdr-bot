@@ -3,6 +3,8 @@
 - 状态：accepted
 - 日期：2026-10-29
 
+> 下文记录合并普通与节点 Task 时的类型。[现行 Task 类型](../usage.md#task-类型与固定角色扩展)后来增加了需求分流者 `chief`。节点角色仍由执行关联确定，不是 Task 类型。
+
 Task 类型收敛为普通（normal）与流程管理者（manager），取消独立 node 类型。同一个普通 Task 可从 zone 独立发起 Chat，也可经 node → Bot → Task 关系用于 workflow 节点派发，避免为了不同发起方式维护重复预设；manager 类型暂时保留。Task 类型与会话 agent 类型正交，保留当前 omp、pi 对 manager 和 node 的支持，不重新加入 omp 专属限制。
 
 节点执行角色由本次 workflow 执行上下文确定。普通工作节点 Chat 加载对应宿主的 node-chat；结束节点是显式交给用户继续工作的例外，启动与恢复均作为普通 Chat，不加载 node-chat，不承担节点报告职责。结束节点标记保留在本次执行关联中，不从恢复时的当前 Map 推断；其成功发起事实允许管理者结束 Run，但不表示 Chat 业务完成。代码不再通过 Task 的 node 分类或可配置的 taskType 适用规则决定是否加载；独立发起的普通 Chat 不加载该角色扩展。扩展实际入口位置仍来自部署配置，不将机器绝对路径硬编码进业务规则。此处替代现有按 node Task 类型选择角色扩展的设计，不改变 Task 是可复用预设的定义。

@@ -1,6 +1,6 @@
 # 创建bot-V2 材料契约
 
-本契约承载 create-bot-v2 r1 已确认的 V2 文件表示，只适用于明确选择此协议的调用，不改变旧创建 v1、修订流程或独立 Chat 的默认格式。执行步骤、权限、安全保存与完整读回由关联 Task 承担。
+本契约定义显式选择创建 V2 时的材料格式，不适用于[创建 V1、修订和独立 Chat](../business-materials.md)。各 Task 承担执行步骤、权限核实、安全保存和完整读回。
 
 ## 按角色读取
 
@@ -14,7 +14,7 @@
 
 JSON 材料统一为无围栏 UTF-8 单对象；版本为 schema_version=2，拒绝重复键、未知字段、错类型、缺少必填字段或目标歧义，不把参考材料作为隐藏参数。自由说明使用字符串，明确没有条目时使用空数组。
 
-**目标定位 target_ref**：严格三选一：task 为 type=task 加 task_id；map 为 type=map 加 map_file；script 为 type=script 加 script。ID 不为空，Map 为服务目录内确切 JSON 文件名，script 为配置 scripts 根下合法相对 .ts 路径。定位不是已验证能力证明。
+**目标定位 `target_ref`。** 只选择一个既有目标。`type=task` 提供非空 `task_id`，指向 normal Task；`type=map` 提供服务目录内确切 JSON 文件名 `map_file`；`type=script` 提供配置 `scripts` 根下合法的相对 `.ts` 路径 `script`。定位不证明能力已验证。
 
 ## request 与 materials
 
@@ -24,7 +24,7 @@ JSON 材料统一为无围栏 UTF-8 单对象；版本为 schema_version=2，拒
 - bot 可选，包含可选 id／name／group；均遵循平台命名规则。未指定时由节点提出并确认；冲突不随机改名或覆盖。
 - authorization 为 write_materials、create_bot、optimize_task_prompt 三个 boolean。write_materials 必须 true 才能进入文件交付；其余 false 表示尚未授权，可在 W2 对具体候选取得。true 只表达本次委托范围，不能替代未生成正文的最终批准。非 Task 目标 optimize_task_prompt 必须 false。
 - confirmation 为 evidence 非空字符串和 scope=request。只记录当前委托来源与范围，不表示三指南全文批准。
-- 删除 create_blank／scope=create_blank 要求，不在任一节点创建空白 Bot。
+- 不接受 `create_blank` 或 `scope=create_blank`。V2 不创建中间空白 Bot。
 
 **materials**：保持可选参考文件，不强制改成 JSON；调用者说明内容、格式、用途与读取授权。影响下游的必要参考原文由 W1 纳入 target_materials，不只给隐式地址。
 
@@ -46,6 +46,6 @@ JSON 材料统一为无围栏 UTF-8 单对象；版本为 schema_version=2，拒
 - sources 为对象数组，每项 binding_id、direction（input／output）、role；role 为 requirements／target_materials／saved／handoff。只追踪实际本地输入输出，不负责寻址。
 - changes 为字符串数组，记录分层归属和共享影响，不复制完整正文或配置。
 - checks 为 bot_read_back、target_read_back、task_prompt_changed、non_target_unchanged、semantics_preserved 五个 boolean。成功要求前两项及后两项为 true；task_prompt_changed 如实记录，Map／Script 必须 false。非目标保持包含 Map／Script 全目标不变，Task 除获准 prompt 外不变。
-- unverified 为字符串数组，必须如实保留原生加载和业务效果未验证等限制。不再要求 target_unchanged=true 来否定合法 Task.prompt 改动。
+- unverified 为字符串数组，记录原生加载和业务效果等未验证项。V2 不要求 `target_unchanged`，获准的 Task.prompt 改动必须如实记录。
 
 该 handoff 表示成功交接，不用失败现场填出虚假成功 checks。部分失败通过真实报告和另行明确标记的材料说明，不声明整体完成或冒充成功 saved 阶段交付。

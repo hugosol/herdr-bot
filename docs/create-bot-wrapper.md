@@ -1,21 +1,10 @@
 # 为既有目标包装完整 Bot
 
-黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
-
-```powershell
-$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
-$BOT = 'E:/Developer/myhub/herdr-bot'
-```
-
-验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
-
-公开能力为 `create-bot-wrapper` Bot，唯一目标是 `create-bot-wrapper.json` Map。使用现有 scheduler 的定义读取、Run 预检与发起入口，或由外层 Map 的节点引用这个 Bot；不增加产品入口。它与旧的“创建 Task＋Bot”流程不同：目标必须已经存在，不能由本流程新建、修改或执行。仅选定外层 `create-bot-task-workflow--bc-61ce48b80a4c.json` 已改为调用此能力，其他 Map 不自动替换；独立 `create-bot-task` 和 `create-bot` Bot 的职责及 Task 绑定保持原样。本文件不表示用户部署已迁移。
+`create-bot-wrapper` Bot 调用 [`create-bot-wrapper.json`](../meta-data/workflow-maps/create-bot-wrapper.json)。从 scheduler 预检和发起，或由外层 Map 的节点引用。只为既有 normal Task 或 Map 创建 Bot，不新建、修改或执行该目标。旧独立 `create-bot-task` 和 `create-bot` 保持各自职责，不自动切换为包装流程。
 
 ## 创建分支表示的交付边界
 
-TS 脚本创建／三路合并的精确 request、baseline、handoff、saved 字段与独立字面实例见[创建分支 v1](business-materials.md#创建分支-v1可校验表示与空白创建)及[可机读 Schema](contracts/script-bots.schema.json)。request／materials、编写与优化的 baseline／text／handoff、最终 saved／handoff 保持原身份；最终保存干净切换为仅 baseline、when_text、plan_guide_text、node_guide_text 四项，不再传三份指南 handoff 或批准凭据。纯正文不包装，字段归属由固定命名绑定确定，来源索引不负责寻址。发布定义已将原 `create-blank-bot` 身份切换到真实 `create-blank-bot.ts`，仅将 `save_bot` 改为新共享 Bot `save-created-bot-guides`（`save-bot-guides.ts`，三指南严格为空）。两脚本节点均为自动成果批准、自动报告、auto_close=false。三个共享编写者及本图优化 input 明确区分创建 v1 与原修订格式；外层 W2.handoff 同步交付严格 request JSON，最终优化者读取 saved.bot／target.configuration。
-
-删除范围仅原 Task `task-18e33fdc55177d1c-1`，不保留兼容别名，不保证该 Task 的旧来源恢复；不删除无关 Task、Chat 或 Run。原通用 replace-text Bot、Task 的业务协议与修订 Map 的材料接线保持原样；发布成果批准模式按下表独立决定，不按 Bot ID 全量替换消费者，也不建立 Map 私有 Bot。迁移前完整发布定义归档在 `fixtures/rust-create-migration/before.json`；这不是自动部署工具，用户服务与正式历史不受仓库更新影响。修订及独立非 v1 调用仍按原协议，无须补创建授权／digest。实际验证边界见末节。
+材料使用[创建 V1 契约](business-materials.md#创建分支-v1可校验表示与空白创建)。最终保存只读共同 baseline 和三份命名 text，不消费指南 handoff 或批准凭据。[V2](contracts/create-bot-v2-materials.md) 和[修订](revise-bot-guides.md) 使用各自协议，不可替代。自定义旧部署按[脚本更新说明](usage.md#脚本空白-bot-创建)显式更新，不能恢复历史脚本执行或自动重写 Run。
 
 ## 调用接口
 
@@ -25,100 +14,27 @@ TS 脚本创建／三路合并的精确 request、baseline、handoff、saved 字
 
 最终 `saved` 是 v1 JSON envelope，包含公开接口完整读回的真实 `bot`、新 `revision` 和完整 `target.configuration`，不是旧的裸 Bot JSON；`handoff` 是 v1 saved 阶段 JSON，只记真实身份、normal Task／Map 唯一绑定、共同 baseline 与三份正文来源、保存和非目标保持结论及未验证项，不携带批准凭据。父层必须核对真实身份和绑定，不根据“完成”文字推断新能力已验证。必要时显式要求额外交付 baseline，但不通过 handoff 隐式寻址。
 
-## 发布成果批准职责清单（P34）
-
-`auto_approved` 只决定本次普通节点成果由谁批准，不控制报告发送，也不代替业务讨论、保存权限、报告、产物或管理者显式 complete。下表逐项依据实际成果职责决定，未从旧报告开关或 `write_materials` 推导。脚本只能自动；结束节点不适用，即使配置保留 `auto_approved: true` 也不产生批准事实。人工表示须在节点 Chat 原生确认当前成果；S1 HTTP 人工提交不证明该原生确认，双宿主与配置页面消费分别由 14、15 验收。
-
-| 发布 Map | node | 本节点成果与用户把关职责 | auto_approved 与理由 |
-| --- | --- | --- | --- |
-| 创建bot（V1） | create_blank | 核实目标、空白 Bot、共同基线 | true；固定脚本校验与完整读回，无未知文案决策 |
-| 创建bot（V1） | write_when | 新能力选用正文 | false；用户确认本字段全文及业务意图 |
-| 创建bot（V1） | write_plan_guide | 新工作安排正文 | false；用户确认本字段全文及安排取舍 |
-| 创建bot（V1） | write_node_guide | 新输入责任正文 | false；用户确认本字段全文及权限边界 |
-| 创建bot（V1） | optimize_when | 已定 when 的保义表达稿 | true；沿用已确认语义，不引入新业务取舍 |
-| 创建bot（V1） | optimize_plan_guide | 已定 plan_guide 的保义表达稿 | true；只整理表达，语义失配仍须阻塞 |
-| 创建bot（V1） | optimize_node_guide | 已定 node_guide 的保义表达稿 | true；只整理表达，权限不扩大 |
-| 创建bot（V1） | save_bot | 三份显式正文一次保存与完整读回 | true；固定脚本，不从材料读取批准凭据 |
-| 创建task（V1 外层） | w1 | 新 Task 全文、执行配置与创建 | false；用户确认本节点创建成果 |
-| 创建task（V1 外层） | w2 | 已确认 Task.prompt 保义优化及 v1 request | true；保持其他配置，交付执行必需数据 |
-| 创建task（V1 外层） | wrap_bot | 完整子 Run 成果向父层交接 | true；子节点各自把关，子 finish 后独立批准整体交接 |
-| 创建task（V1 外层） | optimize_bot | Task.prompt 与 Bot 三指南联合最终候选 | false；共享影响与完整最终成果需用户把关 |
-| 创建bot-V2 | align_requirements | 目标 Bot 未来使用的已确认业务信息清单与双材料；按业务主题收齐有效结论，W2 再分配三指南；本次创建约束独立记录 | false；用户确认本阶段需求成果，不提前批准 W2 |
-| 创建bot-V2 | design_and_create | 分层完整候选、保存及读回 | false；用户确认最终文案、共享影响与创建成果 |
-| 创建task-V2 | create_task | 新 Task 及独立 V2 委托 | false；用户确认 Task 全文、配置与本阶段成果 |
-| 创建task-V2 | create_bot_v2 | V2 子流程完整成果交接 | true；内部确认保留，子 finish 后独立批准父层交接 |
-| 创建task-script type | create_script | 确认、验证并正式保存 Script 与独立 V2 委托 | false；用户把关脚本成果与当次授权 |
-| 创建task-script type | create_bot_v2 | V2 子流程完整成果交接 | true；内部确认保留，子 finish 后独立批准父层交接 |
-| GitHub 仓库拉取与探索 | W1 | 为已授权目标执行固定浅克隆并记录实际仓库 | true；固定脚本，无新增成果决策 |
-| GitHub 仓库拉取与探索 | W2 | 登记实际仓库的 zone | true；固定脚本，交付明确 zone 绑定 |
-| GitHub 仓库拉取与探索 | W3 | 把只读探索 Chat 交给用户继续 | 不适用；结束节点，定义保留 true |
-| 独立修订既有 Bot 三指南 | w1 | 只读核实与共同基线 | true；无本节点新增业务定稿 |
-| 独立修订既有 Bot 三指南 | w2 | when 修订定稿 | false；用户确认本字段完整修订成果 |
-| 独立修订既有 Bot 三指南 | w3 | plan_guide 修订定稿 | false；用户确认工作安排变化 |
-| 独立修订既有 Bot 三指南 | w4 | node_guide 修订定稿 | false；用户确认输入与权限变化 |
-| 独立修订既有 Bot 三指南 | w5 | 明确三路定稿的合法保存读回 | true；按原修订协议保存，不产生新业务选择 |
-| 创建map | outline | 新概要方案与可翻译业务取舍 | false；用户确认本节点规划成果 |
-| 创建map | generate_map | 已确认方案的忠实 Map 转换 | true；不重新决定业务，缺能力或冲突仍阻塞 |
-| 创建map | optimize_map | 整图及共享对象优化成果 | false；本 Chat 用户确定共享影响及最终边界 |
-| Tibo监测后排查C盘 | tibo-monitor | 观察时点、额度事实及不确定性 | true；客观查询，不要求用户选择成果 |
-| Tibo监测后排查C盘 | c-drive-inspection | 只读文件／worktree 来源与建议 | true；只交调查结果，不删除或执行清理，旧 manual 不是人工成果职责 |
-
-V1 八节点与 V2 两节点保留独立入口、真实定义、命名输入和 Run，互不调用替代；V2 的 `authorization`／`confirmation` 是其专用业务协议，不是通用 `approved`，本次不改写该协议。V1 request 仅含目标、需求、约束与可选命名；保存仅绑定 baseline 与三份 text。不会为历史 Run 增加适配、不改历史或旧产物、不自动部署或重跑。
-
-S1 证据选择器：`published_approval_responsibilities_round_trip_every_shipped_node` 逐项完整读回当前九张定义；`create_migration_runs_shipped_map_and_preserves_revision_and_history` 运行 V1 真实 Bun 创建／保存闭环并组合独立 V2 普通节点的批准、报告、显式完成及真实配置读回。受控宿主只记录材料消费，不证明模型遵从指引或原生批准。
-
 ## 执行与授权
 
-各节点按职责读取[共同业务材料契约](business-materials.md)，只执行所属阶段：
+编写者和优化者只负责自己的字段，按 [共同材料契约](business-materials.md)消费同一基线并交付 text 与 handoff。三份完整指南分别由用户确认；表达优化只整理已确认的意思。创建和保存由 TypeScript 脚本执行，没有 Chat，不使用修订的通用替换者。结构化 Map 决定具体节点、命名接线与批准模式。Task.prompt 负责稳定步骤，node.input 只说明本次分支、材料用途、字段和权限；Bot 指南只供规划者使用。
 
-| 本图职责 | 必读章节与用途 |
-| --- | --- |
-| 全部材料生产者／消费者 | 「三种材料，直接交给消费者」定义 baseline／text／handoff；要求文件时另读「文件与独立 Chat」，核实材料写入授权并安全交付 |
-| `create_blank` | 「目标核实与基线生产」承接目标调查、空白创建与单份 baseline 交付 |
-| 三个 `write_*` | 「共同基线消费」「三个编写者与表达优化者」承接真实配置比较、所属全文编写确认与 text／handoff 交付 |
-| 三个 `optimize_*` | 「共同基线消费」「表达优化」承接真实配置比较、保义与有效确认，仅交付新 text／handoff |
-| `save_bot` | 「创建分支 v1」承接四项必需材料、精确基线比较、一次合法保存、完整读回及失败效果核实；不消费三份指南 handoff 或批准凭据 |
-
-固定创建与最终保存由两份用户可维护的 TypeScript 脚本经已有 Bun 执行，其间三个编写者和通用优化者仍是真实共享 Task；没有新增专属 Task。原通用替换 Task 继续服务修订和普通文件，不参与本图最终保存。稳定 ID 与格式边界见共同契约。通用表达优化者与保存者不默认携带 Bot 业务，故各自 node.input 必须显式提供适用章节、真实服务、字段、材料用途和权限；空白创建与三个编写者的 input 只选择本次分支、材料用途及文件交付。包装 Bot 指南供规划者选用、安排与准备业务输入，不注入执行 Chat，也不重抄执行流程或框架路由语法；父子交接由上节「调用接口」承接。
-
-材料写入边界和字段业务意图仍须明确；V1 脚本不再要求材料内的人类授权、全文批准 digest 或三份验权交接书。成果批准由通用执行机制持有，报告与显式 complete 分别成立；不能把批准事实或 can_complete 当作 baseline／revision／目标正确性证据。普通节点实际批准模式及依据见上节发布职责清单。创建目标、业务试运行、安装工具或扩权均不在本能力范围；配置交付不证明工具／Skill／扩展加载、模型遵从或业务效果。
+成果批准与合法业务保存、报告和管理者显式完成独立。批准或 `canComplete:true` 不能证明基线、revision 或目标正确。材料写入只限于本次授权；不创建或执行业务目标，不安装工具、不扩权。配置交付不证明实际资源加载、模型遵从或业务效果。
 
 ## 创建 Task＋Bot 的选定外层入口
 
-`create-bot-task-workflow--bc-61ce48b80a4c.json` 现在有四个工作单元：
+[`create-bot-task-workflow--bc-61ce48b80a4c.json`](../meta-data/workflow-maps/create-bot-task-workflow--bc-61ce48b80a4c.json) 依次交接 `w1`、`w2`、`wrap_bot` 和 `optimize_bot`。各节点绑定、manager Task 与 zone 以发布定义及实际部署为准。
 
 1. `w1` → `create-task`：从本次 `Run.userInput` 和可选命名 `materials` 创建 normal Task。保留全文和执行配置确认，公开保存／完整读回；`handoff` 自包含地记录真实新 Task ID、需求、确认来源、权限及后续 Bot 创建委托。未明确的授权不得自行补齐。
 2. `w2` → `optimize-prompt`：直接消费 `w1.handoff` 中的完整 prompt、已确认语义与授权，仅整理表达并保存 prompt，保留其他配置，不重做需求访谈。W1 记录后续保义优化及保存授权；授权不足、语义变化或冲突须先解决。`saved` 单独承载完整最新 Task 配置，`handoff` 作为子流程 `request`，必须是 v1 严格 JSON：真实 Task 定位、需求及三个约束数组和可选 Bot 命名；不加 Schema 外的核对总结，不复制配置或正文，不生产 authorization、confirmation 或任何改名批准凭据。request／共同基线／目标字段归属见共同业务材料契约；不将执行层成果批准嵌入业务材料。报告可自由发送，成果按各节点 auto_approved 独立批准；外层管理者核实最新报告与交付后显式 complete。
-3. `wrap_bot` → Map 型 `create-bot-wrapper`：本次明确使用 manager Task `task-18e2c2827c484128-0` 和 zone `hugosol/herdr-bot`（部署须先公开核实或显式修改本调用配置，不改 Bot 属性）。`request` 直接绑定 `w2.handoff`，`materials` 直接绑定外层同名可选输入；不依赖 `blocked_by`、父 Chat 或 handoff 的隐式地址传材料。子管理者核实并逐项 complete 子节点，完成整个子 Run 后通过真实 node report 将 `save_bot.saved`／`save_bot.handoff` 直接登记为父节点同名输出。父管理者另行核实真实 Bot ID、唯一 Task 绑定、完整保存读回与执行层批准事实，显式 complete 本调用后交给 `optimize_bot`，此时不能 finish 外层；子 Run 完成、报告文字或 `can_complete` 都不是这个边界。
+3. `wrap_bot` → Map 型 `create-bot-wrapper`：部署前从该节点读取并核实明确配置的 manager Task 和 zone；需更换时修改本次调用，不改 Bot 属性。`request` 直接绑定 `w2.handoff`，`materials` 直接绑定外层同名可选输入；不依赖 `blocked_by`、父 Chat 或 handoff 的隐式地址传材料。子管理者核实并逐项 complete 子节点，完成整个子 Run 后通过真实 node report 将 `save_bot.saved`／`save_bot.handoff` 直接登记为父节点同名输出。父管理者另行核实真实 Bot ID、唯一 Task 绑定、完整保存读回与执行层批准事实，显式 complete 本调用后交给 `optimize_bot`，此时不能 finish 外层；子 Run 完成、报告文字或 `can_complete` 都不是这个边界。
 
 4. `optimize_bot` → `prompt优化者——Bot维度`：依赖 `wrap_bot`，显式接收其 `saved`／`handoff` 为 `bot_saved`／`bot_handoff`，并接收外层可选 `materials`。沿用有效需求与确认，查询服务最新配置，联合优化刚创建的 Task.prompt 与 Bot 三指南；展示整体方案、共享影响和完整候选，取得最终文本与保存授权。Skill／文档只读，保持业务语义、身份、绑定和执行配置，不运行目标能力。`saved` 交付完整读回的最终 Bot 与 Task 配置，`handoff` 交付修改说明、确认依据、保存核对结果及未验证项。采用人工成果批准且不自动关闭；报告发送不要求批准，已批准仍须管理者显式完成交接。父管理者验收并 complete 此节点后才可 finish 外层；阻塞或部分保存不算整体完成，保留对象，不自动删除或回滚。包装产物仅是阶段记录，最终注明“文本／定义优化完成，行为未验证”。
 
-本次只更新仓库定义，不自动部署服务配置；其他创建 Bot 的入口不增加该节点。四节点定义的公开保存／读取及可选材料预检由 `workflow_dispatch::outer_create` 回归覆盖；真实外层验收入口已纳入最后的候选确认、交接及完成边界，但接线回归通过不代表新增优化节点的真实模型执行已验收。
-
-根 Run 仍由调用者经 scheduler 选择自己的 manager Task、zone 和本次业务输入；`materials` 缺席合法，提供却不可读必须拒绝。仅移除了本外层原先内联的空白 Bot、三路指南、三路优化及最终保存分支；包装 Map 的八节点职责保持不变，不将 Task 创建移入包装。旧独立 `create-bot-task` 仍绑定 `task-18e315be1cf0ef10-0`，`create-bot` 仍绑定 `task-18e31d347ccbeb4c-4`，不改变其独立职责，不迁移其他 Map 或用户部署。
-
-### 外层提示词归属
-
-W1 负责业务定稿、执行配置确认与创建；W2 使用通用优化者的直接保存分支，只负责保义表达整理与授权保存。完整语义由 W1 确认，W2 沿用有效确认与授权；无法保持语义、确认失效或缺保存授权时才提出具体阻塞。报告自由发送；人工节点在原生 UI 确认当前成果，自动节点主动批准。批准、报告及管理者完成分别成立。
-
-通用 Task 只承担保义优化、授权保存、安全写入和完整读回，不内置 Bot、三指南、baseline/text/handoff 或特定服务接口。仅修改 Task.prompt 前读取[Task 保存规则](usage.md#仅修改-taskprompt)；W2.input 只选择原文、目标、授权来源与交付用途。包装三路的目标／共同基线核实和材料分工由其已有 node.input 与共同材料契约承接；独立调用需显式提供适用的业务协议及材料。Bot 指南面向规划者，不承担执行规则注入。wrap_bot 保留子 finish → 父节点 report → 父 manager complete 的边界，不复制八节点执行手册。
-
-W1.handoff 是完整 Task 创建交接；W2 的 saved 是完整最新配置，handoff 则是无需复制配置的包装 request。包装自行经服务核实目标，不沿 handoff 寻找未声明文件。包装三路表达优化仍使用共同 baseline／text／handoff，只交付文本而不保存 Bot；通用 Task 的直接保存分支不会改变这些调用的权限。
-
-### 外层 Task 兼容与独立／workflow 配对清单
-
-| 真实稳定 Task ID | 本链职责与接口修正 | 配对验收唯一 owner |
-| --- | --- | --- |
-| `task-18e31d30fe69a51c-2` | Task 创建者；POST 当前字段含至多一个 `suite`，不提交旧 `extensions`；按 tasks/options 列表取得真实 ID，再从 GET 的 task 完整读回；来源为 `backend/src/tasks/mod.rs` | 24（P45） |
-| `task-18e31d34797f1464-3` | 通用提示词优化者的 Task.prompt 直接保存分支；仅表达整理，保留 suite 和全部非目标配置，独立 Chat 显式提供原文、服务与 Task 保存规则 | 24（P45，仅 Task 直接保存分支）；Bot 材料优化配对仍归 21 |
-
-旧独立 `create-bot-task` 的 Task `task-18e315be1cf0ef10-0` 同样使用当前 `suite` 字段，不提交已退役的 `extensions`（包括空数组），并从 `backend/src/tasks/mod.rs` 核实接口；它仍只在当前 Chat 创建／复用 Task＋Bot，不转为 Map 包装或自动执行新能力。该旧入口兼容场景归 24（P46），不增加 P45 配对清单。
-
-Task 创建者归 24；通用优化者按业务分支划分覆盖，24 负责 Task.prompt 直接保存，21 负责 Bot 指南材料优化，不重复认领。源码修订只纠正当前公共契约，不增加旧字段别名、兜底重试或失败吞没。外层真实业务发现的共享 `task-18e340f5287462ec-4` 职责修正仅禁止生成指南正文复制框架文件路由语法，保留真实材料、命名输入与授权要求；其独立／workflow 配对唯一 owner 仍为 21，不在本清单重复认领。完整真实外层调用与旧入口保留的 contract 验收由 24 拥有（P46）；本票公开定义接线和最小共享烟测不是这两项通过证据。
+根 Run 由调用者选择自己的 manager Task、zone 和本次输入。`materials` 缺席合法，提供却不可读须拒绝。W2 仅获准改 prompt 时遵守[仅修改 Task.prompt](usage.md#仅修改-taskprompt)，不得丢失 Suite 或其他非目标。包装子图只负责 Bot 创建，不负责父层 Task 创建或最终联合优化。
 
 ## 真实外层与旧独立入口验收
 
-`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-outer` 是外层兼容专项，唯一拥有 Task 创建者／通用优化者的 Task.prompt 直接保存分支的独立 Chat 与实际外层 workflow 配对，以及旧 `create-bot-task`／`create-bot` 独立入口。它不重跑包装能力六个共享 Task 的独立配对，不认领规划选择，也不把定义接线回归当业务通过。
+按[测试指引](agents/testing.md)显式设置 `$TESTER`、`$BOT`。`accept-workflow-nesting-outer` 覆盖独立 Task 创建与 prompt 保存、真实外层调用和旧独立入口，不替代创建包装内部的真实编写者配对或规划验收。
 
 先按[测试指引](agents/testing.md)构建当前 worktree 的页面、`herdr-bot`、`herdr-fixture`、`herdr-paths` 和 `safe_shutdown_shell`，使用独立绝对 `CARGO_TARGET_DIR`；toolkit 使用其 worktree 的 Bun 1.4.4/frozen lock。依赖必须已安装。依赖文件是专用 `[roots]` TOML：`herdr`、`pi_package`、`omp_package`、`pi_agent`、`omp_agent`、`wayfinder`、`wayfinder_skills`、`pi_extensions`、`codebase_memory_mcp`；agent 根只读取明确的 Herdr 状态扩展，不读取用户认证或 settings。`native_shell` 可显式指向已安装的 Git Bash。不要使用用户业务 paths 或默认同级 checkout。源 Suite／固定扩展保持选择与职责，仅在独占部署中重定位其资源、connect-bot/workflow-chat 的回环端点及 model-cost 存储；授权验收模型另追加为 `probe`，不会覆盖原模型映射。
 
@@ -138,16 +54,15 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-oute
 
 模型声明沿用[真实角色自动验收](agents/testing.md#文件交接真实角色自动验收)的专用 `provider/model/baseUrl/apiKeyEnv`，或同页公开 CompletionTransport；不读全局 auth，不用受控 provider 代替模型决定。`--hosts declared` 保留每个实际源 Task 的宿主（包含包装内原有 OMP/Pi 混用），逐项记录源码稳定 ID、隔离真实 ID、实际角色和 OS 身份。`--hosts omp,pi` 分别在两宿主执行完整矩阵，任一失败均非零；不能拿单宿主成功抵消另一个。隔离 Herdr terminal 使用已安装的 `powershell.exe`，避免完整 Suite 启动命令超过 `cmd.exe` 行长上限，不裁剪技能或扩展。该入口不安装、不提权、不改全局 PATH、不重试业务或模型决定。
 
-专项先由真实独立 Chat 创建、优化一个仅配置交付的隔离 normal Task，再执行发布的三节点外层和八节点包装子 Run；外层创建者／通用优化者保持实际源 prompt，只使用明确业务要求与当前公开 HTTP。独立优化场景直接提供完整原配置、实际服务和 `docs/usage.md` 的“仅修改 Task.prompt”指针。目标使用非空 Suite，以完整前后字段比较检查优化者不丢失该选择。候选全文先写入业务授权的 proposal 文件并真实读回；自动业务核对使用预先固定的 CSV 只读职责、完整配置字面预期与真实模型独立语义评价，评价输入显式标注当前候选的 Task.prompt／指南／独立完整配置角色，不能靠场景名称猜职责；成功后在原生 Chat 发送明确全文／保存确认。人工节点保存读回后通过原生成果确认；报告不再另求发送许可，评价本身不是用户批准。本专项显式要求候选全文再批准，属于本次更严格验收条件，不证明默认已有授权时无需重复澄清的行为。模型自主选择和执行真实工具，driver 不手改运行记录、不伪造 Session，也不替管理者 dispatch／complete／finish。
+专项分别运行真实独立 Task 创建、Task.prompt 保义保存、发布外层及其包装子 Run，以及旧独立 `create-bot-task` 和 `create-bot` 入口。外层须验收 `optimize_bot` 的完整候选与最终保存，不能在 `wrap_bot` 后结束。预先确定 CSV 只读职责及完整配置预期；目标使用非空 Suite，逐项比较完整前后配置。独立语义评价明确区分 Task.prompt、三指南和完整配置，不能代替原生全文／保存确认或人工成果批准。模型自主使用真实工具，验收者不代填运行记录、不伪造身份、不替管理者推进。
 
-证据必须同时具有真实 Task/Bot/Run/execution/Session 关联、原生工具及请求结果、命名 request／共同 baseline／实际输出的完整消费、真实文件字节、父子 finish/report/complete 顺序、目标全配置不变和无新目标业务运行。OMP 显式初始 Skill 的原始用户输入可能保存为 `attribution: user` 的原生 `custom_message`；核对完整输入时与普通 `role: user` 消息一起检查，绝不把 agent 归属的自定义消息当作用户输入。最终 `completed` 或 wrapper 文件存在均不充分。旧两个独立入口各自另外运行隔离场景；未迁移 Map 与共享执行 Task 逐项保持不变。保存前后、成果批准、报告、源码／锁文件／构建产物／安装宿主身份和原始错误均在本次独占目录保存，不将旧成功证据合并进新调用。
+验收真实 Task、Bot、Run、execution 与 Session 关联，核对原生读取了命名 request、共同 baseline 和实际产物，父子 finish、report、complete 顺序正确。包装期间目标全配置不变；最终优化只允许获准的 Task.prompt 与 Bot 三指南变更。无关 Map、共享执行 Task 和所有非目标字段须保持原样，且不运行新目标业务。OMP 可将显式初始 Skill 的用户输入保存在 `attribution: user` 的 `custom_message`，应与 `role: user` 一并核对，不把 agent 消息算成用户输入。
 
-独占 HOME/APPDATA/XDG/原生存储、命名 Herdr、业务定义和运行目录；只用动态数值回环、关闭 mDNS，不执行真实关机。Suite 的真实 codebase-memory-mcp 保留，但可选 UI 关闭；已安装二进制必须支持公开 `CBM_RUNTIME_DIR`，并使用测试拥有的 owner-private runtime、cache 和 allowed-root，绝不连接用户 daemon。正常与失败均停止、等待并确认所有所属进程退出（包含脱离 stdio 客户端的所属 MCP daemon），原始验证错误和清理错误分开记录；隔离 credential-bearing models 文件会移除。回环 HTTP observer 对真实 Task `PUT` 与读取／创建请求一样原样转发方法、正文和状态，不自行代替服务返回；本地传输回归只证明透明转发，不充当优化业务通过。原生 turn 失败时另用公开 `herdr agent read` 保存所属 pane 的真实近期终端，原错误与捕获错误分别保留；不补发 prompt、Enter 或改变业务状态。缺任何宿主、授权模型、必要 Suite 能力、隔离或清理条件均保持未验证且非零。
+运行前按[测试隔离规则](agents/testing.md)准备独占宿主和存储、数值回环与无关机配置。保留完整 Suite，并用隔离的 MCP runtime、cache 和 allowed-root，不连接用户 daemon。原始失败与清理错误分开保存；缺原生能力、授权或清理证据不得判通过。
 
-PowerShell 中先设置 `$env:HERDR_BOT_WORKTREE = $BOT` 和 `$env:OUTER_ACCEPTANCE_TOOLKIT = $TOOLKIT_WT`，再执行 `python "$TESTER/scripts/accept-workflow-nesting-outer.test.py"`；这是 CLI fail-closed 回归，仅证明缺后端不宣称通过、已有证据不可覆盖；不证明上述真实业务已通过。运行说明描述可复跑入口及其边界，不是当前部署的成功声明；结果仅以实际本次逐覆盖项证据为准。
 ## 真实创建与配对验收入口
 
-`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-create` 使用实际授权模型、已安装 Herdr 与 OMP／Pi，经公开独立 Chat、Run 和定义 HTTP 入口验收。`--hosts declared` 保留共享 Task 的实际混合宿主：表达优化者为 Pi，三个指南编写者和独立通用替换者为 OMP；创建图两脚本节点没有 Chat。不得为适配 runner 全改 Pi。`--hosts omp,pi` 另对两宿主各执行完整矩阵，任一失败不可由另一成功抵消。此入口不安装宿主、不改全局 PATH、不读取用户认证，不连接现有 Chat 或 daemon。
+按[测试指引](agents/testing.md)设置 `$TESTER` 与 `$BOT`，另将 `$TOOLKIT_WT` 指向参与的 Toolkit worktree。使用真实授权模型和安装版 Herdr、OMP／Pi。`--hosts declared` 保留当前发布 Task 的混合宿主；`--hosts omp,pi` 分别验收两宿主，一端成功不能抵消另一端失败。不读取用户认证、已有 Chat 或 daemon。
 
 ```powershell
 $env:CARGO_TARGET_DIR = 'D:/isolated-build/create-acceptance-target'
@@ -159,41 +74,20 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-crea
   --toolkit $TOOLKIT_WT --hosts declared `
   --paths-file 'D:/isolated-dependencies/create-paths.toml' `
   --model-config 'D:/isolated-dependencies/authorized-model.json' `
-  --evidence-dir (Join-Path $BOT '.scratch/workflow-nesting/evidence/create-exclusive-run') `
+  --evidence-dir 'D:/isolated-acceptance/new-exclusive-create-run' `
   --shell-path 'D:/Program Files/Git/bin/bash.exe'
 ```
 
-paths 文件为验收专属 TOML，`[roots]` 明确声明已安装的 `herdr`、`pi_package`、`omp_package`、`pi_agent`、`omp_agent`，以及原 Suite 所需的 `wayfinder`、`wayfinder_skills`、`pi_extensions`、`codebase_memory_mcp`。两个 agent 根**仅**用于只读加载 `extensions/herdr-agent-state.ts`／`extensions/herdr-omp-agent-state.ts`，不读取其 settings、models、auth、sessions 或技能目录。保留源码完整 Suite 声明、Task.suite 和初始 Skill，不把业务 Suite 缩成四个技能或删除 MCP／扩展／LSP。`toolkit` 根由本票指定源码复制到独占部署，不从默认同级旧仓取后端或角色源码；其他依赖可用同名 CLI 参数显式覆盖。
-
-隔离后端通过显式 `paths_file` 加载本次 `paths.local.toml`，包括固定扩展使用的 `omp_agent`／`pi_agent` 根；只在文件中声明根而不接入后端配置不能证明解析成功。隔离 Herdr 的 terminal 使用已安装的 `powershell.exe`，避免完整 Suite 的真实技能与扩展命令超过 `cmd.exe` 输入行上限；不裁剪 Suite 规避长度限制。Chat 启动失败保留原始状态及 pane 原始文本，额外捕获失败单独记录，不覆盖原始错误。
-
-完整固定扩展仍使用实际源码。仅在部署副本中将 connect-bot 指向本次动态后端，将 model-cost 存储指向本次独占目录。原生 codebase-memory-mcp 使用实际安装程序与完整工具能力，仅关闭无关可视化（`--ui=false`）；分别设置独占 `CBM_RUNTIME_DIR`、`CBM_CACHE_DIR` 和 `CBM_ALLOWED_ROOT`，runtime 目录限定为当前 Windows 所有者私有 ACL。缺这些已安装原生隔离能力则拒绝启动，不接入用户 account daemon。实际进程观察包含拥有进程的全部后代而非仅 OMP／Pi 白名单，持有并等待 MCP daemon 的进程句柄，退出失败仍为验收失败。
+`--paths-file` 使用外层专项所列的同一组 `[roots]`，只用于指定安装与只读资源；服务配置必须实际引用隔离根文件。`--toolkit` 显式指定本次 Toolkit 源码。保留完整 Suite、Task.suite、初始 Skill 和固定扩展，只在隔离部署重定位服务地址与写入位置。使用 `powershell.exe` 作为 Herdr terminal 避免 `cmd.exe` 命令行长度限制，不通过删资源来启动。原生 codebase-memory-mcp 必须支持隔离 `CBM_RUNTIME_DIR`、`CBM_CACHE_DIR` 和 `CBM_ALLOWED_ROOT`，runtime 设为所有者私有；缺隔离能力不启动，不连接用户 daemon。
 
 模型文件使用[测试指引](agents/testing.md#文件交接真实角色自动验收)中的专用 `provider/model/baseUrl/apiKeyEnv` 声明；可使用同处说明的公开 CompletionTransport，其职责只传输真实模型决策，不生成业务步骤或伪造工具结果。密钥仅取显式环境变量，不写请求头日志；结束时删除所有验收拥有的 credential-bearing models 文件。`--timeout 1..900` 是每阶段观察窗口，不是重试次数。
 
-独立 normal Task 案例不提供可选材料，Map workflow 案例提供明确参考材料。独立 Chat 按原非 v1 显式材料协议验证共享 Task；创建图按 v1 验证。三个分支分别展示完整全文并取得真实原生成果确认；报告独立发送，不再确认发送 payload。三编写者和表达优化者保留独立／workflow 实际消费记录；通用替换者参与原非 v1 独立材料与文件回归；创建验收最后复用修订入口的真实 task-no-materials 场景，核对共享编写者旧格式与原通用保存，再标 P28。修订入口仍可独立复跑。删除的空白创建 Task 不再配对，也不构造假 Chat 代替 Rust 执行；创建 Map 没有额外专属 Task。保存检查比较最终唯一 text 字节、真实 Bot 完整读回及全部非目标与目标配置；不以创建成功推断业务能力已经执行或验证。表达质量另由同一明确授权服务的独立实际请求按预先固定的目标真实性、字段职责、语义保持、授权边界和正文独立性 rubric 逐项评价，保留原始输入、回答与逐项理由；任一混合／缺证结果失败，评价结果不授予业务确认或保存授权。
+保留 normal Task 与 Map 两类目标、有与无参考材料、实际独立 Chat 与 workflow 消费的区别。独立 Chat 使用非 V1 协议；包装图使用 V1，两个脚本节点无 Chat。三份指南分别呈现全文、取得原生成果确认并独立发送报告。逐字节比较最终 text 和完整 Bot 读回，并核实所有非目标字段及目标配置不变。独立质量评价按事先确定的目标真实性、字段职责、语义保持、授权边界和正文独立性逐项判定；不授予保存权限。通用替换者的独立与修订材料仍按非 V1 协议检查。
 
 独立保存安全场景经同一保存 Task 的真实 Chat 检查未授权、基线／目标冲突、实际运行使用、真实竞争 revision，以及保存已生效／未生效／未知效果。HTTP 故障只在实际传输边界断开观察或制造真实竞争编辑，不替换宿主、模型或产品结果；保留每次实际请求、原始错误与后续核实，不盲重试或自动回滚。普通文件使用真实 BOM／CRLF／非目标字节样例与真实隔离 junction／越界请求；没有链接能力仍为未验证，不能 skip 后当通过。
 
-证据目录必须不存在，由 runner 独占创建。HOME／APPDATA／XDG、原生存储、临时目录、命名 Herdr、业务定义和运行目录均隔离，动态数值回环后端关闭 mDNS。原生存储使用额外独占短路径避免 Windows 历史文件长路径，结束后将不含凭据的副本归档到证据目录。持续消费 stdout／stderr，成功与失败均停止并等待所属进程，分别保存原错误和清理错误。证据包括两仓根／revision／修改身份、锁文件／产物身份、已安装宿主／OS 进程、原始输入／批准、模型与工具结果、HTTP、原生历史、实际文件字节、只读运行事实和逐覆盖项结论。缺真实依赖、模型授权、实际消费或清理成功时非零，所有未完成项保持未验证。
-
-直接运行 CLI 拒绝回归前，设置 `$env:HERDR_BOT_WORKTREE = $BOT` 和 `$env:WORKFLOW_HANDOFF_TOOLKIT = $TOOLKIT_WT`。再运行 `python "$TESTER/scripts/accept-workflow-nesting-create.test.py"`。它只检查缺构建／重复证据目录不会变成成功或启动服务，不证明实际业务矩阵通过。真实矩阵结果以运行保存的原始证据为准，本使用说明本身不宣称通过。
+`--evidence-dir` 必须尚不存在。原生存储用独占短路径，保留真实确认、原生读取、HTTP、原始字节和逐项结果，不保存凭据。确认所属进程退出，分开保留原始失败和清理错误。缺安装、模型授权、实际消费或清理证据，不得判通过。
 
 ## 验证入口与证据边界
 
-使用本 worktree 独立 `CARGO_TARGET_DIR`，先执行 `bun install --cwd=frontend --frozen-lockfile`、`npm --prefix frontend run build`；定向入口为：
-
-```powershell
-cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch outer_create -- --nocapture
-cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_bot_wrapper -- --nocapture
-cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch shared_business -- --nocapture
-node scripts/test-backend.mjs
-```
-
-外层 `outer_create` 回归先用独立字面预期核对发布 Map 仅有 `w1`／`w2`／`wrap_bot`、当前稳定 Bot／Task 绑定、子 manager、zone、request／materials 和 saved／handoff 接口，然后经公开保存／读取及预检实际消费接线；旧内联十节点定义已观察到此用例失败。受控 host 环境使用测试拥有的 normal／manager Task 与 zone，保留包装子图完整拓扑，不证明部署 Suite 或原生角色加载。外层发布烟测实际运行本 worktree 构建的安全后端壳，复用 `scripts/check-workflow-file-consumption.py` 的隔离 `Smoke.prepare`、真实 Windows `deny_read` 和进程日志消费／清理设施，通过公开输入与节点保存／完整读取、预检检查可选材料缺席／可读成功、真实独占读锁和派发前删除输入拒绝、拒绝后定义完整不变且没有外部宿主调用。原始 HTTP、服务日志和 evidence.json 保留在执行输出的独占目录；它没有发起业务 Run，不替代 24 的真实外层调用。
-
-外层切换同时另行实际执行过上述安装版 Pi 最小共享 Task 烟测：使用当前 `task-18e31d34797f1464-3` 原始 prompt、原生 writing-for-agents 与公开 CompletionTransport，首次调用真实 read 源文件、真实写入唯一 text／handoff 并分别完整 read 回。独立读回确认来源路径字符准确、无重复正文、源文件及未授权哨兵不变；优化稿保留“用户提供且明确授权读取、仅差异报告、不改账单、不付款”四项已确认语义。原生 JSONL、真实模型 wire、request、源与交付文件保留在独占目录，隔离模型配置已移除，进程与传输已停止／等待。它只证明这一次独立共享 Task 的材料与授权边界，不证明创建者／Task.prompt 优化者配对、公开 Chat 启动、OMP 或完整子流程／外层执行。
-
-wrapper 回归通过既有公开 Bot 保存／读取、Map 输入与节点保存／读取、真实文件预检检查八节点完整接线、可选材料缺席合法和错误材料拒绝，不固定提示词措辞。发布检查还实际运行本 worktree 构建的 `debug/examples/safe_shutdown_shell.exe --config panel.toml`，复用 `scripts/check-workflow-file-consumption.py` 的隔离 Smoke.prepare 配置和日志消费设施，随后经 HTTP 保存／读取本 Map 八节点与包装 Bot；真实 request 文件、参考材料缺席／可读、Windows 独占读锁拒绝均已观察。语义上未声明的 Run 输入被现有接口拒绝为 `map-read-failed`／HTTP 500（不是本烟测最初预期的 400）；保留原错误后重启同一隔离后端，公开完整读回核实原定义未变。拒绝不以特定 4xx 为充分条件，必须核对无定义副作用；这不是新增的错误状态契约。全程无 Run 或外部宿主调用，成功失败均终止并等待所属安全后端与日志线程。测试先核对发布的六个共享 Bot／Task 稳定绑定；受控宿主预检使用测试拥有的 Task 环境和 zone，不能作为部署 Suite 或原生角色加载证据。shared_business 回归独立检查 Task／Map 两种绑定三字段一次保存、真实 stale revision 拒绝及完整非目标保持。
-
-最小真实共享 Task 调用使用[测试指引](agents/testing.md#共享-bot-指南材料的启用检查)中的隔离 Pi 入口，保留原生材料 read／write、授权结果、实际文件及完整读回。本能力发布时实际使用安装版 Pi、`task-18e31d34797f1464-3` 的原始 prompt 和公开 CompletionTransport 运行独立 Chat：真实读取源文件和技能、写入唯一 text／handoff 并完整读回，保留源文件与未授权哨兵。首次 handoff 的来源路径被原生生成的 Python 字符串转义为 TAB；保留该失败材料，在同一原生 Chat 中明确授权仅新建修正 handoff，再实际读回核对准确来源和旧文件不变。这是带显式错误修正的窄烟测，不是首次自主交付完全成功或六 Task 配对通过的证据。路径必须核对实际字符，进程零退出与模型自称完成均不足以证明材料准确。该烟测不是完整八节点自主业务执行；P39–P45 的两类目标、有／无材料、真实批准来源和六 Task 配对由 21 唯一负责，外层真实调用归 24。不能以配置存在或受控回归通过宣称这些 contract 验收通过。缺真实宿主、模型授权或能力时必须如实保留未验证。
+[共享材料启用检查](agents/testing.md#共享-bot-指南材料的启用检查)覆盖定义读取、输入预检、真实文件和保存冲突。预检拒绝后须读回原定义确认没有副作用；仅看到 HTTP 错误不足以证明。受控宿主不证明原生批准或模型消费。真实验收须核对文件实际路径字符、原始字节、配置完整读回及未经授权的文件不变；进程退出零、模型自述或 `completed` 都不替代这些证据。

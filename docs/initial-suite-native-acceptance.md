@@ -1,13 +1,6 @@
 # Initial Suite native acceptance
 
-黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
-
-```powershell
-$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
-$BOT = 'E:/Developer/myhub/herdr-bot'
-```
-
-验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+Set `$TESTER` and `$BOT` and follow the isolation and evidence rules in the [testing guide](agents/testing.md).
 
 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-initial-suites` owns P11's exploration OMP directory-set,
 exploration Pi explicit-skill and implementation OMP directory-set scenarios, P42's actual
@@ -20,10 +13,9 @@ hosts launched by real Herdr (S4). No product test-only endpoint is added.
 
 Build from `$BOT`. Pass a separate toolkit Git worktree containing the delivered
 Pi Suite extension. The wrapper binds `$BOT` before the scenario, regardless of
-the shell's current directory. Use Python 3.11+. Only herdr-bot is modified
-by this acceptance ticket. Dependencies must already be installed. Do not
-install/elevate/change PATH, patch Herdr/OMP/Pi, use a source CLI/SDK-built agent,
-replace the native tool manager, copy credentials or use existing user Chats.
+the shell's current directory. Use Python 3.11+ and the installed Herdr, OMP, and
+Pi. Do not install or patch the hosts, change PATH, elevate privileges, launch a
+source CLI or SDK-built agent, or replace the native tool manager.
 
 Build this worktree's frontend and backend according to the repository testing
 instructions. The runner checks the Cargo depfile, source timestamps, frontend
@@ -99,8 +91,8 @@ its roots resolve to the real approved skill sources and an owned copy of the
 supplied toolkit. Suite `extensions` declare native source paths directly;
 relative entries resolve from the Suite declaration directory. Extensions
 are passed directly to the host without package links, generated manifests or
-package.json expansion. Each target OMP Suite declares exactly two collection
-directories: `${roots.wayfinder_skills}` and
+package.json expansion. For this initial delivery matrix, the independent oracle
+expects exactly two collection directories in each target OMP Suite: `${roots.wayfinder_skills}` and
 `${roots.wayfinder}/dependent-skills/<suite-id>`. Wayfinder's own skills remain in
 `skills`; external dependencies are complete ordinary-file copies in
 `dependent-skills/codebase-exploration` (nine skills) and
@@ -108,21 +100,15 @@ directories: `${roots.wayfinder_skills}` and
 copied separately into each scenario. Neither Suite needs the original Matt Pocock
 or translation checkout at runtime. Exploration Pi preserves its 18 selected names:
 its nine external skills point individually into the exploration copies, while
-Wayfinder-owned skill paths are unchanged. Before every new
-OMP process, herdr-bot reads valid direct child skills from the current collections,
-canonicalizes and deduplicates identical resources, and rejects the same parsed
-name on different resources (including disabled declarations). The existing installed
-OMP's `--config` applies a high-priority overlay to `skills` only: original collection
-paths, the final selected-name `includeSkills` allowlist, all seven existing source
-`enable*` switches set to false, `ignoredSkills: []`, and `enabled` determined by
-whether any effective names remain. An empty collection disables skills and never
-falls back to defaults. This isolates the final available skill list; it does not
-promise that native default directories are never scanned. Native MCP, LSP, agents,
-extensions and project instructions remain unchanged. No generated skill links are required. That copy excludes live runtime access records. Only its
-connect-bot/workflow endpoint configuration is overridden to this run's dynamic
-loopback backend; the original source is untouched. The centralized MCP name is
-retained, pointing to a controlled external protocol server, not a replacement
-native MCP manager. This test does not claim real codebase-memory service quality.
+Wayfinder-owned skill paths are unchanged. OMP's final list must match the selected collections; an empty selection must
+not fall back to defaults. Default directories may still be scanned. Native MCP,
+LSP, agents, extensions, and project instructions remain available. See the
+[skill path decision](adr/0018-host-specific-native-skill-paths.md) for assembly
+rules. Use direct skill sources without generated links. The owned Toolkit copy
+excludes live access records and redirects connect-bot and workflow traffic to
+this run's loopback backend. The centralized MCP reference uses a controlled
+external server and the real native MCP manager. This does not test the real
+codebase-memory service.
 
 A test-owned fixed extension registers an observation command using the native
 public extension API. Its `pi.getCommands()` snapshot is the host's actual loaded

@@ -10,6 +10,6 @@ These labels apply only to implementation tickets. For decision-ticket states, r
 | ready-for-human | ready-for-human      | Requires human implementation            |
 | wontfix         | wontfix              | Will not be actioned                     |
 
-When a skill names a triage role, use its mapped label. Edit the "Label in our tracker" column to match existing labels.
+When a skill names a triage role, use its mapped label.
 
 Implementation progress uses `in-progress` while being implemented and `closed` when implemented, tested, and merged.

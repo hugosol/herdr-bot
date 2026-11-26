@@ -2,15 +2,15 @@
 
 scheduler 管理服务级 Map、node 与共享 Bot 的静态定义；定义保存和浏览不发起 Chat、不调度工作。安装见 [README](../README.md#构建与运行)，可复制样例与隔离操作见 [体验指引](example/README.md)。本页说明定义读写，不把尚未绑定的定义当成可以启动的 Run。
 
-主界面的配置组提供独立 `bot` 入口，直接进入同一套共享 Bot 管理功能；`scheduler` 入口进入 Map 视图。Map 内关联 Bot 会同步选中外侧 `bot`，返回时点击外侧 `scheduler`，不创建另一份编辑器或定义。两页只保留各自面板，Bot 页提供 `refresh`，Map 页提供“刷新全部”。紧凑／展开布局与刷新行为见[页面导航](usage.md#页面导航)。
+在配置组选 **scheduler** 管理 Map，选 **bot** 管理共享 Bot。Bot 页 **refresh** 重新读取 Bot；Map 页 **刷新全部** 重新读取目录、当前 Map 及 Bot。查看、筛选和刷新都不会执行工作。
 
-Map 目录支持按名称、文件名或组名搜索，并可叠加“全部分组／未分组／指定分组”筛选；“清除筛选”同时重置两项条件。分组标题可折叠并显示当前筛选结果数量，行尾“分组”可直接调整归属。详情页的 group 按钮与新增 node、发起 Run、编辑文件输入声明及删除 Map 集中在顶部操作区；手机端分组按钮独占一行，其余操作按两列排列，避免挤压标题与说明。分组保存仍即时生效，不改变 Map 或 node 的编辑与删除确认规则。
+Map 目录可按名称、文件名或组名搜索，并与分组筛选组合使用。筛选不改变当前选择或定义；修改分组见[定义分组](usage.md#taskbot-与-map-分组)。无定义、无匹配和读取失败是不同结果。
 
 ## TypeScript 脚本目标的表示契约
 
 [ADR 0019](adr/0019-rust-script-bots.md) 的脚本目标字段为 `script`，例如 `create-blank-bot.ts`、`save-bot-guides.ts` 或用户自己的 `tools/export.ts`。路径相对配置 Bot 目录旁的 `scripts`（默认 `meta-data/scripts`），使用 `/` 分隔，不允许绝对路径、空段、`.`、`..`、反斜杠或冒号，扩展名为 `.ts`。与 `task_id`、`map_file` 按非 null 值两两互斥；均无值是不可运行草稿。定义保存检查形状，预检／派发检查实际脚本文件。
 
-脚本由已有 Bun 动态加载，不再限制为两个能力标识。部署者须提前准备 Bun 和脚本依赖；不自动安装、不提供沙箱、不新增脚本编辑器。脚本 node 的 `manager_task_id` 不适用；`input` 是传给脚本的原文字符串。脚本仅允许 `report_policy: "auto"` 与 `auto_close: false`，不把 manual 静默改成 auto。
+部署者须先准备 Bun 和脚本依赖。宿主动态加载可信 TypeScript，不自动安装依赖，不提供沙箱或脚本编辑器。脚本 node 不使用 `manager_task_id`。`node.input` 作为原文传给 `context.input`，可为空。脚本必须使用 `auto_approved: true` 与 `auto_close: false`，不能设为结束节点。脚本通过成功校验后由宿主记录批准并报告；失败仍可报告，但不批准。运行细节见[无 Chat 的执行](workflow-runtime.md#无-chat-的执行与报告表示契约)。
 
 可机读表示见 [JSON Schema](contracts/script-bots.schema.json) 与 [JSONL 实例](contracts/script-bots.examples.jsonl)。用户手工添加脚本，通过现有 Bot JSON 的 `script` 字段绑定；不新增脚本管理 UI。发布创建图保留原 Bot 身份、输入输出接线与修订 replace-text。脚本最小返回状态和可选输出地址；完整编写示例见[使用说明](usage.md#动态-typescript-脚本)。预检不代表脚本业务已经执行成功。
 
@@ -19,14 +19,14 @@ Map 目录支持按名称、文件名或组名搜索，并可叠加“全部分�
 | 对象 | 字段与职责 |
 | --- | --- |
 | Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。可选 `input_requirements` 为 Markdown 字符串（缺省为空），给用户与管理者共同说明非文件的总体输入要求；可选 `input_files: [{id,required,description?}]` 声明命名文件材料（见下文）。不含运行状态、管理者配置或重试策略。 |
-| node | 必需 `title`、`bot_id`、`input` 字符串、`zone`（固定 ID 字符串或 `{"type":"dynamic"}`）及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`report_policy` 为 `auto`（默认）或 `manual`，`auto_close` 与 `end_node` 为布尔值（省略按 `false`）。`end_node: true` 标记唯一普通 Task 型结束节点（见下文）。引用共享 Bot，提供本项工作的原文输入、报告策略、完成后自动关闭设置、zone ID 与同图前置依赖；两项策略只属于 node，不从 Bot／Task 继承。Map 型 Bot 的调用节点使用可选字符串 `manager_task_id` 指定 manager Task，执行前必需且必须为 manager 类型；普通 Task 型节点不得指定它。Bot 不接受此字段。 |
+| node | 必需 `title`、`bot_id`、`input` 字符串、`zone`（固定 ID 字符串或 `{"type":"dynamic"}`）及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`auto_approved` 为布尔值（缺省 `true`），`auto_close` 与 `end_node` 为布尔值（缺省 `false`）。`end_node: true` 标记唯一普通 Task 型结束节点（见下文）。批准模式与自动关闭只属于 node，不从 Bot 或 Task 继承。Map 型 Bot 的调用节点使用可选字符串 `manager_task_id` 指定 manager Task，执行前必需且必须为 manager 类型；普通 Task 型节点不得指定它。Bot 不接受此字段。 |
 | Bot | 必需 `id`、`name`、`when`、`plan_guide`、`node_guide` 字符串；可选 `task_id`（normal Task）、`map_file`（目录内确切 Map JSON 文件名）或 `script`（scripts 目录内的相对 .ts 路径），三者互斥，也可都未绑定。跨 Map 共享，只保存目标引用，不复制定义。 |
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
 | Chat | 实际对话与原生会话身份，不写进静态定义。执行身份、报告、状态和历史不属于 Map 或 Bot。 |
 
 Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归属形成分组，不需要独立定义或 ID。省略或 `null` 表示未分组；非空名称不得带首尾空白，区分大小写。分组仅用于组织列表与选择控件，不影响引用、运行或校验资格，node 不拥有分组字段。界面归属编辑和自举归类范围见[定义分组](usage.md#taskbot-与-map-分组)。
 
-只接受这一种命名字段格式，没有 `schema_version` 或运行时旧格式兼容。旧 node 的 `parameters`、旧 Bot 的 `use_when`、`description`、`inputs`、`outputs`、`implementation` 都是未知字段，连同版本 1 也明确拒绝。上线前停止服务、备份旧文件，再由规划者改写为新格式：把业务参数整理成 `input` 原文，明确选择 `zone` ID；将旧能力说明整理成三份文档。不能从旧业务参数猜测 Task／zone 绑定。历史更名工具只处理其原来的命名迁移，不完成这次格式切换。
+只接受这一种命名字段格式，没有 `schema_version` 或运行时旧格式兼容。旧 node 的 `parameters`、旧 Bot 的 `use_when`、`description`、`inputs`、`outputs`、`implementation` 都是未知字段，连同版本 1 也明确拒绝。上线前停止服务、备份旧文件，再由规划者改写为新格式：把业务参数整理成 `input` 原文，明确选择 `zone` ID；将旧能力说明整理成三份文档。不能从旧业务参数猜测 Task／zone 绑定。不改写旧 Run 或 Chat 记录。
 
 完整 Map 示例：
 
@@ -78,11 +78,11 @@ Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归�
 | 可交接文件的逻辑标识 | `output_rule`；正文说明内容、格式与业务完成标准 |
 | 本次 `userInput`、解析后的文件地址、中间资料位置 | 系统初始化，不为取得这些信息读取运行记录或推导运行身份 |
 | 前置依赖与流程推进 | `blocked_by` 与管理者编排，不由消费者筛报告重做调度 |
-| 报告发送时机 | `report_policy` 与系统控制段；业务内容确认、保存授权仍属于业务约束 |
+| 成果批准模式 | `auto_approved`；不控制报告发送。业务内容确认与保存授权仍由业务约定。 |
 
 交接说明与可直接使用的纯正文分别声明输出，下游逐项引用；不只登记交接说明，再通过同目录、固定文件名或报告正文发现其他文件。内部交接使用初始化提供的中间资料位置，不在每个 input 中规定材料根／Run ID／工作编号／execution ID 的路径算法。用户明确指定的正式交付位置、格式或业务命名仍保留。输出 ID 不指定物理文件名，也不替节点分配地址或生成文件。
 
-例如汇总 Bot 三份指南时，命名输入可为 `when_text`、`when_handoff`、`plan_guide_text`、`plan_guide_handoff`、`node_guide_text`、`node_guide_handoff` 和 `baseline`。各编写者、表达优化者与保存者直接取得同一份共同基线；text 是所属字段唯一完整正文，handoff 仅记确认依据、来源、语义限制和未验证项，不复制完整正文／配置或承担隐式寻址。input 说明原样汇总三个字段、核对同一 Bot 及其 normal Task／Map 目标、确认范围和真实 revision，一次合法保存并完整读回，保持全部非目标和执行目标配置不变。完整最终对象另交付 saved。详细职责与独立 Chat 分支统一见[共同业务材料契约](business-materials.md)，不复制协议或查询运行记录。材料身份、共同基线、用户确认及保存冲突检查不能随寻址去重删除。
+Bot 指南修订可直接引用同一 `baseline` 及三组 `*_text`、`*_handoff`。这不是 V1 创建保存的输入列表，后者不消费三份 handoff 或批准凭据。各分支的目标身份、基线、必要确认、安全保存与读回见[共同业务材料契约](business-materials.md)。
 
 迁移旧定义时，先声明真实输出并补齐消费者的输入规则，再移除人工寻址、全图工作—文件映射、持续追踪上游当前 execution 和重复报告策略。通用保存与交接要求遵循[统一文件交接约定](workflow-runtime.md#统一文件交接约定)。规则仍为空或通用职责尚无承接方时，不得仅删文字造成信息丢失；本规范不表示存量 Map 或 Task 提示词已经迁移。
 
@@ -101,8 +101,6 @@ Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归�
 公开声明编辑入口为 `GET /api/scheduler/maps/{filename}/inputs`，返回 `input_requirements`、`input_files` 和 `{file,original}` revision；`POST` 同一路径提交 `{input_requirements,input_files,revision}`，成功返回更新后 Map。启动／预检接受可选 `fileInputs: [{id,path}]`，省略与 `[]` 均表示没有绑定。启动允许必需文件暂缺；未声明 ID、同次绑定 ID 重复或已提供文件缺失／不可读仍在 Run 分配与宿主启动前拒绝（文件错误为 `run-input-unreadable`），反馈 `target: "run-input"` 与 `inputId`，页面可定位对应文件输入。
 
 新 Run 的 `inputsReady=false`。管理者须先阅读 Map 的 `input_requirements`、每项 `input_files[].description` 及已有材料，接收用户文字／文件、澄清语义与授权，必要时在授权范围内整理文件，再用 `prepare_inputs` 绑定并确认；全部业务节点在确认前均不得 dispatch／retry，不能先派发“准备节点”代替管理者完成输入准备。必需项在确认时强制齐全；直接与嵌套调用遵循同一规则，协议见[运行输入准备](workflow-runtime.md#管理者输入准备prepare_inputs)。
-
-根输入可读性与普通节点解析使用 `workflow_dispatch file_consumption::` 专项核对真实文件和 Windows 实际访问拒绝；原生 Chat 真正消费材料仍由原生专项负责，不能从页面成功或记录存在推断原生消费已经通过。
 
 ### 动态执行 zone
 
@@ -137,9 +135,9 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 
 读取、编辑及保存保持数组和来源字段；scheduler 显示静态规则，workflow 区分当前定义、冻结规则、实际输入和实际报告输出。
 
-定向自动验收：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch named_inputs:: -- --nocapture`。测试通过真实 HTTP 保存／读取／创建 Run／显式派发，使用隔离存储、动态数值回环端口和记录型 Herdr 进程，核对实际提交的初始化与无隐式启动；它不替代真实 Chat 的角色注入验收。
+### 成果批准设置
 
-`report_policy` 独立于业务 `input`：`auto` 在结果可交接时自行发送 report；`manual` 调用 report 后由工具展示完整待发送 payload，只有用户在宿主原生确认界面明确批准该次 payload 才发送，自然语言同意不构成发送授权。修改、补充和更正均须重新确认；拒绝、确认超时（toolkit 的 reportConfirmationTimeoutMs 统一配置，默认 20000 毫秒）或无可用确认 UI 均不发送，停止并等待用户重新提出请求，不自行重试。它不新增后端审批状态、授权令牌或 report/complete 门禁；业务批准要求独立保留，管理者仍负责 complete。Map 读取／保存及新增 node 模板显式返回默认 `report_policy: "auto"`；只允许这两个小写字符串，`null`、其他类型和非法值均拒绝。派发时固定本次执行策略；修改 Map 不热更新已有 Chat，恢复沿用原执行，独立 retry 读取当前 Map。旧执行缺字段视为 auto，无需迁移。
+`auto_approved` 是严格布尔值，不接受字符串或 `null`。`true` 选择自动批准模式，`false` 要求节点 Chat 在原生确认中获得明确 Yes。模式不等于已批准。报告发送不需要确认，批准不代替业务保存授权或管理者交接。派发时冻结模式，改定义只影响新执行。详见[节点报告与独立通知](workflow-runtime.md#节点报告与独立通知)。
 
 ### 结束节点
 
@@ -151,12 +149,9 @@ Map 可为一个 node 设置 `end_node: true`（省略为 `false`）。该节点
 
 在 scheduler 选中节点后点“修改 node”，或从“新增 node”开始：
 
-- `end_node` 为独立复选设置；仅普通 Task 型末端节点可启用，每张 Map 至多一个。结束节点不承担节点报告职责，也不自动关闭 Chat，相关报告与关闭控件不再作为其工作要求。
-- `auto_close` 默认关闭；关闭 Tab 会终止 Tab 内终端及相关进程，请按节点分别选择。`auto_close` 只接受 JSON 布尔值，不能填字符串或 `null`。
-- Task／Map 节点的 `report_policy` 用 `auto`／`manual` 互斥单选圆点选择，省略按 `auto`。脚本节点固定自动报告且无 Chat 可关闭，不提供 manual 或自动关闭选择。若已有草稿带有这类冲突设置，页面保留并标出原值，须显式修正后才能保存；后端节点保存与启动预检同样拒绝非法脚本策略，不会静默改写。
-- `node_id` 继续使用独立身份输入（已有节点只读）；`zone` 固定／动态类型及固定 ID、`report_policy`、`auto_close` 分别由独立控件读取和编辑；动态类型不保留固定 ID 预设。只读、新增与修改共用同一明细布局：身份与标题之后先显示 report_policy、auto_close 和 zone，再显示 Bot ID、左右对称的前置／后继依赖，最后显示输入内容、Task.prompt、input_rule、output_rule。策略和自动关闭状态用带文字及原始值的状态标识展示，不仅依赖颜色。默认表单可编辑节点标题、Bot ID、输入内容和前置依赖；在前置栏展开“选择前置节点”勾选依赖，后继栏由其他节点的 blocked_by 计算，只读展示。Bot ID 支持已有目录建议，也保留尚未登记的引用；Task.prompt 随当前草稿关联的 Bot 更新，但不在 node 中编辑。通过“JSON 编辑”切换高级模式，完整编辑 `input_rule`／`output_rule` 等内容字段；“表单编辑”切回常用字段。两种模式共享同一草稿，表单只改目标字段，不丢弃其他属性；原始 JSON 无效或不是对象时保留全文并停留在 JSON 模式。“node 内容 JSON”排除顶层 `node_id`、`zone`、`report_policy`、`auto_close`、`end_node`，其余字段保持既有 JSON 数据形状。字段格式与保存约束可展开查看。
-- 保存时合并最新内容对象与独立设置，再提交既有 node 保存接口，不丢弃内容字段；JSON 中手动加入独立字段会明确拒绝，避免双重来源。无效 JSON／非对象草稿保存失败且原文保留；独立控件仍可编辑，不会格式化或覆盖 JSON。内容或独立设置的未保存修改均受既有离开确认保护；取消／放弃不会写入定义。Task 的 `prompt` 编辑与展示职责不变。
-- 保存后可重新打开核对；Map 读取、编辑及保存按既有默认值约定显式返回 `auto_close: false`、`end_node: false` 与 `report_policy: "auto"`。普通工作节点不改变报告接口、审批权限或 manager 的完成权限。策略指示是发给 agent 的约束，不保证模型必然遵从。
+`node_id` 是独立身份输入，编辑已有节点时只读。用独立控件设置 `zone`、`auto_approved`、`auto_close` 和 `end_node`。关闭 Tab 会终止 Tab 内终端及相关进程。结束节点不使用批准或自动关闭设置；取消结束节点后可继续编辑原值。脚本策略冲突会保留并显示原值，显式修正后再保存。
+
+常用表单编辑标题、Bot ID、输入和前置依赖；后继依赖与关联的 Task.prompt 只读。用 **JSON 编辑** 编辑 `input_rule`、`output_rule` 等内容字段。内容 JSON 不得包含 `node_id`、`zone`、`auto_approved`、`auto_close` 或 `end_node`，避免与独立控件形成双重来源。保存合并内容对象和独立设置，不丢其他字段。无效 JSON 或非对象保留原文，不写文件；在草稿中切换模式不会静默覆盖内容。内容和独立设置均受离开确认保护，放弃不写定义。
 
 ## 删除 Map 与历史 Run
 
@@ -190,7 +185,7 @@ Map 可为一个 node 设置 `end_node: true`（省略为 `false`）。该节点
 
 预检每次重读当前 Map、共享 Bot、Task 与 zone 登记及真实目录，检查全部 node（包含尚有前置依赖的 node），而不是只检查当前可派发项。空 Map、非法图、缺失／无效 Bot、未绑定或不存在的 Task、错误用途／非法 agent、缺失登记或已失效的 zone 都拒绝。管理者必须使用 manager Task，node 经 Bot 的 `task_id` 必须引用普通（normal）Task，同一 Task 也可从 zone 独立发起；两种角色均支持 omp/pi；不制造默认绑定，也不把 Bot 三份文档、Task.prompt 或 node.input 的业务质量当成启动门禁。
 
-脚本型 Bot 检查固定能力及策略，不要求普通 Task 或节点 manager Task，`node.input` 可为空。给出的命名材料地址必须真实存在且可读；未知能力、混合目标及非法脚本策略会明确定位原 Bot／node，不创建 Run 或 Chat。预检只验证定义与文件条件，不执行脚本或判断结构化业务请求能否完成写入。
+脚本型 Bot 检查目标路径、实际脚本与节点设置，不要求 Task 或 `manager_task_id`。缺失脚本、混合目标或不适用设置明确定位 Bot 或 node，不创建 Run 或 Chat。预检不运行脚本，也不判断业务请求或脚本依赖能否完成操作；普通节点的实际材料在派发时另行检查。
 
 Map 型 Bot 通过 `map_file` 继续检查被调用 Map，节点自己的 `manager_task_id` 必须引用 manager Task。合法 A→B→C 及不同节点重复调用 B 均接受；A→A、A→B→A 按**当前调用路径**拒绝，错误 `map-call-cycle` 的 `callChain` 给出确切文件名链。调用关系检查不展开父图、不保存定义快照、不启动任何宿主。嵌套调用的执行与父子 Run 事实另见运行说明；预检通过本身不是执行成功证据。
 
@@ -200,19 +195,13 @@ zone 引用按稳定 ID 解析本机绑定。同一 ID 绑定一个目录，不�
 
 HTTP 对应 `POST /api/scheduler/maps/{filename}/preflight`，请求接受 `managerTaskId`、`zone`、`userInput` 三个字符串及可选 `fileInputs: [{id,path}]`；未知字段、查询参数、运行名称及 node 覆盖均拒绝。合法返回 `workspaceName`，无 Run ID。配置拒绝为 HTTP 400、`code: run-preflight-rejected`，`issues` 含错误码、说明、配置目标及可得的 `nodeId`／`botId`／`taskId`。此只读检查不缓存有效性；后续实际启动必须再次调用同一整图预检，不能信任页面曾经校验通过。
 
-两类目标、节点 manager 配置、循环和引用保护的可重复入口：`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch bot_targets`、`npm --prefix frontend run test:browser:build -- workflowBotTargets.spec.ts --workers=1`。后端用真实临时定义、Windows 独占读锁与目录 junction 核对无启动／无删除；页面检查真实表单、HTTP 持久读回、重载、取消和引用拒绝。多层正例只证明公开预检接受，不替代真实嵌套执行与原生角色消费验收。运行前使用本 worktree 独立 `CARGO_TARGET_DIR` 并先构建静态页面；完整回归入口见[测试指引](agents/testing.md)。
-
-可重复契约检查：`npm --prefix frontend run test:browser:build -- runPreflight.spec.ts --workers=1`。真实隔离页面及 HTTP 检查空图、缺失绑定、角色／agent、真实目录注销／重登记／搬迁／替换及原配置修正；结果目录保留页面截图与响应、文件核对、外部 Herdr 记录。外部调用缺席只承诺每个测试从服务启动至最终完成请求的有界窗口（90 秒用例上限），不声称无限期不存在；记录型 Herdr 只证明拒绝路径无启动调用，不证明原生宿主或模型执行质量。P8 的有效节点实际 cwd、P9 的有效 Run/Chat 关联由实际运行链路另行验收。
-
 ### 定位已关联的 Run Chat
 
-在 workflow 详情，管理者及有 Chat 的当前／旧执行提供 **定位**。它只聚焦所选宿主中同时匹配保存坐标与原生身份的目标；目标缺失、身份改变或聚焦未确认时明确反馈，不切换到同名终端、不启动新 Chat，也不保证 Windows 窗口置前。**Resume** 仍是独立的历史 Chat 操作，不迁移或接管旧 Run。HTTP 对应 `POST /api/workflow/runs/{id}/locate`，主体 `{}` 选择管理者，`{"executionId":"..."}` 选择该 Run 的指定执行。
-
-节点报告先持久化，再向本 Run 的管理者尝试一次终端通知。通知失败不撤销报告；从 Run 详情可读回，不因刷新、首条输入失败或通知失败而重投报告或重放派发。
+发起后的观察、**定位** 与 **Resume** 见[运行说明](workflow-runtime.md#发起与观察)。定位不会启动新 Chat，Resume 不会接管旧 Run。
 
 ## 目录与定义管理
 
-进入 scheduler 读取服务所在电脑的目录，与当前 zone 无关。Map 与共享 Bot 属于定义数据，允许纳入 Git，UI 编辑会修改对应文件；node 内保存稳定 zone ID，由运行所在 server 解析成本机目录。旧 `.data` 定义在启动时一次性迁入，冲突拒绝且保留旧源，详见 [定义布局升级](../README.md#从旧定义布局升级)。配置可独立省略：
+进入 scheduler 读取服务所在电脑的目录，与当前 zone 无关。Map 与共享 Bot 属于定义数据，允许纳入 Git，UI 编辑会修改对应文件；node 内保存稳定 zone ID，由运行所在 server 解析成本机目录。旧 `.data` 定义在启动时一次性迁入，冲突拒绝且保留旧源，详见 [定义布局升级](usage.md#从旧定义布局升级)。配置可独立省略：
 
 ```toml
 [scheduler]
@@ -220,11 +209,13 @@ map_directory = 'meta-data/workflow-maps'
 bot_directory = 'meta-data/bots'
 ```
 
-默认值如上；普通相对路径按**服务配置文件所在目录**解析，绝对路径也可用；支持 `${roots.name}/relative` 前缀引用本机根，详见 [本机根目录](../README.md#本机根目录与解析规则)。首次读取创建缺失目录及父目录，保留已有文件，不安装示例。只扫描直接包含的 JSON 文件（后缀不分大小写），不递归。配置改变需重启，文件内容改变可“刷新全部”。目录创建／读取失败与正常空态分开报告。
+默认值如上；普通相对路径按**服务配置文件所在目录**解析，绝对路径也可用；支持 `${roots.name}/relative` 前缀引用本机根，详见 [本机根目录](usage.md#本机根目录与解析规则)。首次读取创建缺失目录及父目录，保留已有文件，不安装示例。只扫描直接包含的 JSON 文件（后缀不分大小写），不递归。配置改变需重启，文件内容改变可“刷新全部”。目录创建／读取失败与正常空态分开报告。
 
-Map 列表显示定义中的 `title`，不以 JSON 文件名作为正常名称；标题为空、全为空白或文件无法读取／校验时回退显示文件名，仍可选中查看问题或删除。可按名称或文件名筛选。Map 仍以原文件名标识，同名标题不会合并，选择、加载和删除不重命名文件。列表按文件最后修改时间倒序排列，时间相同按文件名升序；刷新全部重新读取名称和顺序。列表选择 Map 后，依赖图在节点清单上方常驻展示，无折叠入口、图外说明或缩放工具栏。节点清单与 workflow 共用依赖层级排序：前置层在前，同层沿服务返回的当前定义顺序稳定排列；图中对应为从左到右的层级、同列从上到下的稳定顺序，不改写 Map 文件，也不改变实际执行顺序。选择 node 以 `Task.prompt` 显示关联 Bot 绑定 Task 的固定提示词，以 `input` 显示本次输入原文，并显示 `zone`、`bot_id`、`report_policy`、`auto_close`、`input_rule`、`output_rule` 和 `blocked_by`，不展示 `node_guide`。`report_policy`、`auto_close`、`zone` 集中在详情顶部的配置概览；策略及布尔值并列，`manual` 与 `auto_close=true` 用暖色强调，zone ID 独占一行并可换行。字段名保留 JSON 原名，节点输入在 Task 提示词之前展示；脚本节点明确显示固定 Rust 能力标识与“不消费 node.input”，允许空字符串，Task.prompt 区说明不适用而不误报“未绑定 Task”。`input_rule` 按显式 `id` 列出 `type` 及 `path`，或 `node_id`、`output_id` 字段，`output_rule` 列出输出 `id`，避免仅用箭头表示来源。Bot 缺失或无效、未绑定 Task、Task 不存在或读取失败时显示对应提示，不沿用旧 prompt；Task 的 `prompt` 为空时明确标识为空。前置／后继可点击定位，关闭详情后焦点回节点清单。依赖图自动布局全部 node，包括独立项；自动适应视口，保留平移与键盘选择。箭头来自 `blocked_by`，如 B 依赖 A 就显示 A → B，不表示执行、材料传递或 Chat 在线状态。无节点的 Map 可阅读，不等于可以启动。
+Map 以文件名标识，列表优先显示定义中的 `title`；空白或不可读时显示文件名，同名标题不合并。列表按文件修改时间倒序，同时间按文件名升序，刷新重新读取标题与顺序。
 
-外侧 `bot` 入口打开左右分栏列表与详情，标题为 `bot`；列表按文件最后修改时间倒序排列，同时间按文件名升序，可按名称／ID 筛选。操作按钮为 `new`、`refresh`、`edit`、`delete`。node 明细不再提供“Bot 明细”跳转；需要管理共享 Bot 时从外侧 `bot` 入口选择对应条目。分别切换 `when`、`plan_guide`、`node_guide`，或通过 `json` 看只读原始定义。只读预览以独立 Task 栏显示绑定 Task 的当前名称，替代直接显示 `task_id` 的引用行；未绑定、引用不存在或名称读取失败时显示对应提示，不嵌入 Task 配置。原始 JSON 仍保留 `task_id`；刷新 Bot 后重新读取 Task 名称。原始 JSON 不是编辑器。通过外侧 `scheduler` 返回 Map 时重查来源并保留仍存在的 node 选择；来源已移除时显示原因。PC 上 Map 目录保留在左侧；右侧工作区顶部的依赖图横跨整个工作区宽度，下方左侧为节点列表、右侧为节点检查器，查看和修改 node 在同一检查器中切换。宽度不超过 1100px 时一次聚焦一个工作区域：选中节点进入详情，“返回 Map”回到图与列表并恢复该节点按钮焦点；“Map 目录”可随时展开文件筛选与刷新入口。手机导航收为横栏，不挤占节点正文宽度。编辑中的“放弃编辑”返回当前节点详情，“返回 Map”关闭检查器；有未保存修改时两者仍需确认。
+选中 Map 后，常驻图显示真实的 `blocked_by` 依赖，包括无连线的节点。B 依赖 A 就画 A → B；边不代表材料流、运行状态、Chat 在线状态或实际调度顺序。静态图可平移并用键盘选择节点，不可拖动改定义或连线。node 明细分开显示本次 `input`、关联目标与固定 Task.prompt、成果批准模式、zone 和命名交接规则。脚本型目标显示脚本路径，Task.prompt 不适用。缺失或不可读的引用给出原因，不沿用旧提示词或捏造配置。空 Map 可查看但不能启动。
+
+从外侧 **bot** 选择共享定义，不从 node 明细打开第二份编辑器。可按名称或 ID 筛选。切换 `when`、`plan_guide`、`node_guide` 阅读指南，`json` 为只读原始定义。Task 栏读取当前名称，未绑定、引用不存在或读取失败时给出相应提示。回到 **scheduler** 时重新读取来源，保留仍存在的 node 选择。窄屏可用 **返回 Map** 回到节点清单，未保存修改仍须确认。
 
 Bot 列表（含空态）可新增，预览可修改；当前 Map 可新增 node，选中 node 可修改。ID 独立输入，新增初始为空，修改时只读，JSON 不含顶层 `id`。node 编辑器的 `node_id` 表示 `nodes` 的 key，不在 node 内容中新增字段；Bot ID 由服务端补回。ID 不是文件路径。新草稿使用打包的 [天气 Bot](example/bots/weather-capability.json)／[上海 A](example/maps/trip-readiness.json)，部署不依赖开发仓库；打开、修改草稿或放弃不写定义，也不自动安装依赖。
 
@@ -275,8 +266,4 @@ revision 为 `{file, original}`，绑定服务端目录内文件名与原始全�
 
 目录及各级父路径不跟随符号链接、目录联接或重解析点，目录项也不能越界读取。全部标题、文档、input、zone 仅作文本显示，不按 HTML、CSS、脚本或 Agent 指令执行；文中路径不触发文件读取或 Chat。浏览、筛选、预览、恢复、刷新不改写现存定义；只有显式保存／确认删除才修改目标。
 
-可重复契约检查在 `frontend/browser-tests/scheduler/maps/schedulerDefinitionCutover.spec.ts`：真实隔离 scheduler 保存未绑定定义、分别读三份文档、提交非法依赖并核对原文件。node 读取／保存会显式补全省略的 `report_policy` 与 `auto_close`；CRUD 检查保护节点 ID 集合、业务输入、依赖与非目标内容，不要求返回对象逐字等于省略默认字段的输入。失败与取消仍按原始文件字节检查未写入。`frontend/browser-tests/scheduler/maps/nodeSettings.spec.ts` 经交付页面、真实 HTTP 和独占 Herdr 记录夹具验证节点独立设置、新旧草稿默认值、独立控件与原格式内容 JSON 合并保存、非法草稿保留与独立设置放弃、关闭后果说明，以及实际派发的报告策略指示与既有 report／manager complete 权限；不把提示词送达当作模型遵从证据。静态策略保存由 `backend/tests/scheduler/maps/report_policy.rs` 验证；执行期间的报告策略保持另由 `backend/tests/workflow/reports/report_policy.rs` 验证。
-
-`frontend/browser-tests/scheduler/scriptDefinitions.spec.ts` 通过本 worktree 打包页面、独占真实后端和公开 HTTP 验证固定 Rust 目标维护、空指南、空 node.input、预检及脚本策略约束；`frontend/test-results` 中保留实际页面截图、对应 HTTP 定义／预检读回、宿主调用和所属进程退出证据。仅组件检查或静态 HTML 不能替代这些页面证据。使用独立绝对 `CARGO_TARGET_DIR`，定向反馈可运行 `npm --prefix frontend run test:browser:build -- scriptDefinitions.spec.ts --workers=1`。
-
-完整浏览器回归使用 `npm --prefix frontend run test:browser:build`，同时覆盖既有 scheduler 编辑／删除与 workflow Resume；前端单元测试或图形专项冒烟不能替代此入口。完整入口、安全约束和人工网络／链接规则见 [测试指引](agents/testing.md)。这些定义检查不证明真实 Herdr／omp 启动或业务执行质量。
+复验入口与安全边界见[测试指引](agents/testing.md)。定义检查须区分成功保存的读回与失败或取消后原始字节不变。定义、页面及预检证据不证明真实 Chat 已启动或消费材料，也不证明业务脚本执行成功。

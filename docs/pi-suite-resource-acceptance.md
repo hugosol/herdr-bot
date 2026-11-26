@@ -1,20 +1,8 @@
 # Pi Suite resources and native MCP acceptance
 
-黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+Set `$TESTER` and `$BOT` and follow the isolation and evidence rules in the [testing guide](agents/testing.md).
 
-```powershell
-$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
-$BOT = 'E:/Developer/myhub/herdr-bot'
-```
-
-验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
-
-`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-resources` owns the Pi resource/MCP matrix at
-S2 (public HTTP), S3 (deployment/startup), and S4 (native agents launched by real
-Herdr). It also consumes the same selected declaration with installed OMP as a
-cross-host resource control; that does not replace OMP's separately owned tests.
-It never uses an SDK, source CLI, internal monkey patch, replacement MCP manager,
-user session, credential copy, junction or copied-resource fallback.
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-resources` covers public HTTP, startup, and native Pi launched by Herdr. A separate OMP Suite selects the same source resources as a comparison. That comparison does not replace the OMP matrix. Use installed agents and the native MCP manager, without SDK launch, source CLI, monkey-patching, or resource copies as a fallback.
 
 ## Prerequisites and commands
 
@@ -63,6 +51,11 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-resources `
   --paths-file "$ISOLATED_PATHS" --scenario all --evidence-dir "$EVIDENCE_DIR"
 ```
 
+The current tester's OMP comparison fixture still supplies strings for OMP skill
+collections. The current OMP Suite requires typed source objects. Keep the OMP
+comparison unverified until the fixture uses the current declaration. Do not
+remove the OMP comparison or relax either host's original-source criteria.
+
 `--evidence-dir` must not already exist. `--scenario` selects one named scenario
 for narrower feedback; only `all` attempts the complete owned matrix. No scenario
 is silently skipped, and failures do not prevent independent scenarios from
@@ -77,7 +70,7 @@ user Chat/daemon processes.
 
 | Scenario | Coverage and independent oracle |
 | --- | --- |
-| `selected` | P6/P7/P9/P10: one logical declaration, both native hosts; Pi runs in two distinct cwd directories. Central root and declaration-relative sources contain spaces. Exactly `selected-relative` and `selected-root` are advertised, despite user/project/wrong-cwd/unselected/new-source sentinels. Native read consumes body, script and asset literals. A real extension factory imports sibling TS and a local dependency and reads an `import.meta.url` asset; expected `PACKAGE-ASSET-482:64` is the worked example 19×3+7. True generated skill links, absence of extension-package links, and unchanged source bytes are checked. Both hosts receive the concrete `relative package/extension/probe.ts` source entry; sibling modules, node_modules and assets load natively from the original directory, without a generated extension manifest. The same Pi launch calls builtin native and added Suite MCP endpoints. |
+| `selected` | P6/P7/P9/P10: two independent single-harness Suites select shared source resources. Pi runs in two distinct working directories. Central root and declaration-relative source paths contain spaces. Exactly `selected-relative` and `selected-root` are advertised despite user, project, wrong-directory, unselected, and new-source sentinels. Native reads consume the original skill body, script, and asset literals. Verify the direct source paths and unchanged bytes, with no generated skill or extension links. Both Suites name the concrete `relative package/extension/probe.ts` entry. The native extension factory imports sibling TypeScript and a local dependency and reads its `import.meta.url` asset from the original package. The independent result is `PACKAGE-ASSET-482:64` (19×3+7). No generated extension manifest substitutes for native loading. The same Pi launch calls both the built-in and Suite MCP endpoints. |
 | `append` | P17/P19: an initially empty project calls native `NATIVE-FILE-113` and centralized `SUITE-FILE-997`; no project MCP file is written. |
 | `same-name` | P20: a native file entry beats the same-named registered Suite entry; the losing endpoint has zero initializes/calls. |
 | `equivalent` | P20: equivalent URLs under different names retain both Pi servers; each native tool name is called, producing two connections and two reads of the same independent file. Pi's public MCP guide states that the same URL under different names retains separate sign-ins; OMP's URL-based deduplication is not imposed on Pi. |

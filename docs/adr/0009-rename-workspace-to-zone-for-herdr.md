@@ -9,9 +9,9 @@
 
 ## 影响
 
-- 旧 HTML 阅读器书签、旧 API 调用、旧 `[workspaces]` 配置与旧 `workspaces.json` 都不再兼容；配置写错会启动失败，登记文件需一次性迁移。
-- ADR 0007/0008 保留原文，以免改写决策历史；它们在顶部注明术语已更新，并由本篇解释旧词。README 的重复历史变更记录已在 2026-10-23 文档精简时删除。
-- `workspace` 一词在本项目文档中保留给未来的 herdr 概念，不再作为 zone 的同义词使用。
+- 旧 HTML 阅读器书签、API 调用和 `[workspaces]` 配置不再兼容。更名时需一次性迁移 `workspaces.json`，不保留旧格式入口。
+- ADR 0007 和 ADR 0008 保留历史正文，在开头注明旧词的含义。
+- `workspace` 保留给 Herdr 的概念，不再作为 zone 的同义词。后续 [ADR 0017](0017-portable-zones-and-prompt-dictionary.md) 把 zone 从路径身份扩展为稳定 ID 与本机绑定。
 
 ## 考虑过的替代方案
 

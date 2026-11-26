@@ -5,8 +5,8 @@
 在 PowerShell 中，相对的 `CARGO_TARGET_DIR` 从 `$BOT` 解析。未设置时使用 `$BOT/backend/target`。
 
 ```powershell
-$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
-$BOT = 'E:/Developer/myhub/herdr-bot'
+$TESTER = 'C:/absolute/worktrees/herdr-bot-tester'
+$BOT = 'C:/absolute/worktrees/herdr-bot'
 $env:HERDR_BOT_WORKTREE = $BOT
 Set-Location -LiteralPath $BOT
 if ($env:CARGO_TARGET_DIR) {
@@ -19,8 +19,8 @@ if ($env:CARGO_TARGET_DIR) {
 `sh`（包括 Git Bash；行内 `NAME=value command` 示例也用此语法）：
 
 ```sh
-TESTER='E:/Developer/myhub/herdr-bot-tester'
-BOT='E:/Developer/myhub/herdr-bot'
+TESTER='C:/absolute/worktrees/herdr-bot-tester'
+BOT='C:/absolute/worktrees/herdr-bot'
 export HERDR_BOT_WORKTREE="$BOT"
 cd "$BOT" || exit 1
 ```
@@ -31,24 +31,24 @@ cd "$BOT" || exit 1
 
 ## 验收脚本的共享设施
 
-黑盒验收的 `accept-*.py`、`test-real-*.py` 及其专用 `check-*.py` 已迁入验证项目。文件名、参数及退出语义保持不变，原产品路径不保留兼容入口。产品自己的网络护栏、Schema、文档检查和构建脚本仍留在产品仓。入口不作为其他场景的共享库；已有 implementation 使用正常 Python import。
+验证项目维护进程隔离、原生观察、模型传输、证据收集和设施自测。其 `README.md` 说明通用入口；本文和专项页保留产品场景的授权、配置和通过条件。网络护栏、Schema、文档检查和构建脚本仍由产品仓维护。
 
-- `scripts/acceptance/host/` 持有进程句柄与输出消费、独占环境与清理、来源检查、原生观察、透明流量记录、模型传输和证据归档。受控 provider 不代表真实模型验收。透明观察服务与隔离业务后端均显式选择 49152–65535 的数值回环端口，避免 Windows 的 `port=0` 分配到该范围之外；仅启动前实际地址占用碰撞允许重新分配，后端启动失败及业务／模型请求不因此重放。
-- `scripts/acceptance/workflow/`、`scripts/acceptance/suites/`、`scripts/acceptance/native/` 及 `acceptance.suite_resources`／`acceptance.suite_lifecycle` 保留已被复用的场景 implementation。P22 默认模型、业务判据、覆盖清单和各场景的通过条件不移入通用设施。
-- 设施自测仍使用原 `workflow_completion_transport.test.py`、`workflow_evidence.test.py` 等入口；它们直接导入所属设施。CLI 安全回归经过验证项目中的同名入口，不替代真实模型／双宿主验收。
-- 改动共享 implementation 时，同步维护场景的源码哈希／原文证据清单；不能只记录薄 CLI 的身份。清理失败、部分覆盖和单宿主诊断仍不能成为完整通过。
+- 只操作本轮拥有的进程、窗口、会话、目录和端口。生产后端用于隔离业务验收；涉及系统关机的自动 dock 使用安全关机壳。安全壳不能替代指定的生产后端，自动验收不授权实际关机。
+- 默认使用数值回环。Windows 原生场景显式选择 49152–65535，避免 `port=0` 不落在所需范围。仅启动前证实端口已被占用时可重新选端口；不得据此重放业务或模型请求。
+- 真实模型、具体凭据、外网、LAN／mDNS、符号链接和现有用户会话的授权分别成立。不要发现、复制或刷新用户认证。将证据与密钥分开，清理前确认所属进程和相关后代实际退出；退出码、目录可删除或事后 PID 查询都不足以证明退出。
 
 ## 真实模型验收的范围
 
-- **验证原生工具时，优先用明确的用户指令触发单项操作。** 通过真实宿主观察工具调用、必要的原生确认和可核对的结果。若场景确实依赖前序步骤，按真实回执分步发出用户指令；脚本不替模型调用工具或伪造前置状态。模型自主编排不是这类工具验收的隐含通过条件。
-- **按测试层级分工。** 后端集成测试负责状态变化和持久化；原生验收负责工具、确认界面和后端结果是否接通。已有专项覆盖同一行为和边界时，复用该证据，不在其他脚本重复增设断言。只观察到界面确认时，不声称后端状态已保存。
-- **不把单工具通过当作端到端通过。** 如果票据明确要求实际材料传递、父子交接或最终页面，未走完的步骤保留为未验证；记录原因和已取得的证据，不因模型没有继续而擅自改写正式覆盖或通过条件。
+- **原生机制允许逐步驱动。** 按真实回执发出明确的用户指令，观察实际工具调用、必要的原生确认、正确的 execution 和公开读回。验收器不代模型调用工具、伪造确认、补写运行状态或材料。受控 provider 可证明机制，不能证明真实模型自主选择或业务质量。
+- **自主交接不指定工具顺序。** 当场景要求模型自行判断何时交接，驱动只给业务目标和获授权的业务输入。普通节点应自行在成果 `report` 前决定 `approve`；进度 `report` 可以更早。不能把逐步教它 `approve` 再 `report` 算作证明。结束节点不承担普通节点的批准职责。
+- **诊断可读内部实现，验收使用约定的公开界面。** 预期独立于被测算法。将原生身份、真实工具回执、公开持久事实和实际文件字节互相归因。批准、报告、命名交付和显式 complete／finish 分别取证。通知提交不等于模型已读，界面确认不等于持久化；有限窗口只证明窗口内的观察。
+- **验收程序可用不等于产品通过。** 分开记录运行了哪些格、完整覆盖是否满足、证据及来源、必要仓库检查、原始失败和清理失败。过滤、native-only、缺权限或依赖、受控替身和部分通过不能补齐约定的真实矩阵。保留未覆盖项，不降低条件、不用重试改写失败，也不把缺失的 Agent 验收转成用户签收。
 
 ## 测试归属
 
 保留后端集成测试、前端交互测试和真实浏览器验收三个运行层级，各层内部按业务所有者归组，而非按测试文件的历史前缀归组。Chat 历史归 `chats`，当前会话登记与观察归 `sessions`；Map／Bot 静态定义归 `scheduler`，Run 运行事实归 `workflow`；固定操作、关机与完成后关机监听归 `server`。真正跨入口的契约归 `app`，夹具自身行为归 `infrastructure`。
 
-专用夹具留在所属测试 module，只有跨业务使用的设施放入共享 support／common。`workflow_dispatch` 的组合入口为 `backend/tests/workflow/dispatch.rs`：用例按派发、材料、报告、生命周期等归组，静态定义用例位于 `scheduler`；其中保留 crate-scope `include!` 以维持既有 libtest 名称及子进程 `--exact` 选择。目录归属不要求每个目录对应独立 target。测试继续通过已有 interface；拆分文件不降低断言、改变故障预算或把受控 adapter 证据外推为真实宿主／模型验收。Vitest 与 Playwright 递归发现各自目录中的测试；`@time-contract` 与手动网络授权是独立于领域目录的运行分区。迁移路径时同时更新 import、源码／产物定位、证据清单、具名网络例外及命令选择器。
+专用夹具留在所属测试模块，共享设施只收跨业务用途。迁移路径时同时更新导入、产物定位、证据清单、网络例外和命令选择器，保留已有 `--exact` 名称。`@time-contract` 与手动网络授权独立于业务目录。文件拆分不改变断言、故障预算或证据范围。
 
 读取交付配置的测试必须显式绑定所用夹具的宿主类型及可执行路径，不能只替换 TUI 的 `executable` 却继承交付配置的 `backend = 'app'`。`runtime_data` 的交付配置场景固定使用受控 TUI，不连接已安装的 App／core；实际双宿主行为由对应专项验证。
 
@@ -247,57 +247,35 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-paired-chief-run `
 
 `python -m pip install -r scripts/requirements-contracts.txt` 安装单独的 Schema 验证依赖后，`python scripts/test-script-contracts.py` 从公开文件 seam 消费 `docs/contracts/script-bots.schema.json` 和独立 JSONL 字面实例。离线检查类型、必填、互斥、相对 TS 路径、完整配置形状、无 Chat 来源与失败效果表达；不启动宿主／服务、不写业务配置，不以源码快照验证接线。跨材料身份／revision／正文确认及真实保存仍是业务实现的公开 HTTP／文件验收，不能由 Schema 通过推断。
 
-表示票不提前注册可保存但不能运行的能力，不改现有 Task／Map 运行代码；回归仍先构建本 worktree 静态页，再用独立绝对 `CARGO_TARGET_DIR` 执行 `node scripts/test-backend.mjs`。实例与长期文档只是新表示，不代表两种 Rust 业务或 S2／S3 已交付。
+## TypeScript 空白创建公开 HTTP／文件回归
 
-## Rust 空白创建公开 HTTP／文件回归
+```sh
+cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_create_ -- --nocapture
+```
 
-先构建本 worktree 静态页面，使用独立绝对 `CARGO_TARGET_DIR`，开发反馈运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_create_ -- --nocapture`；完成检查运行 `node scripts/test-backend.mjs`。`workflow/scripts/rust_create.rs` 通过公开 S1 HTTP／文件 interface 测定义、真实 Run、manager dispatch、完整配置／revision、自动报告、collect、完成门禁及真实临时材料；Map 在独占临时定义目录经文件 seam 发布并以 HTTP 读回／预检，不声称存在 HTTP 新建 Map 接口。正式创建流程定义未迁移。
-
-- `target_round_trips`：固定目标互斥、未知能力拒绝及拒绝后原定义不变。
-- `dispatch_writes`／`map_target`：normal Task 与完整真实 Map 目标、新 Bot 三空指南、真实 revision／baseline、独立 handoff、报告归属；实际派发下游受控宿主进程读取两份命名 JSON，内容和完整公开对象交叉核对。
-- `returns_while`：真实 Windows oplock 暂挂业务目标读取，门闩仍持有时独立取得 HTTP dispatch 返回、running lifecycle、无报告和首次 complete 拒绝；改写 node.input／当前规则后仍用已冻结 inputs／inputRule／outputRule。
-- `rejects_bad_requests`：格式、根／嵌套重复 key、缺项、未知字段／版本、null、旧 authorization／confirmation 与改名 approved 拒绝、bot／target 字段归属、脚本／歧义／缺失目标、身份／绑定和目录歧义；独立完整对象与实际文件不变，无成功输出。`dispatch_writes` 的独立新 request 不含批准凭据，真实 Bun 完成创建并比较完整 baseline／created handoff；handoff 也不含确认凭据。共享新 request／baseline／target 归属见共同业务材料契约，保存材料与发布节点各自独立迁移。
-- `write_readback_and_material_failures`／`refuses_binding`：真实文件阻塞合法 Bot 保存、两个实际文件门闩制造保存后目标读回失败、材料父目录阻塞／同名文件碰撞，以及真实运行 Map 的禁写；核对部分效果，不回滚或提交 true。
-- `report_provenance`／`enforces_automatic_policy`：报告来源／execution／Run 一致性，拒绝伪造来源、manual／关闭／manager Task 策略及未声明交付 ID。原 `report_outputs` 回归继续通过同一报告保存实现覆盖未声明／重复 ID、执行级更新与隔离。
-
-每例独占临时定义、zone、Run、文件和数值回环服务；外部 Herdr 为记录型测试宿主，非真实 manager／模型。门闩进入预算 5 秒、业务在途派发返回预算 2 秒、自动报告观察预算 10 秒；结束前等待所属通知 CLI 退出再清理独占根。stdout 保留实际成功 Run／execution／report、baseline／revision、消费者读取对象和拒绝分类，完整入口日志归自身输出目录。通过不证明 S2 原生工具／S3 页面或 H1 人工验收；这些仍按各自分区交付。
+用本轮构建的页面、独占 Cargo 目录及已安装 Bun。选择器保留原名，实际运行用户维护的 TypeScript 创建脚本。核对 Task／Map 目标、公开完整对象和 revision、实际文件与下游命名材料；独立读回在途状态、冻结输入与完成门禁。Map 由定义文件提供，不是 HTTP 新建。输入拒绝不产生成功材料；写入已生效但读回或材料生成失败时，保留实际部分效果，不回滚、不提交可交接报告。受控外部宿主不证明真实模型或原生工具消费。
 
 ### 脚本报告通知失败隔离（P11）
 
-`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_create_saved_report_survives -- --nocapture` 复用上述真实 Rust 创建、S1 HTTP／实际文件和既有报告诊断子进程／Herdr prompt gate。两种外部明确拒绝分别立即返回或在最多 10 秒门闩后返回；通知进入预算 5 秒，等待中公开读回预算 2 秒。报告保存及业务写入不使用替身。等待中／结束后核对同一完整报告与全部 outputs，并真实读取 baseline／handoff；失败后至少 1 秒持续取样配置 revision、Run／execution、报告与材料及完整宿主调用，确认一次业务派发、一次报告、一次外部通知，无自动重投。stdout 输出实际窗口、样本数、配置／报告身份、真实材料、调用记录与进程退出确认；stderr 保留共享通知分类诊断。它不声称真实 manager 已接收或用户已阅读，也不认领 11 的原生会话覆盖。
-
-完成检查先构建本 worktree 页面，设置独立绝对 `CARGO_TARGET_DIR`，再运行 `node scripts/test-backend.mjs`。日志不是第二份报告存储，不为此引入自动恢复或消息队列。
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_create_saved_report_survives -- --nocapture` 对实际 TS 创建分别观察已保存报告、命名输出、文件和外部通知失败。保留原报告，不自动重投；有限观察不表示 manager 已读或保证无限期无动作。
 
 ## 脚本 workflow 页面（P31／P5／P32 运行分区）
 
-`frontend/browser-tests/workflow/workflowScripts.spec.ts` 使用实际 Map、公开发起／准备输入／dispatch／fail／retry／complete、独占生产后端与本次构建页面。成功与部分材料失败均运行编入后端的真实 Rust 创建能力，不写运行记录或替换组件。受控 Herdr 仅记录真实 manager／Task 的 CLI，不证明真实模型消费。
+`npm --prefix frontend run test:browser:build -- workflowScripts.spec.ts --workers=1` 使用独占生产后端、真实 Map 和 Bun 脚本。分别核对运行中、成功和部分材料失败的页面与公开读回。观察不发起动作；无 Chat 的脚本执行及报告没有 Resume 或关闭入口。受控 Herdr 不证明真实宿主消费。
 
-门闩由 Python 3 标准库调用 Windows oplock，实际暂停目标 Task／Map 文件读取；退出时释放并等待所属 Python 进程结束。Task 文件门闩叠加两个真实 `/api/tasks` 请求，在两个独占 Tokio HTTP worker 下仍须读回业务在途事实，防止目录同步磁盘读取饿死运行接口。门闩进入预算 5 秒，独立运行事实读回预算 2 秒；脚本生命周期与报告资格、节点状态和依赖资格分开核对。Map 目录门闩期间仅读取公开运行事实，不为截图解除门闩；释放后另保留公开当前定义，所有已登记材料均实际读取。
+## TypeScript 三路合并保存公开 HTTP／文件回归
 
-截图和同刻 S1 JSON（execution／reports、公开配置、实际材料与外部调用）保留在 Playwright `test-results` 及附件。检查当前／旧脚本和脚本报告没有 Resume／关闭动作，真实 manager／Task／Map Chat 仍沿用原入口；页面观察不产生业务操作或外部调用。没有用户 Run／Chat，也没有真实模型请求。
-
-本 worktree 使用独立绝对 `CARGO_TARGET_DIR`，资源受限时设 `CARGO_BUILD_JOBS=1`。定向反馈为 `npm --prefix frontend run test:browser:build -- workflowScripts.spec.ts --workers=1`；完成检查运行 `npm --prefix frontend test`、完整 `npm --prefix frontend run test:browser:build`，含后端阻塞 IO 修复时另运行 `node scripts/test-backend.mjs`。常规回归不代替 H1／原生宿主验收。
-## Rust 三路合并保存公开 HTTP／文件回归
-
-先构建本 worktree 静态页，使用独立绝对 `CARGO_TARGET_DIR`，开发反馈运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_save_ -- --nocapture`；完成检查运行 `node scripts/test-backend.mjs`。`workflow/scripts/rust_save.rs` 独占临时定义、zone、Run、文件和数值回环服务，通过 S1 真实 Map／manager dispatch／Bun／自动报告和实际下游进程读取命名 saved／handoff；正文和非目标字段使用独立字面值，不调用业务内部函数。P31 保存分区及 P32 由 `rust_save_merges_exact_bytes_once_and_delivers_named_complete_saved` 以仅 baseline、when_text、plan_guide_text、node_guide_text 四项输入验证，不生产批准凭据或三份指南 handoff；P33 保存分区由同组下列拒绝、冲突与真实故障场景拥有。发布接线和材料生产指引同步切换，09 仍独立拥有批准模式职责映射及 V1/V2 组合验收。
-
-- P24/P25/P26：三段互异正文含 CRLF、LF、空行、tab 和首尾空格；完整 Bot／真实新 revision／完整目标及实际 saved 逐项比较。下游只从显式 outputs ID 消费，handoff 不含正文／完整配置。
-- P33：非法格式、缺项、根／嵌套重复 key、错字段归属／身份／目标／命名绑定、旧 authorization／confirmation／改名 approved 与多余指南 handoff、非法 UTF-8、真实并发 Bot 修改、旧 revision、完整目标配置变化及活动 Run 禁写均拒绝；读回完整对象与实际文件，不能因 HTTP 成功或正文相同宣称业务成功。字段归属由四个固定输入 ID 确定，不按正文语义或文件名猜字段。写入失败与写后完整目标读回失败使用真实 Windows 共享限制／文件门闩，不模拟业务结果。
-- P15：真实文件阻塞 saved 或 handoff 生成，保存已生效时保留 write/readBack=succeeded 和已读回 outputs，不自动回滚或刷新 baseline。解除故障后由另一个隔离真实 Run 的 manager 显式派发，原 baseline 仍以 revision-conflict 拒绝。该场景不依赖同节点 fail/retry，后者由独立生命周期覆盖拥有。
-
-门闩只控制测试拥有的真实文件 open／外部宿主；进入预算 5 秒，自动报告观察预算 10 秒，所属通知 CLI 退出确认预算 5 秒，确认后再清理独占根。stdout 记录实际 Run、saved、报告、下游文件读回及拒绝／失败分类；完整入口保留日志。受控外部消费者证明命名文件传递，不证明原生模型／manager 行为或 H1/H2；本入口不迁移正式定义，也不改通用替换者或修订流程。
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_save_ -- --nocapture` 执行真实 Bun 保存。比较实际文件、完整 Bot／目标及新 revision。用独立原文验证 CRLF、LF、空行、tab 和首尾空格；下游只从声明的 ID 读取，handoff 不带正文。并发修改、过期 revision 或错误绑定应拒绝。已保存但材料失败时保留部分效果，不回滚或刷新 baseline。具体输入和授权见[共同业务材料契约](../business-materials.md)。
 
 ## 发布创建图迁移回归（P22／P23／P27／P28）
 
-先构建本 worktree 静态页，以独立绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_migration_ -- --nocapture`；交付检查运行 `node scripts/test-backend.mjs`。`create_migration.rs` 经真实隔离后端、发布八节点 Map、两种 Rust 能力、实际文件和公开报告／complete／finish 完成闭环。迁移前完整发布定义为 `fixtures/rust-create-migration/before.json`；用例保留独占副本及真实无关 Run／Chat，完整比较原通用替换者 Bot／Task／修订 Map 和无关定义。三个固定独立字面稿为 `abc`、`hello`、空串，不含批准凭据；记录型外部进程真实读取三路 baseline 与各 text/handoff，最终保存只直接绑定 baseline 和三份 text，真实保存和 revision／完整目标读回不使用替身。严格 request 缺项／Markdown、缺显式 when_text 绑定均拒绝，不从邻居文件、自然语言或来源索引寻址。stdout 保留真实 Run、报告、baseline／saved／revision 及拒绝；所属通知 CLI 退出确认后才清理。
-
-这不证明模型遵从指引。P28 的共享三编写者创建 v1 消费／确认由更新的 `accept-workflow-nesting-create.py` 实际原生 workflow 场景覆盖，原非 v1 独立材料／通用替换与真实普通文件安全场景也保留；创建入口在独立／创建图／通用文件安全场景后，还实际组合调用修订入口既有 task-no-materials 业务场景，只有原格式三路消费与通用保存也成功才标 P28；独立复跑时，使用下文的 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-revise` 入口和必填参数，追加 `--cases task-no-materials`，或运行完整的 `--cases all`。两入口沿用本页授权模型、完整 Suite、独占依赖、动态回环、原生历史／HTTP／字节及进程退出要求；三编写者保持原宿主，脚本节点不虚构 Task、Chat 或模型 read。须实际执行对应场景；缺授权／依赖保留未验证，不转交 H1/H2，不以 CLI fail-closed 或定义相等补足行为证据。
+用本轮构建的页面和独占 Cargo 目录运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_migration_ -- --nocapture`。发布 V1 Map 通过 Bun 执行创建和保存。核对命名文件、公开完整读回、revision、报告及显式 complete／finish；通过独立预期确认无关定义不变。这不证明模型遵从指引。原生材料消费和业务确认另跑下文创建及修订入口。修订可追加 `--cases task-no-materials` 定向复跑通用保存，不能代替完整矩阵。
 
 ## 发布成果批准职责与 V1／V2 独立性（P17／P31／P34／P35／P38）
 
-`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_migration:: -- --nocapture` 保留原 V1 真实 Bun 创建／保存、严格材料拒绝、独立历史和通用替换者业务协议回归，覆盖九张实际发布 Map 全部 31 个 node 的字面批准模式、结束职责与公开完整读回，并检查生产者不再要求旧凭据／报告发送确认。可读配置依据在 [发布职责清单](../create-bot-wrapper.md#发布成果批准职责清单p34)，不从旧报告开关机械映射。
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_migration:: -- --nocapture` 比较发布 Map 实际配置与独立的批准模式和结束节点预期。按 [运行时批准协议](../workflow-runtime.md#角色责任与批准动作矩阵) 判断职责，不能从旧报告开关机械推导批准模式。
 
-成功创建场景进一步独立发起实际两节点 V2 Run：独立目标与 v2 request（保留专用 authorization／confirmation），真实文件的 requirements／完整 target_materials 消费，普通节点报告后仍未批准且 complete 拒绝、显式人工来源批准后仍 running、管理者逐项 complete／finish，以及真实新 Bot 的公开完整读回和真实 revision／v2 saved／handoff 文件。前后完整比较 V1 Run 与 request 不变。只在隔离副本中重定位 zone、直接契约文件和外部宿主 Task 绑定，不替换 Map 拓扑或业务协议，不接触历史／正常服务。受控 Herdr 的材料读取与 HTTP 人工来源只证明 S1；不证明模型遵从或原生 Yes，也不认领 14、15。完成检查仍为本 worktree 独立绝对 CARGO_TARGET_DIR、当前页面及安全后端构建，分别执行完整后端、前端与浏览器入口。
+V2 保留专用 authorization／confirmation 材料，独立运行并比较实际文件、完整公开对象及 revision。成功报告本身不能批准或完成节点。保留显式批准、complete／finish 的独立证据，并确认 V1 Run 和 request 不变。受控宿主与 HTTP 的人工来源不证明原生 Yes 或真实模型遵从。
 
 ## 后端并行与诊断
 
@@ -313,23 +291,17 @@ Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行�
 
 ### 普通节点成果批准（S1）
 
-`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval:: -- --nocapture` 通过公开 HTTP、真实独占 Run／定义和记录型 Herdr 验证派发未批准、两种模式的无报告／无产物批准、report-only／approve-only 正交、批准无外部通知或推进、已有报告未批准的 complete 拒绝，以及批准后无报告／最新 false／缺约定交付的独立拒绝。stdout 保留运行事实与真实外部调用；人工 HTTP 只证明后端提交，不冒充 OMP／Pi 原生 Yes。P1 选择器为 `report_policy::map_auto_approved_defaults_round_trips_and_rejects_invalid_saves_without_writing`（保留现有 module 名，不保留旧协议）；P30 沿用 `end_node::`，检查结束节点无伪批准且仍可显式 finish。
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval:: -- --nocapture` 从公开 HTTP 分别检查批准、最新报告及约定交付三项门禁。夹具通过 `node/context` 和 `node/approve` 显式建立批准，不在 report 或 dispatch 中静默补齐。无交付约定时用空 `output_rule`；不能用旧 execution 或另一节点的输出补足。脚本仅在本次成功并通过输出校验后自动批准。人工 HTTP 只证明后端保存，不代替原生 Yes。
 
-报告保存失败、通知失败和诊断失败沿用下一节真实故障场景，不因移除报告发送确认而删除。生命周期回归显式通过 node/context 和 node/approve 建立普通节点批准前提；不在 report 或 dispatch 夹具中静默补批准。脚本仅在本次成功执行并通过结果／输出校验后记录自动批准，失败不补批准；后续不可交接报告不撤销既有批准，但仍阻止 complete。脚本报告隔离回归同时检查旧 execution、其他 node／Run 的交付不能补齐当前执行的约定输出；缺交付在 complete 处拒绝，当前执行实际登记后才可完成。无交付约定的场景明确保存空 output_rule，不削弱专门的缺交付门禁。完成检查仍使用本 worktree 构建页面、独立绝对 CARGO_TARGET_DIR，并分别运行后端、前端及浏览器完整入口。原生工具、嵌套、脚本、冻结／恢复和发布定义各按所属票独立验收。
+默认值及非法保存用 `report_policy::map_auto_approved_defaults_round_trips_and_rejects_invalid_saves_without_writing`（历史选择器名），结束节点用 `end_node::`。报告保存、独立通知和诊断失败见本页报告回归。
 
 ### 嵌套父节点整体批准（S1）
 
-`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_completion:: -- --nocapture` 的 `parent_approval_requires_finished_child_and_independent_frozen_mode` 通过实际父子 Run、实际内部节点批准／报告／complete／finish 验证 P28／P29：两种父模式均冻结，子 finish 前拒绝整体批准，内部批准不批准父 execution，整体批准无通知／推进，父 manager 仍须显式 complete。该组保留最新报告、输出增量／缺交付、通知失败、结束节点及精确关闭回归；缺当前约定输出现在应在父 complete 处拒绝，不再允许先完成再消费缺交付。
-
-P10 嵌套归属选择器为 `nesting::dual_role_routes_report_to_parent_and_management_to_child_without_selectors`、`nesting::retired_child_session_cannot_select_the_replacement_execution`、`nesting::invalid_nested_links_and_source_mismatches_are_rejected_without_effects`，验证子管理、父批准／外报分离、旧 execution 不可改指 retry、缺失／错误／多重／跨 Run 关联拒绝。`nested_retry::` 保留真实新旧子 Run、报告与材料隔离。测试仅使用公开 HTTP／定义与独占文件、记录型外部 Herdr；人工 source 只证明 S1 后端规则，不证明 OMP／Pi 原生 Yes，后者由对应原生验收拥有。完成仍分别执行本页完整后端／前端／浏览器入口。
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_completion:: -- --nocapture` 检查子 Run finish、父 execution 整体批准和父 manager complete 三项独立动作；内部批准不替代整体批准，整体批准不自动推进。`nesting::` 和 `nested_retry::` 分别检查真实父子归属与新旧执行隔离。公开 HTTP 和受控 Herdr 回归不证明原生确认。
 
 ### 成果批准 Map／Run 页面（S3）
 
-`frontend/browser-tests/scheduler/maps/nodeSettings.spec.ts` 的 `P1 P3 P5` 场景经真实打包页面保存并重开省略默认、显式自动与人工模式，独立 HTTP 读回定义。`P3 P36` 场景从真实公开发起／派发、Map 页面改模式、批准、fail／retry 到再次批准与报告／complete，分别检查当前定义、冻结模式、旧／新执行及 auto／manual 来源；HTTP 人工提交只证明页面显示保存来源，不冒充原生 Yes。每阶段保存截图、公开 Map／Run JSON 与外部调用前后记录；刷新与观察不产生业务调用。
-
-`scriptDefinitions.spec.ts` 保留脚本只能自动、冲突草稿拒绝后显式修正、保存冲突与草稿保护；`workflowScripts.spec.ts` 检查实际 Bun 文件业务在途／成功／失败的批准事实与报告；`endNode.spec.ts` 检查批准不适用、不伪造 approved 与无节点批准等待。既有报告、累计输出、执行历史、自动关闭和隔离回归保留有效职责，不再测试旧报告发送确认开关。浏览器后端的 HOME／APPDATA／XDG 与原生状态目录位于各例独占根，清理须等待所属进程退出。
-
-定向选择器为 `npm --prefix frontend run test:browser:build -- nodeSettings.spec.ts scriptDefinitions.spec.ts workflowScripts.spec.ts endNode.spec.ts --workers=1`。完成检查仍为完整后端、前端及浏览器三个入口；保留 Playwright test-results 证据。受控 Herdr 只证明外部协议与页面机制，没有原生模型业务或确认授权证明。
+`npm --prefix frontend run test:browser:build -- nodeSettings.spec.ts scriptDefinitions.spec.ts workflowScripts.spec.ts endNode.spec.ts --workers=1`。比对真实页面与公开读回，区分当前定义、冻结执行模式、批准来源、报告和累计输出。脚本只支持自动批准，结束节点不适用批准。保留无写入观察和实际关闭结果；受控 Herdr 和 HTTP 批准不证明原生 Yes 或模型行为。
 
 ### 真实模型成果交接与结束节点（S2）
 
@@ -349,7 +321,9 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-node-approval-handoff
 
 按已批准承诺逐项组合原始事实：P20 要求双宿主两模式的真实正常成果批准后报告、来源与独立成果，并保留进度可先报告的实际证据；P30-S2 要求双宿主原生结束节点及真实 finish，不额外要求每种普通节点批准模式重复 P30。保留各场景原始失败、未完成的 manager 推进与内部子标记；某格后续 finish 未发生不能抹掉它已独立实证的 P20，也不能补出该格没有发生的 finish。过滤场景或内部 16 子标记不是整体契约结论，组合结论必须引用实际工具、公开状态、材料、身份和清理证据，不能仅重写通过标记。
 
-专项独占 OMP／Pi × auto／manual 四个环境，以真实模型自行决定成果交接。Map 显式声明必需的 `order` 文件输入，Run 提交实际订单文件，报价节点通过 `type=run` 消费同一命名绑定；公开定义在模型启动前预检。`cargo test --manifest-path backend/Cargo.toml --test workflow_start handoff_order_requires_a_declared_map_input_before_manager_preparation -- --nocapture` 通过实际后端 HTTP 验证漏声明时 manager 准备 `order` 被 409 拒绝且未就绪，再经公开 Map 输入保存与新 Run 验证声明后可绑定真实订单、在折扣仍为 null 时完成输入准备，且无节点派发／模型请求；它只锁定夹具输入前置，不认证 P20／P30。输入准备的业务前提是数量、单价和本地范围明确，折扣可为 null，识别缺项属于报价节点的工作；不能把最终报价所需折扣误作开始讨论的前提。业务先缺折扣，观察真实问题报告在未批准时保存；用户只补充25%折扣，不指定工具或顺序。独立字面预期为7件、单价1200分、实付6300分，核对实际 `quote.json`、命名输出、原生 approve 先于正常 report、真实批准回执与公开来源。人工模式观察完整原生问题、可见选中 Yes、UI 实际 true 返回及公开 manual 事实；自动模式无确认，来源为 auto。原生结束 Chat 等待用户提供发票抬头，没有节点批准／报告职责；其他工作完成后，真实 manager 显式 finish，结束 Chat 仍 running、未批准且无报告。随后作 91 秒单调观察，覆盖 60 秒成果批准＋30 秒 HTTP 预算及 1 秒余量。
+独占运行 OMP／Pi × auto／manual 四格。Map 明确声明 `order`，报价节点通过 `type=run` 读取真实订单。折扣可暂缺；未批准时保存原生进度报告。用户只补充 25% 折扣，不指定工具或顺序。独立预期为 7 件、单价 1200 分、实付 6300 分；核对真实 `quote.json`、命名输出、原生 approve 先于成果 report、真实回执和公开来源。人工模式实际选 Yes 并读回 manual，自动模式没有确认且来源为 auto。结束 Chat 等待发票抬头，不承担批准或报告；其他工作完成后 manager 显式 finish，结束 Chat 保持 running 且无批准或报告。使用覆盖 60 秒批准与 30 秒 HTTP 预算的 91 秒有界观察。
+
+夹具输入回归为 `cargo test --manifest-path backend/Cargo.toml --test workflow_start handoff_order_requires_a_declared_map_input_before_manager_preparation -- --nocapture`；它不认证原生业务。
 
 每格保留原生 SessionManager 历史、模型实际请求与返回身份、工具调用／结果、透传 HTTP、独立预期、真实材料、公开 Run、源码／锁文件／产物／安装身份、原始与清理错误。单宿主仅诊断；任一检查失败、coverage 缺失或清理失败，整体不得通过。入口顺序运行本仓 frontend build、指定 Cargo build、完整后端／前端／浏览器检查，以及 toolkit typecheck／test／check:integrations 和受影响 node docks；配对 dock 使用本次安全壳，绝不用生产后端执行关机回归。CLI 安全自测为 `NODE_APPROVAL_HANDOFF_TOOLKIT="$TOOLKIT_WT" python "$TESTER/scripts/accept-node-approval-handoff.test.py"`，只证明 fail-closed、旧证据保护、绝对路径和无模型产品限制，不证明真实模型遵从。
 
@@ -399,9 +373,7 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-node-approval-failure
 
 窗口结束后由新的显式用户输入要求原生宿主实际改写 `material.txt`、自由发送进度报告并从公开 Run 完整读回；此时仍未批准。再由另一条独立用户请求打开新确认并实际选择 Yes，核对批准成功、node 仍 running、报告不被改写。没有旧 report 发送审批预期，不把重新批准变成报告前提。
 
-`workflow-codex-completion.mjs` 的 `content-invalid` 保留原拒绝条件，另输出固定 `constraint`：`sdk-content`、`decision-consistency`、`usage`、`delivery-cap` 或 `serialization`。只附完成标志、白名单 stopReason、内容／工具形状的布尔或计数、合法的 outputTokens／deliveryCap；`usageInvalidMask` 的五个位依次对应 input、output、cacheRead、cacheWrite、totalTokens。wrapper 再按固定字段／枚举及数值范围过滤，不透传任意文本、参数、调用 ID、异常、headers 或凭据。一次请求、`maxRetries=0`、无 fallback 与原协议拒绝语义不变；成功结果不增加诊断字段。
-
-离线分支验证：显式设置 `WORKFLOW_PI_PACKAGE` 为已安装 Pi 包路径，运行 `python "$TESTER/scripts/workflow-codex-completion.test.py" CodexContentDiagnostics`。该分区以字面 SDK 返回覆盖拒绝及成功分支，使用测试拥有的假凭据和仅拦截该 adapter models import 的 fixture，禁止 fetch；它不调用实际模型、不读取用户认证，也不替代原生验收或既有真实 SDK 受控传输回归。
+设置 `WORKFLOW_PI_PACKAGE` 为已安装 Pi 包路径，再运行 `python "$TESTER/scripts/workflow-codex-completion.test.py" CodexContentDiagnostics`，仅离线检查传输诊断不泄露凭据或未过滤内容。传输拒绝不触发重试或模型回退；离线证据不替代原生验收。
 
 两入口可用 `--cases timeout` 或 `--cases unavailable`（也支持四个条件的逗号列表，默认 `all`）配合 `--hosts pi --native-only` 分别收集缺失场景。每次独立启动 wrapper 才创建独立 transport／配置／端口／新证据目录；失败决定在该次调用保持 terminal，不重发或重置。证据列出完整八项中的 `selectedCases`／`missingCases`；`selectedCasesPassed` 仅表示所选原生场景，部分场景或缺全仓检查仍 `passed=false`、退出非零，不认证整票。无效、空白或重复选择在创建证据与模型资源前拒绝。
 
@@ -419,13 +391,13 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-node-approval-failure
 
 专项持有各自独占 Herdr、HOME／APPDATA／XDG、真实 Session、定义、动态高位数值回环、进程句柄和证据。P3/P14 实际关闭并确认 node 进程退出、合法恢复同一 Chat、比较原生业务历史／HTTP；修改 Map 后仍由原 execution 冻结人工模式打开真实 UI，合法 retry 才消费新自动模式。之后另实际重启后端，核对持久批准与冻结模式，旧身份不得接管旧 Run。P10 比较真实普通 node、同 Task 独立 Chat、根 manager、无关联 Chat、其他 Run／node、旧执行与嵌套双角色的实际模型工具目录、零业务参数调用、原生身份和公开拒绝，不编辑 Run 或制造身份。宿主可能加入 i/intent 或保留 additionalProperties，不把该 schema 外形当业务契约。多余身份参数分区由明确标注的 controlled 机械 provider 驱动实际安装宿主／adapter／业务 guard：`toolkit/scripts/node-approval-identity-fault.ts` 复用既有 RPC 与 public switch_session，打开本次真实历史的逐字副本并核对原生 Session，保留真实参数／返回、两 Run 读回与实际 HTTP，验证拒绝或剥离均不能选择另一个执行。它不冒充实际模型选择、P14 恢复成功或新产品 CLI；正常模型角色、批准、恢复与嵌套仍为真实模型，其他票的 malformed/dock 覆盖不重复认领。共享确认 driver 接受显式 Chat，不临时改写主 worker，错误恢复关联在终止／恢复进程或模型调用前经公开 execution.chat 拒绝。进程归属由实际 public `session_start` 的 Session／PID 与 Windows 实际安装 argv／存活句柄交叉核对，不以“操作前后多一个 PID”推测身份；原生 manager 已合法派发的同一新 Run 节点按真实公开事实观察，不重复派发后把拒绝冒充成功。
 
-P11/P24 保持原生确认真实在途，各2秒预算内完成公开查询、等待确认节点的进度报告、独立分支的 ready 报告与该分支 complete；分支此前最新报告为 false，防止已发通知引发的正常 manager 完成被误归给旧 Yes；每项结束核对原生 UI 尚未返回。公开 fail/retry 返回新 execution 后，保持旧确认真实在途，实际 observer 通过原生公开 `before_agent_start` 关联唯一 retry 输入，再由两个安装宿主实际按注册顺序 await 的六个 `context` handler 暂缓新 worker 的首次业务模型请求，同时核对官方状态扩展发布的 working。不同生命周期事件可能并发，不能累加其预算。每个实际 handler 最多等待25秒，小于本次安装 OMP 已有30秒 handler 预算；逐段记录进入／退出并验证串行性，事件／payload／工具／模型返回均不改写，不占用在途模型 HTTP 请求、不改产品预算。保存真实 Session／PID／hook 阶段、零首次业务模型请求、旧 Yes 前完整公开／HTTP／真实 Herdr CLI 通知基线；manager 可继续处理已发通知的只读 status／collect，不额外要求其多轮阅读完全停轮；再在该独占 pane 可见选中 Yes。核对原生 true 返回、旧 execution 的实际陈旧提交、新执行仍未批准，且基线之后无新增报告／通知／完成／派发；随后 91 秒单调观察覆盖 60 秒成果批准＋30 秒 HTTP 预算及 1 秒余量。91 秒窗口结束后才显式释放该独占调度门闩，实际新 worker 继续首次真实模型调用／停轮，单独保存释放后合法初轮报告来源；不把它归给旧 Yes，不删除旧轮原始报告，不靠措辞禁止模型动作制造因果结论，不改变产品策略。P16 由原生工具实际写入两份不同字面材料并报告，公开批准保持，不承诺已派发消费者自动重读；manager 显式 complete 后不额外要求节点仍为 running，但仍核对原 execution、冻结模式与批准来源。该独立 persistence 夹具在实际派发 work 后经公开 pause 停止新派发，不暂停后端或已有 node 的批准／报告／恢复；不把 manager 的合法显式推进误判为材料修改的隐式副作用。若实际已有消费者执行，保留其事实并等原生初轮收尾，不断言它必须 pending 或自动重读。P11/P24 的运行与并发场景不作此暂停。P28 分别完成实际子 Run，在修改父 Map 定义后以双角色原生工具提交冻结 auto/manual 的独立整体批准，人工模式须真实 Yes；内层批准不替代父批准，父管理者另行 complete。公开完成后仍须等待内外 manager 原生停轮，再核对模型身份与清理进程，不能截断 finish 工具后的最终模型回复。
+保持真实确认在途，核对公开查询、自由进度报告、独立分支报告及 complete 分别在 2 秒内返回。fail／retry 后，确认新执行确实 working、尚未发出首次业务模型请求，再在旧执行中实际选 Yes。记录原生 true 与后端陈旧拒绝；新执行仍未批准，也不得把已发生的独立动作归给旧 Yes。91 秒单调窗口覆盖 60 秒批准和 30 秒 HTTP 预算；释放调度后独立记录新执行的合法请求与报告，不改变产品时限或用提示词制造因果。
 
-`NativeGateFixture` 使用同组显式 fixture 环境变量，在安装 OMP／Pi 和隔离生产后端上观察真实 working、完整 91 秒内零业务请求、显式释放后原 Session 实际请求及进程退出；本地 provider 只确认收到，不认证真实模型业务。请求归属检查全部 user 消息中的本次唯一标记，不能假设业务输入是角色指引追加后的最后一条 user 消息。gate 使用追加事件及 Session/PID／stage 因果关系，不以单个 latest 文件推断并发阶段状态。
+持久化场景须由原生工具实际改写材料和报告，验证批准保留，但不要求下游自动重读。嵌套场景验证修改父 Map 后仍按冻结模式批准；真实子 Run finish、整体批准与父 complete 各有独立回执。等内外 manager 停轮后再清理，不能截断 finish 后的响应。`NativeGateFixture` 仅证明安装宿主与隔离后端的调度隔离，不认证真实模型业务。
 
 嵌套场景按工具契约逐项发送明确用户请求，由真实模型调用安装宿主的 prepare／dispatch／complete／finish／approve／report；不考核模型自主编排整套调用，不以直接 HTTP 写入或受控模型返回代替原生调用。场景请求 manager 收到通知后等待下一项用户指令，但不把模型完全不自主动作当作 oracle。每项推进前先观察当前原生轮收尾及公开事实；已由真实原生工具完成的合法动作保留其调用、返回与 HTTP，不重复提交。独立批准与父 complete 仍须各自首次成功返回 changed=true，不能以最终状态掩盖隐式推进。人工整体批准在观察或明确请求期间均沿共享原生确认 driver，在 60 秒成果批准预算内观察并选择真实 Yes。保留子 finish 返回、父批准返回、整体报告及父 manager complete 的独立原生／HTTP因果顺序，并核对内部批准和 finish 均未替代整体批准、整体批准未隐式 complete。原生调用可为直接工具，也可为安装宿主的 `write xd://<tool>`：仅按真实 toolResult 的 `details.xdev` 执行回执、匹配的路由和原始 JSON 参数归类，保留原调用 ID／路由／回执；schema help 不算执行，普通文件写入或缺少执行回执不能冒充批准，不使用已剥离身份参数的 renderer args 代替模型原始参数。P10 基础角色、旧 execution 和双角色分别保存；P28 两种模式分别保存，失败不会抹掉已完成的独立观察。
 
-可用原入口的重复 `--combine <原入口evidence.json绝对路径>` 合成分次证据，不传模型配置、不发送模型请求。仍显式提供两个 worktree、backend、paths、`--hosts omp,pi` 及新 evidence-dir；不能过滤 cases。合成核对原始前后源码、角色／运行指引、产物、当前安装宿主、真实模型身份、原始 case 索引及进程清理，保留原失败标记和文件哈希；重复成功 case 拒绝。只有完整八格和七项承诺加本次完整检查都满足才通过；`--native-only` 合成仍非零，仅作证据诊断。宿主或执行源码变化后的旧原生结果保留但不能自动复用。未执行的 nested／persistence／material_change 方法修改仅在原始源码 companion 字节哈希匹配、其余 AST（含默认值／装饰器／注解）完全一致时允许复用相应分区；原入口未执行的 combine_native 同理。缺少原始源码或任何已执行部分不同均拒绝复用。合成时可额外提供 `--checks-from <原入口evidence.json绝对路径>`：仅复用原先全部成功的仓库检查阶段，核对相同产物、宿主、隔离路径、命令选择及未变化的产品／锁文件／测试源码；仅本票三个 Python 验收文件及报告文档可不同，本票设施测试始终重新运行。旧原生 case 的失败不被改写或复用为成功；明确归属某宿主的模型传输失败会排除该宿主，其他此前已完成且独立清理成功的宿主可保留原证据；无法归属的传输失败或清理失败仍拒绝合成。输出保留旧报告哈希、原结果、排除的宿主及逐项复用来源。该选项不能与 `--native-only` 合用，也不能绕过原生完整矩阵。
+可重复传入 `--combine <原入口 evidence.json 的绝对路径>` 合成分次证据。不传模型配置，也不发送请求。仍提供两个 worktree、backend、paths、`--hosts omp,pi` 和新的 `--evidence-dir`，不得过滤场景。合成要求可核对的参与源码、运行指引、相同产物和安装宿主、实际模型身份及成功清理；不可重复记入同一成功场景，也不可改写旧失败。只有完整八格及所需检查齐全才通过。`--checks-from <原入口 evidence.json 的绝对路径>` 仅复用来源兼容且全部成功的仓库检查，不替代设施自测，不可与 `--native-only` 同用。`--native-only` 合成仅诊断，仍非零退出。
 
 每个 coverage 保存独立预期、原生 UI／历史／工具返回、实际文件、HTTP／公开读回与进程退出，原始和清理失败分开。入口一次顺序执行本仓 build／完整后端／前端／浏览器与 toolkit typecheck／完整 test／check:integrations／node-report及nested-role具名 docks；paired dock 只用本次安全壳，生产后端仅用于隔离专项。toolkit baseline 通过显式 OMP_BASELINE_RECORD_ROOT 解析既有 oracle，不改 baseline 或锁文件；全仓测试 worker 由实际 CPU／可用内存按每原生文件2GiB预算决定，不将非canonical参数的执行冒称宿主 scope 晋级。单宿主、缺依赖／授权／coverage、任一检查或清理失败均非零。`python "$TESTER/scripts/accept-node-approval-lifecycle.test.py"` 的离线部分验证公开 CLI fail-closed／旧证据保护、显式 Chat 路由及原生 observer 协议。单独的 `CollectRegistrationFixture` 使用实际安装 Pi、隔离生产后端和本地机械 provider：先建立 running 内层节点，再保持真实 collect 在途，核对登记／目录观察返回后进度报告仍可保存并释放 collect。显式设置 `NODE_APPROVAL_LIFECYCLE_FIXTURE_TOOLKIT`、`NODE_APPROVAL_LIFECYCLE_FIXTURE_BACKEND`、`NODE_APPROVAL_LIFECYCLE_FIXTURE_PATHS`、`NODE_APPROVAL_LIFECYCLE_FIXTURE_EVIDENCE`（两个参与 worktree 的现有产物／隔离依赖及不存在的新证据目录），运行 `python "$TESTER/scripts/accept-node-approval-lifecycle.test.py" CollectRegistrationFixture`；未提供依赖时该设施用例跳过，不能据此认证票据。默认专项检查会显式提供这些配置。该机械设施回归不声明真实模型判断或任何 P 分区通过，不能替代真实专项。
 
@@ -453,17 +425,11 @@ Codex 非成功响应仅记录固定错误类别和请求形状（数量、长�
 
 ## 节点报告共享保存／通知回归
 
-`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch report -- --nocapture` 覆盖公开节点报告的保存失败、保存后通知失败、诊断写入失败、输出登记及既有完成门禁；嵌套收件对象与完成资格另由 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_completion` 覆盖。共享编排位于 `backend/src/report_delivery.rs`，身份、目标、正文、存储范围与业务反馈仍由节点报告路径持有，不新增存储或公开测试入口。
-
-`disconnected_report_caller_keeps_saved_fact_and_does_not_lock_run_during_delivery` 使用真实 TCP 和受控外部 Herdr 门闩：通知阻塞预算 10 秒，进入预算 5 秒，已保存事实读取与同 Run 暂停分别须在 2 秒内完成；断开调用者后仍读回同一报告，释放通知后观察 300 毫秒无新增报告或通知。它只证明该有界开发回归，不替代 chief 报告或 OMP/Pi 原生确认的跨仓验收。后端共享代码完成检查仍为 `node scripts/test-backend.mjs`，使用本 worktree 构建的静态页面与独立绝对 `CARGO_TARGET_DIR`。
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch report -- --nocapture`。分别核对保存、通知与诊断失败；调用者断线或通知受阻不能撤销已保存报告，也不能阻止读回或同 Run 的独立动作。嵌套收件范围另用 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch nested_completion`。该回归不认证原生确认或 chief 报告。
 
 ## Chief 入口与单次设置浏览器回归
 
-`frontend/browser-tests/chief/chiefEntry.spec.ts` 经真实打包页面、独占后端进程及生产 Herdr CLI adapter 验证 S1/S2 的 P1–P6（P3 仅本票负责的重复合法发起读回分区）。P1 使用真实位置和中心命中测试；P4 独立断言三个字面默认值并核对提交、外部 Tab。P5 只列 chief Task，改选 Task／zone／模型／思考／名称，读取外部 argv、cwd、名称及公开 Task 定义证明本次覆盖不改预设。P6 在手机视口核对缺默认 zone 时空选择与禁用、公开登记和测试目录不变，再手动选择有效项发起。P2/P3 使用两个浏览器 context，三次以空 input 合法发起／登记／注销，核对真实默认 chief 的空 prompt／无 Skill 可启动、公开结果 `inputSubmitted: false`、页面等待用户输入且外部无空消息或补造指令，以及当前 chief 定位目标和每次公开 Task 的身份、数量不变；不重复认领 07 的并发／时间阈值案例。`backend/tests/chats/chat_creation.rs` 的 `an_empty_trigger_starts_a_ready_chat_without_submitting_a_prompt` 通过公开 HTTP 分别覆盖 OMP/Pi 的普通空指示启动，已有非空正文和 Skill-only 用例继续约束真实提交。
-
-定向反馈：设置本 worktree 独立绝对 `CARGO_TARGET_DIR` 后运行 `npm --prefix frontend run test:browser:build -- chiefEntry.spec.ts --workers=1`。完成检查仍为不带过滤的 `npm --prefix frontend test` 和 `npm --prefix frontend run test:browser:build`。各用例独占 HOME／APPDATA／XDG／原生会话引用、定义、登记、动态回环服务及记录型 Herdr 副本；使用共享清理设施终止并确认所属进程结束后才删测试目录。启动预算 30 秒、页面断言预算 10 秒；不新增产品等待或重试策略，不承担无自动行为时间承诺。
-
-附件 `chief-entry-evidence` 记录源码、锁文件、当前 worktree 二进制与页面哈希、Chrome channel／实际版本、外部调用与诊断；专项另保留默认窗口／缺 zone 截图及公开定义／提交读回。Herdr 响应受控、原生文件是测试独占协议输入，没有实际模型请求，不证明真实 Herdr／OMP／Pi 消费或 GPT-6-luna 角色行为；这些仍由其具名跨仓验收拥有。不得把本专项通过外推为 S3 通过。
+`npm --prefix frontend run test:browser:build -- chiefEntry.spec.ts --workers=1` 检查真实打包页面的 chief 默认设置、窄屏缺 zone、单次覆盖不改 Task 预设，以及合法空输入启动不提交消息。与公开 Task 和会话登记交叉读回。普通 Chat 的空输入另用 `chat_creation` 的 `an_empty_trigger_starts_a_ready_chat_without_submitting_a_prompt` 定向检查。页面回归使用受控 Herdr，不证明安装宿主或真实模型行为。
 
 ## Chief 跨仓入口与生命周期专项
 
@@ -533,19 +499,11 @@ P15 的四种输入均先取得真实匹配复用建议，再分别仅否决、�
 
 ## Chief 报告持久化与资格回归
 
-`cargo test --manifest-path backend/Cargo.toml --test chief_delegation reports:: -- --nocapture` 通过 S2 HTTP 提交／列表／单份读取、真实独占后端进程和生产 Herdr CLI adapter 验证 P17／P21。报告夹具复用真实 Task Chat／Map Run 的公开委派入口；合法独立 Chat、直接 manager 与无关联身份、同 Task 另一实际 Chat、普通 node 和伪造归属／收件人参数作对比，不通过内部 helper 授权。外部 prompt 门闩进入后先从公开接口读取报告，确认保存先于通知；无 chief 与明确通知失败后均实际终止并重启后端，核对稳定 ID 和完整内容。真实只读 journal 制造保存失败，保存失败无外部通知；接受输入后返回无效回执的 CLI 验证 `uncertain`，不冒充未提交。
-
-所有定义、原生引用、报告 journal、HOME／APPDATA／XDG、动态数值回环端口及 Herdr 副本由当前用例独占。后端 stdout 持续消费、stderr 落在独占目录；Drop 终止并 wait 所属进程，确认退出后才删除临时目录，清理错误不覆盖原始错误。启动预算 30 秒，Chat 完成预算 20 秒，外部门闩进入 5 秒、阻塞 10 秒；实际生产在线 10 秒＋保留 30 秒、维护扫描 5 秒。失败后实际重启并重新登记 chief，再观察 46 秒（超过完整 45 秒维护上界），无新增通知或报告；该有界初始化回归不替代 19 的全部恢复／人工重发矩阵。受控 CLI 仅证明协议／故障，无真实模型请求，不认领 S3／GPT-6-luna 职责证据或 16／19 的独占验收。
-
-完成检查使用当前 worktree 构建的静态页面和独立绝对 `CARGO_TARGET_DIR`，执行 `node scripts/test-backend.mjs`；真实 HTTP／进程检查另运行 `npm --prefix frontend run test:browser:build`。报告持久化仍在后端 `files` authority；chief 和 node 共享 `report_delivery` 的单次保存后通知，但各自持有身份、正文和收件策略。`submitted`／`failed`／`uncertain`／`not-attempted` 是通知事实，不是可靠接收、已呈现或用户验收。
+`cargo test --manifest-path backend/Cargo.toml --test chief_delegation reports:: -- --nocapture` 检查真实委派资格、公开读回、保存先于通知及后端重启后报告不变。保存失败不通知；通知不明不能推断无外部效果。报告已保存、通知已提交、chief 已接收和用户已读是不同事实。
 
 ## Chief 持久接收与人工恢复回归
 
-`cargo test --manifest-path backend/Cargo.toml --test chief_delegation receipts:: -- --nocapture` 经批准的 S2 HTTP seam、实际独占后端进程及生产 Herdr CLI adapter 覆盖 17 的开发回归：并发 `receive` 只有一个 `process:true`、接收记录实际重启后读回；人工重发不改变报告 ID／正文、不另建报告，通知只到替换后的当前 chief；重复／并发重发已接收报告不再通知；丢失接收响应并在呈现前终止后端后不重播，当前 chief 可明确 `view` 原报告；只读接收 journal 的真实保存失败不授予处理；外部 inventory 门闩期间接收／撤销会使旧通知授权失效，而已进入外部输入提交的效果不被虚构撤回；独立执行者与直接 Map manager 实际 Resume 保留原报告／委派关联且没有新增 Run 或初始输入重放，同 Task 的另一真实 Chat 仍被拒绝。重复认领临时变异为 `process:true` 时并发用例必须在“两个处理胜者”断言失败，正确实现恢复后确认通过。
-
-每例复用本文件前述独占定义／历史／journal／HOME／APPDATA／XDG、数值回环动态端口、持续消费日志和终止后 wait 所属进程规则；不访问用户 Chat 或凭据。后端启动预算 30 秒、Chat 完成 20 秒、门闩进入／接收事实观察 5 秒、外部阻塞 10 秒、释放后操作完成 15 秒。接收后崩溃专项在实际后端重启／重新登记后观察 46 秒，超过实际 10 秒在线＋30 秒保留＋5 秒扫描完整上界，核对没有新通知／业务报告；没有增加产品等待／重试策略。真实 TCP caller 只在公开 receipt 确认提交后丢弃未读取的响应，避免把尚未被 HTTP 接受的请求取消当成回执丢失。受控 CLI 仅证明传输、持久化、竞态和故障，不证明原生模型已呈现或用户已读；没有实际模型调用，不替代 19 的双宿主恢复矩阵或 20 的原生交接验收。
-
-完成检查仍使用本 worktree 构建的静态页面、独立绝对 `CARGO_TARGET_DIR`，运行 `node scripts/test-backend.mjs`；真实 HTTP／进程检查另执行 `npm --prefix frontend run test:browser:build`。新增公开 API 的精确请求／响应和接收取舍见[使用说明](../usage.md#持久接收人工重发与查看)。
+`cargo test --manifest-path backend/Cargo.toml --test chief_delegation receipts:: -- --nocapture` 检查并发仅一次处理授权、重启保留接收、丢响应不重播、显式查看和人工重发保留原 ID／正文。先读回已提交的 receipt 才能把断线当作回执丢失。Resume 不重放输入或创建新委派。详见[持久接收、人工重发与查看](../usage.md#持久接收人工重发与查看)。两组后端回归使用受控 CLI，不替代下文真实模型和原生确认。
 
 ## Chief 双宿主报告专项
 
@@ -576,7 +534,7 @@ CLI 安全与故障代理定向回归：`CHIEF_RECOVERY_TOOLKIT="$TOOLKIT_WT" py
 
 `chief_authority_native_acceptance.py` 独占 P31：两宿主分别保留旧 chief 真实进程与持有的 Windows 句柄；旧原生进程实际收到已提交报告通知并发起 `/receive` 时，在透明 HTTP 传输边界将该真实请求暂挂（最多18秒，短于原生20秒 admission预算），移除原登记并发起新 chief 后释放。真实后端必须拒绝旧原生接收，公开 receipt 仍为空；已提交的外部输入仍保留 `notification.status=submitted`，不能解释成已撤回或可靠接收。之后显式要求原发送者报告另一份新的独立结果，真实新 chief 必须获得持久 receipt 并呈现。此场景不重发同ID，不重复认领恢复专项的去重矩阵。
 
-旧进程迟到登记、Task／Map 的旧预览提交及实际原生派发均须拒绝；当前权威始终属于新 chief。新 chief 再分别经实际原生完整预览与批准执行有效 Task／Map 派发，公开读回真实 Chat／根 Run；只读 Map 夹具显式使用 `report_policy: manual`，允许 manager 按正常流程管理节点并保留阶段审批，但不自动向 chief 报告；不把“禁止全部节点执行”与执行 Map 的有效请求混用。UI 观察复用只透传的 `chief-ui-observer.mjs`，不替模型选择工具或伪造结果；观察目录和环境变量须在独占 Herdr 服务启动前设置，确保其原生子进程实际继承。证据保留竞争单调时序、旧进程持续存活、原生历史、完整确认输入/结果、HTTP、来源/锁文件/产物/安装宿主身份及报告/接收事实。
+旧进程迟到登记、Task／Map 的旧预览提交及实际派发均须拒绝。新 chief 分别经真实原生预览与批准发起 Task／Map，公开读回 Chat／根 Run。保留有效 Map 的节点职责，不靠禁止所有节点执行来阻止向 chief 发送消息。`chief_report` 的预览和原生确认单独取证，不从节点成果批准或自由 `report` 推导。证据关联旧进程存活、竞争时序、原生身份、真实回执和公开报告／接收事实。
 
 静默观察为46秒，覆盖实际10秒在线＋30秒保留＋5秒维护上界；配置、启动/请求/确认预算与原始失败、清理失败分别记录。所有 HOME／APPDATA／XDG、定义、持久化、动态数值回环端口、Herdr 和原生会话均独占；结束时关闭所属服务并以持有进程句柄确认退出，不以删目录代替。任何宿主/能力/模型/清理缺证据均非零，单宿主或 `CHIEF_AUTHORITY_TOOLKIT="$TOOLKIT_WT" python "$TESTER/scripts/accept-chief-authority.test.py"` 的CLI安全检查不算P31通过。
 
@@ -591,11 +549,9 @@ CLI 安全与故障代理定向回归：`CHIEF_RECOVERY_TOOLKIT="$TOOLKIT_WT" py
 - 浏览器调度见 [playwright.config.ts](../../frontend/playwright.config.ts)。文件内并行场景保持每个用例独占服务、可变存储和 Herdr 副本；浏览器由 Playwright 按 worker 复用。
 - 资源受限或诊断并发问题时，给浏览器入口追加 `-- --workers=1`；Vitest 可追加 `-- --maxWorkers=4` 等覆盖参数。
 - 用 `elementFromPoint` 核对 SVG 连线等真实绘制时，先将目标滚入视口；`toBeVisible` 不保证元素位于视口内，不能直接作为命中测试的前提。
-- scheduler 的目录回归保留 `groups` 响应与分组标题；空过滤核对条目而非全部按钮（清空过滤仍可用）。Map 保存／删除检查保留标题、说明、节点集合与公开读回／落盘一致性，不固定空 `input_requirements` 是否序列化；最后节点删除须单独断言节点集合为空。前置节点按导航可访问名称断言，不固定装饰分隔符；窄屏从预览返回目录后再选择下一项。
-- Chat 预览应在重新选择同一 Task 时保留已生成身份；模型／思考级别失败夹具须使实际提交的单次选择失效，不能仅损坏已被合法覆盖的 Task 默认值。当前／历史 Chat 的切换同时保留可见状态与不同背景的浏览器断言。
-- 工作流状态浏览器夹具中的跨节点报告须同时使用所属节点的真实 execution ID 与 Chat 来源，不仅改 `nodeId`；否则违反报告归属校验，不能证明输出隔离。若专门检查依赖阻塞／可派发状态，须显式声明已保存的 `inputsReady = true`；未准备输入的真实 Run 仍应显示准备中。节点成果批准回归分别核对自动／人工批准模式与执行批准事实；报告不再触发原生确认。需要普通节点合法 complete 的场景须显式经 node/context 与 node/approve 建立本次执行批准，不能在共享 dispatch／report 夹具中静默补批准。
-- 常驻但隐藏的 Run 列表不读取 Map 分组目录；仅在列表可见时刷新，保留筛选状态。全局前端回归中的关机／恢复用例同时约束默认 Chat 页不发出这类无关读取；应用品牌保留可访问标题语义。
-- controller 路径迁移除更新 import 外，也同步更新浏览器证据中的源码哈希清单（例如 `scriptDefinitions.spec.ts`）；前端请求入口位于 `src/controllers/*Controller.ts`，后端入口位于 `backend/src/controllers/*_controller.rs`，业务断言仍经原 HTTP／SSE seam 执行。源码哈希采集失败也必须执行后端清理；证据写入或附件失败也必须恢复隔离前的环境变量，原始采集错误不得吞掉。`crossSourceConcurrency.spec.ts` 的创建等待失败须保留最后创建状态、外部调用记录与后端诊断；定向重跑通过不等于已定位首次超时原因。
+- 以可访问名称、实际命中和公开 HTTP／SSE 读回验证浏览器行为，不用装饰符或无关序列化细节当判据。保存后核对完整对象，显示失败与空结果不能混用。
+- 跨节点报告夹具须用真实来源 Chat 与其 execution ID；不可只改 `nodeId`。验证依赖资格时显式保存 `inputsReady=true`。普通节点 complete 的批准前提按[本页后端回归](#普通节点成果批准s1)建立，不由共享夹具补齐。
+- 移动 request controller 时同步维护证据的源码哈希。即使采集或写入失败也要清理进程、恢复环境变量，并保留原始错误。
 - 完整浏览器入口不加快速过滤。分层开发反馈使用 `test:browser:fast`／`test:browser:time-contract`；修改选择或标签后运行 `npm --prefix frontend run test:browser:partition`，核对完整集合是两分区的不相交并集。
 - `@time-contract` 标记真实预算、确认超时、迟到结果及无自主刷新／重试／重放的观察窗口，不按文件名或断言 timeout 分类。新增真实时间承诺时同步审查标签。
 - OMP／Pi 历史验收核对缺失启动证据的超时和无效官方身份的明确失败；页面不宣称输入已提交，迟到上报不触发读取、提交或补写历史。已提交后的历史保存失败仍只记录关联的服务端诊断，不改变创建结果。
@@ -607,26 +563,19 @@ CLI 安全与故障代理定向回归：`CHIEF_RECOVERY_TOOLKIT="$TOOLKIT_WT" py
 - **路径**：真实子进程使用测试拥有的临时目录。普通相对路径按声明配置文件的父目录解析；固定扩展入口相对元数据文件，Suite 扩展入口相对 Suite 文件解析；cwd 可以与配置目录不同。需要根引用时生成隔离根文件，不读取开发者的 `paths.local.toml`。启动期 `data_directory` 与迁移标记也要归测试所有。
 - **环境**：`HERDR_FIXTURE_DIR`、`HERDR_BOT_FIXTURE_RECORD_DIR` 会覆盖默认夹具位置；继承环境时保证它们不把不同用例导向同一可变目录。
 - **进程**：取得真实子进程端口后持续消费 stdout／stderr，直到进程退出。初始化失败与正常结束都执行所属资源清理；同时保留原始错误和清理错误。
-- **并发历史持久化诊断**：跨来源并发 register 验收的 `historySaved` 断言保留完整回执及所属后端 diagnostics，区分事件接受与历史保存失败；后续通过不能抹去先前失败，也不能据此宣称已修复无法定位的间歇故障。`crossSourceConcurrency.spec.ts` 的独立客户端并发登记与进程重启同时回归原子替换期间的文件 scope 身份：协调资格取得前的 canonicalize 观察可能已过期，必须在持有资格后重核，不能把旧临时文件身份当作最终文件的授权边界。
-- **Git 超时夹具**：`zone_sync`／`zone_commit` 的派生进程终止场景使用 5 秒命令预算和 30 秒阻塞的 pre-push／pre-commit hook（父 shell 等待唯一后台子任务；Windows 在 Git 执行前将其纳入独占 Job Object，超时终止后以该 Job 的活动进程数归零确认进程树结束，不依赖 PID／taskkill 的退出竞态；commit 夹具先观察 hook 子进程已启动的 marker 再验证写操作互斥，超时后观察 31 秒确认无迟到 marker），给 Windows 本地 fetch／pull 留出正常执行时间；仍须核对 push 超时、已完成 pull 不回滚、派生进程终止及后续同步恢复，不能将更早的 fetch 超时视为该场景通过。
-- **Windows 进程身份**：结束后的 PID 可能被系统复用，不能以迟到的 `tasklist` 命中证明原进程仍存活。`next_operation_after_finish` 的连续启动回归先在测试独占夹具门闩中取得原进程句柄，再释放门闩，收到 ended 响应后直接核对该句柄已 signaled；不移除进程结束断言。
-- **Windows 原生可见性**：`workflowVisibility.ts` 为测试专用 Chrome 设置 `--disable-backgrounding-occluded-windows`，避免其他桌面窗口遮挡导致页面持续报告 `hidden`；`bringToFront()` 或获得焦点不保证页面可见。保留 `noDefaults: true`，不启用始终可见模拟；真实最小化仍须触发 `hidden`，恢复后须触发 `visible`，由 `workflowRefresh.spec.ts` 的 P55.01 用例核对隐藏期间停止轮询与恢复后立即刷新，不放宽断言或超时。
-- **Windows 清理**：原生可见性 Chrome 夹具在浏览器操作前持有原进程的 Windows handle，并在清理时以该 handle 的退出确认区分 Node 延迟事件与仍存活的进程；不以迟到 PID 查询或 `taskkill` 部分子进程错误推断原进程存活。`taskkill` 完成后再开始服务退出事件的有界确认窗口，然后解释 `taskkill` 失败状态，避免终止命令在全局负载下耗时较长时，把已退出但尚未被观察到的进程误报为存活；确认窗口结束仍存活时报告错误。临时目录删除不代替进程结束。
-- **目录初始化**：Map 与 Bot 目录可能由并发请求创建共同的缺失父目录；浏览器目录验收同时请求两个 catalog，确保创建竞争不产生 500，同时保留文件阻塞与链接拒绝检查。
-- **Map 文件接口**：创建 Bot／修订指南的发布回归固定核对 `input_files` 的数量、顺序、ID 与 required，不以整个对象相等禁止合法的材料 `description`；实际保存仍传递完整声明，保留文件预检行为断言。
-- **元数据**：修改 `meta-data/task-options.toml` 的显示标签时，同步检查摘要的独立预期值及动态元数据测试的替换样例，具体标签从元数据读取，不在本指引复制。交付 chief 预设的模型变更须同步更新 `backend/tests/tasks/tasks.rs` 的独立字面预期；预设重启回归验证当前交付定义，不等同于要求固定模型的原生专项验收。
-- **Bot 保存与导航**：保存后的 Map／目录刷新仍属于本次维护操作；刷新结束后才发布退出编辑的成功预览，避免用户看到成功后立即切换页签却被尚在途的操作静默拒绝。`schedulerBotEditing.spec.ts` 的共享能力回归保留保存后立即切换和原节点选中态检查。
+- **并发持久化**：保留完整回执及所属后端诊断，区分事件接受与历史保存。文件原子替换前的身份观察可能已过期，不能用它证明最终文件授权。定向重跑不抹去首次失败。
+- **Git 超时**：`zone_sync`／`zone_commit` 要验证实际超时步骤。不能用更早的 fetch 失败冒充 push 超时；核对已发生的 pull 不回滚、所属派生进程退出和后续可同步。
+- **Windows 身份与可见性**：提前持有实际进程句柄，避免 PID 复用。使用真实窗口最小化／恢复验证页面 `hidden`／`visible`；聚焦不保证可见，不用始终可见模拟代替。
+- **文件与元数据**：保留 `input_files` 的顺序、ID 与必填约束，不排斥合法 `description`。修改交付模型或标签时独立审阅预期，不从被测定义重算答案；这不改变固定模型专项的范围。
 - **关机与会话**：关机自动验收使用记录型安全壳或替身；真实关机单独人工验收。会话探针使用隔离数据，不操作用户正在运行的对话。
 
 ## Suite 配置与 Task API 格式
 
-Suite 定义管理与 Task 引用完整性的隔离验收入口见[使用说明](../usage.md#task-单-suite-选择与引用保护)。配置通过不代表原生宿主已发现或消费资源，实际加载仍归下列宿主专项验收。历史离线迁移工具及专属测试已归档，不再随仓库提供；正常启动不会自动迁移旧格式。测试和发布工单均不授权修改用户部署数据。
-
-Task API 的旧 `extensions` 字段（包括空数组）必须拒绝；固定扩展在 Suite 页全局只读展示名称、解析后的入口及执行角色，Task 编辑页不再显示该列表。未选择 Suite 仍加载固定扩展；两宿主 auto connect-bot 属于固定扩展，不能再作为 Suite 可选引用。资源装配并发／故障夹具及真实 Pi 模式／MCP runner 的 Task 请求同样不发送该旧字段；Suite 使用单值 `harness`，扩展只使用 `extensions: [路径]`（由 harness 决定入口语义），相对 Suite 文件解析；不再提供可选目录或 ID 解析，旧 `extensionOptions` 字段应拒绝。每次启动／新进程恢复使用当前 Suite 路径；新增入口无需修改 TOML。固定入口仍按元数据及角色规则加载。Pi 必须指向具体文件；OMP 仍可传原生支持的文件或目录；相同目标仅传一次。浏览器的精确 Pi argv 预期同时保留 `builtin:mcp`、`builtin:tool-search`、无 Suite 时的 `builtin:codemode` 以及元数据声明的固定 `pi-suite`；过滤恢复仍逐项断言文件扩展，不把内建扩展误当作失效文件。Suite `skills`／`extensions` 只接受单宿主数组，不接受旧宿主键对象；Pi 仅接受顶层 `codemode`／`prompts`，OMP 仅接受 `lsp`，跨宿主字段即使为空也拒绝；现有浏览器 Suite 管理、Task 引用、三步编辑和窄视口检查使用相同新形状，原先只测试旧 Task 可选扩展勾选的场景已退役，不保留旧业务选择兼容分支。
+按 [Task 选择与引用保护](../usage.md#task-单-suite-选择与引用保护) 和 [单宿主 Suite 决策](../adr/0020-single-harness-suite-types.md) 准备夹具。每份 Suite 只属于一个 `harness`；跨宿主对照用两份 Suite，且不可把 Task 的旧 `extensions` 当作有效配置。定义接受不证明原生资源已加载。浏览器的 Pi 启动／恢复参数检查单独保留 `builtin:mcp`、`builtin:tool-search`、适用的 `builtin:codemode` 和固定 `pi-suite` 的预期，不把内建扩展误当作缺失的文件入口。测试不授权迁移用户部署数据。
 
 ## 首批 Suite 原生发现与实现命令
 
-`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-initial-suites` 拥有 P11 的探索 OMP 集合目录／探索 Pi 逐技能／实现 OMP 集合目录、P42 实际 `hyper-auto-coding` 注册及无任务调用，以及 P44 两仓完整交付清单和原生公开入口一致性。独立字面名称与来源清单不从装配器重算；真实 `pi.getCommands()` 包含手动调用的翻译技能，不能用模型提示中的较窄集合替代。入口、隔离依赖根、明确 Git 基线、构建命令、进程清理和证据含义见[首批 Suite 原生验收](../initial-suite-native-acceptance.md)。`python "$TESTER/scripts/accept-initial-suites.test.py"` 检查 S3 外来后端拒绝，以及原生验收独立来源 oracle 对 Wayfinder 自有目录和场景副本的直接子技能发现、动态新增与场景隔离；不固定配置纯文字快照，也不等于 S4 通过。两个目标 OMP Suite 只声明 Wayfinder 自有技能目录及各自 `dependent-skills/<suite-id>`；探索 Pi 的九个外部技能逐项引用探索副本，保留原 18 个名称。原生验收不再需要原 Matt Pocock／翻译仓库根。缺宿主能力或实际发现均保留非零和未验证；不安装、不提权、不读取用户凭据，不重跑其他票的资源/MCP/生命周期矩阵来冒充本票成功。
+`accept-initial-suites` 检查三套首批 Suite 的原生技能来源、实际注册并运行的 `hyper-auto-coding`，以及两仓交付来源。完整命令、独立名称／来源预期及 CLI 回归见 [首批 Suite 原生验收](../initial-suite-native-acceptance.md)。验证失败保留未验证，其他资源或生命周期专项不能补足。
 
 ## OMP Suite 四语言 LSP 真实验收
 
@@ -721,7 +670,7 @@ P46 的扩展负例入口为 `cargo test --manifest-path backend/Cargo.toml --te
 
 ## Pi Suite 启动开发烟测
 
-`07` 的开发烟测为公开 Task／Chat HTTP → 真实 Herdr → PATH 上安装版 Pi；完整 Pi 契约矩阵仍由资源／MCP和模式／模板验收拥有。先构建当前 worktree 后端，预先安装依赖，toolkit 必须提供公开工厂期 `--pi-suite-config`。不安装、不提权、不修改 PATH，不用 SDK 或替代 launcher：
+开发烟测经公开 Task／Chat HTTP，由真实 Herdr 启动 PATH 上的安装版 Pi。预先准备依赖；Toolkit 必须提供公开的 `--pi-suite-config`。完整覆盖另见 [Pi 资源与 MCP](../pi-suite-resource-acceptance.md) 和 [Pi 模式与模板](../pi-suite-mode-acceptance.md)：
 
 ```powershell
 cargo build --manifest-path "$BOT/backend/Cargo.toml" --bin herdr-bot
@@ -732,13 +681,13 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-real-herdr-suite-pi `
   --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe')
 ```
 
-独占临时目录隔离 HOME／APPDATA／XDG、Pi 状态、后端配置、命名 Herdr server 和动态回环端口；不读取用户凭据或会话。共享声明相对路径含空格，扩展包 manifest 指定非 index 入口。受控回环模型请求 Pi 真实 read 消费技能正文，并调用真实包工具读取相对 JSON 资产，独立字面结果分别为 `PI-SKILL-BODY-731`、`PI-PACKAGE-ASSET-482:64`（19×3+7）。这只证明启动接线与消费机制，不证明真实模型自主遵循。
+Pi Suite 直接引用含空格的技能源目录与具体的非 `index` 扩展源文件，不生成链接，也不通过包清单选择入口。受控模型让 Pi 实际读取技能正文，并调用扩展工具读取相对 JSON 资产。独立预期为 `PI-SKILL-BODY-731` 和 `PI-PACKAGE-ASSET-482:64`（19×3+7）。这只证明原生消费机制，不证明模型自主遵从。
 
 持续消费进程输出，正常及失败均停止所属 Herdr/server/子进程，原始错误与清理错误分别写独占 Temp 的 `evidence.json`；记录源码 revision／diff／哈希、二进制和安装入口哈希、实际 HTTP／模型请求及 terminal。依赖／flag 未交付、实际资源未消费或清理失败均非零，不 skip、不退化为直读源码加载，不把产物／参数检查算作 S4 通过。
 
 ## Pi Suite 资源与原生 MCP 跨仓验收
 
-完整 S2/S3/S4 矩阵入口为 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-resources`，显式接收两个 worktree、当前后端、隔离 paths 文件、场景和独占证据目录。覆盖集中根／相对路径／空格／不同 cwd、真实技能与扩展依赖、builtin 与 Suite MCP 同次调用、文件优先／等价／禁用／空清单，以及配置／装配拒绝和原生不可达状态。参见 [Pi 资源验收](../pi-suite-resource-acceptance.md) 的依赖、独立预期和完整复跑命令。缺真实依赖、宿主能力或清理失败非零；受控模型只验证消费机制，不证明模型自主质量，全局套件不能替代逐场景证据。
+实际资源路径、原生读取、MCP 优先级、禁用及失败矩阵见 [Pi 资源验收](../pi-suite-resource-acceptance.md)。另按目的选择 [Pi 模式与模板](../pi-suite-mode-acceptance.md)、[Suite 会话生命周期](../suite-lifecycle-acceptance.md) 或 [pstack 原生机制与离线包检查](../pstack-suite-native-acceptance.md)。各页保留独立预期和完整命令。这些受控模型专项不认证模型自主判断。
 
 ## 真实 Herdr 自动关闭验收（P22）
 
@@ -831,9 +780,9 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-file-handoff `
 
 Windows 验收可显式追加 `--shell-path 'D:/Program Files/Git/bin/bash.exe'`，将实际安装的 Git Bash 写入本次隔离 Pi settings，不修改用户配置。不要让原生 Bash 工具落到 WSL：其 Linux 回环与 Windows 后端不同，`curl 127.0.0.1` 会报告连接失败，不能把该环境阻塞当业务能力缺口或强行推进。toolkit 全量跨仓检查还须将 `HERDR_BOT_BINARY` 设为本次 `CARGO_TARGET_DIR` 下 `debug/examples/safe_shutdown_shell.exe` 的绝对路径，将 `HERDR_BOT_METADATA` 设为 `$BOT` 下 `meta-data/task-options.toml` 的绝对路径；`HERDR_BOT_REPO` 不替代这两个 interop 参数，禁止使用生产可执行文件冒充安全壳。
 
-验收重定位 `extensions/workflow-chat/config.yaml` 时须保留全部必填配置，包括独立的 `approveConfirmationTimeoutMs: 60000`、`reportConfirmationTimeoutMs: 20000` 和 `requestTimeoutMs: 30000`；遗漏会使角色扩展无法加载。模型开始请求不等于角色已就绪，须核对实际模型请求中的 `run`／`collect`／`report` 与当前角色匹配，再归因于模型职责理解。
+重定位 `extensions/workflow-chat/config.yaml` 时保留全部必填配置。`approveConfirmationTimeoutMs` 用于人工节点成果批准，`reportConfirmationTimeoutMs` 用于 chief 报告和委派的独立确认，普通请求用 `requestTimeoutMs`；节点 `report` 不等待发送确认。模型已开始请求不等于角色已加载，须核对所属角色的 `run`／`collect` 或 `approve`／`report`。
 
-入口复用 `scripts/acceptance/host/` 的独占 HOME/APPDATA/XDG/Pi 存储、命名 Herdr server、动态回环后端、关闭 mDNS 与所属进程清理设施，但覆盖模型 provisioning，绝不启动原入口的受控业务模型。透明回环 observer 仅转发实际模型/HTTP 字节，不预设模型工具选择。场景由原生 manager dispatch → 首次执行生成旧文件/true → 经明确业务授权 fail/retry → 新执行生成部分文件/false → 独立 complete 门禁拒绝 → collect 真等待 → 外部批准文件释放 → 新 true 唤醒 → manager 显式 complete/dispatch → 所需输出已登记的 consumer 启动并完成；所需输出缺失的拒绝派发边界由后端隔离回归覆盖，不再把 unresolved 地址注入 Chat。业务批准由隔离 fixture 明确给出，不把用户手工确认当成自动验收替代。
+透明观察只转发真实模型和 HTTP 数据。核对首轮旧文件及报告、明确授权的 fail／retry、新执行的部分文件与 `false` 报告、complete 拒绝及 collect 实际等待。外部业务文件释放只提供业务授权，不能替代原生节点 `approve`。当前验收还须证明新执行按冻结模式批准、报告最新 `true`、登记所需输出，随后由 manager 显式 complete／dispatch，消费者读取实际材料。旧执行的成功输出不能补格。
 
 证据保留在输出的独占 Temp 根：源码根/revision/diff、锁文件与后端哈希、依赖版本、模型服务身份（仅密钥指纹）、实际模型请求/响应、工具参数/结果、HTTP 起止、原生 Session 历史、实际文件、只读运行记录副本及每项覆盖关联。独立背景、业务 input、当前地址和正文/聊天敏感标记核对原生初始化；manager 工具轨迹限定为 run/collect，不默认读输出正文。报告只允许简短编排结论，不复制详细行。观察窗口默认每阶段 300 秒（`--timeout 1..900`），外部业务等待 240 秒，保留报告后 collect 至少观察 1.25 秒仍未返回，再释放新报告；runner 不重试业务/模型选择，不延时掩盖失败。
 
@@ -912,9 +861,11 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-role
   --evidence-dir 'D:/isolated-acceptance/new-exclusive-run'
 ```
 
+当前验证项目的 `accept-workflow-nesting-roles` 仍写入已拒绝的 `report_policy`，并期待 `report` 的发送确认。保留该入口供定位；直到驱动按当前批准和自由报告契约取证前，不将它认证为双角色通过，也不恢复旧字段或代发批准。
+
 `--hosts omp,pi` 对两个宿主分别运行两套独立 manager／zone／原始业务字面样例；每套重复调用同一 Map，并经真实 manager 的 fail／retry 保留旧 execution 干扰。`--hosts declared` 是额外的混合宿主业务夹具：第一套 parent OMP／child Pi／worker OMP，第二套相反，严格保留入口中 `DECLARED_ROLES` 的实际 Task 声明；不是把用户业务 Task 统一改成一个宿主，也不是对部署业务的验收。该模式不替代双宿主完整矩阵。
 
-每次 manual 外报由原生 UI 展示完整载荷，driver 核对选中 Yes 后提交 Enter，并记录确认前无该次报告 HTTP、确认后请求与预览载荷一致；聊天文字和业务批准不作发送批准。旧执行的确认框明确取消后，须没有该会话的 report HTTP。入口在内部未完成、内部全完成但未 finish、finish 后、进展 false、最终 true、父 manager 显式验收后分别检查公开事实。检查实际文件字节、原生历史／三工具／双指引，以及真实 Herdr 的目标 Tab 精确关闭、内部保留 Tab 不级联关闭；不凭最终 completed 或 observer 身份授予授权。
+子 manager 用 `run`／`collect` 管理子 Run，用 `approve`／`report` 面向父 execution。真实子 Run finish 后才能批准整体成果；人工模式观察原生 `approve` 的 Yes、实际回执及父 execution 的保存来源。取消旧批准确认不能产生批准，不禁止自由报告。分别检查进度与成果 `report` 的工具结果和公开保存，不期待发送确认。父 manager 只在独立完成门禁满足后显式 complete。核对父子身份、实际文件字节、原生双角色指引及目标 Tab 精确关闭；不以最终 completed 代替这些事实。`chief_report` 的独立确认不适用这里的自由节点报告规则。
 
 `--evidence-dir` 必须不存在。原生运行状态使用原子创建的独占短 Temp 根，避免 Windows 已安装宿主的命名管道／存储路径长度限制；退出后完整复制到证据目录的逐宿主子目录，原始短根保留且记录为 `nativeRoot`，不把临时目录删除当作进程退出。成功或失败均保留 `evidence.json`、逐宿主独占子目录、两仓源码 revision／修改身份、锁文件／二进制／已安装宿主身份、模型／HTTP 原始请求结果、用户输入、原生历史、文件字节和分开的清理错误。模型配置在退出时删除。缺模型、宿主、能力、清理失败或行为不符均非零且未验证，不 skip，不重试业务或模型决策。`python "$TESTER/scripts/accept-workflow-nesting-roles.test.py"` 仅检查缺授权模型时的 CLI fail-closed 行为，不能代替真实专项通过。
 
@@ -922,9 +873,9 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-role
 
 真实模型修订专项为 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-revise --backend <本 worktree 后端> --toolkit <toolkit worktree> --hosts declared --paths-file <独占依赖配置> --model-config <专用授权模型声明> --evidence-dir <不存在的独占目录>`；依赖声明、混合宿主／双宿主行为、四次 Task／Map 有／无材料矩阵、专属 Task 配对、修订负例及证据边界见[独立修订验收运行说明](../revise-bot-guides.md#真实模型跨仓修订验收)。设置 `WORKFLOW_HANDOFF_TOOLKIT` 后运行 `python "$TESTER/scripts/accept-workflow-nesting-revise.test.py"` 仅验证缺后端／模型时非零、覆盖保持未验证且不启动宿主，不替代真实业务通过。
 
-独立修订入口为 `revise-bot-guides`，公开定义／五节点材料接线检查为 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch revise_bot_guides`。运行安全进程烟测前，将 `CARGO_TARGET_DIR` 设为本次独占绝对路径。然后在 PowerShell 运行 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" check-revise-bot-guides --target-dir "$env:CARGO_TARGET_DIR"`。调用接口、稳定专属 Task `task-revise-bot-baseline-v1`（22 配对 owner）、原位切换及证据边界见[独立修订运行说明](../revise-bot-guides.md)；不强制修改目标 Task.prompt，旧独立入口及无关 Map 不变。
+修订定义和材料接线用 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch revise_bot_guides`。在 PowerShell 中设置独占绝对 `CARGO_TARGET_DIR`，再运行 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" check-revise-bot-guides --target-dir "$env:CARGO_TARGET_DIR"` 做安全进程烟测。独立入口、`task-revise-bot-baseline-v1` 和证据边界见[独立修订运行说明](../revise-bot-guides.md)。
 
-`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch shared_business` 经公开定义保存／读取、预检和实际受控宿主派发，使用真实临时 baseline／text／handoff，核对材料直接绑定、不注入正文或三份能力指南、Task／Map 两类目标三字段一次保存、完整读回及真实 stale revision 拒绝。此入口不以提示词快照证明模型遵循职责；P40–P45 的真实创建／修订与六个既有 Task 的独立 Chat／workflow 配对验收仍分别归 21／22，外层修改归 24。材料协议、稳定 Task ID 与所有权见[共同业务材料契约](../business-materials.md)。完成前仍执行一次 `node scripts/test-backend.mjs`，使用当前 worktree 静态页面及独立 CARGO_TARGET_DIR，不运行用户业务或生产迁移。
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch shared_business` 检查公开定义与真实文件：直接绑定命名材料，不注入正文，比较实际字节、原路径及字符、完整目标和 revision；过期 revision 须拒绝。提示词存在不能证明模型遵从。材料协议见[共同业务材料契约](../business-materials.md)，真实创建和修订分别使用专项入口。
 
 创建链真实业务矩阵入口为 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-create`，必须显式提供 `--backend`、`--toolkit`、`--hosts declared`（或完整 `omp,pi`）、`--paths-file`、`--model-config` 和独占 `--evidence-dir`。安装依赖、独立业务技能根、完整复跑命令及证据边界见[真实创建与配对验收](../create-bot-wrapper.md#真实创建与配对验收入口)。缺构建与重复证据目录的 CLI 回归为 `WORKFLOW_HANDOFF_TOOLKIT=$TOOLKIT_WT python "$TESTER/scripts/accept-workflow-nesting-create.test.py"`；该回归不认领真实模型、混合宿主或保存安全通过。
 
@@ -932,11 +883,9 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-role
 
 该烟测观察原生真实 read／write、两份材料完整落盘读回、原文与未授权文件保持，以及 handoff 不含重复正文；保留完整模型请求、native JSONL、错误及真实材料。进程退出零不是充分条件，原生 `stopReason: error`、缺文件或未完整读回均失败。工具必须真实执行，不可由模型或传输伪造结果；传输用完关闭并等待，移除隔离凭据配置。它只证明一个独立原生调用能处理其实际材料，不是六 Task 配对覆盖、公开 Chat 发起或两案例完整 P40–P45 证据。
 
-以下是迁移前历史烟测边界，不再是当前可运行入口：原 Map 目标最小创建烟测曾使用已删除 `task-18e33fdc55177d1c-1` 的 Pi prompt。当前请用上文发布创建图迁移回归和真实原生创建入口，不恢复旧 Task 或加别名。历史流程中，当前 worktree 的 `debug/examples/safe_shutdown_shell.exe --config <隔离backend.toml>` 提供同一生产 HTTP interface；只配置数值回环动态端口、独占定义／运行／zone 文件并关闭 mDNS。先经公开接口准备 normal Task 和已有工作 Bot、放置测试拥有的真实 Map，再授权只新建指定 Map 型 Bot 和 baseline／handoff 文件。原生模型自行读取公开完整定义与真实 edit.revision、新建空白 Bot、写材料并完整读回；独立 HTTP 读回比较 Map 绑定、三空字段、真实 revision、完整共同基线、原有 Task／Map／Bot 不变及无 Run。保留原始 HTTP、native JSONL 和文件，失败及清理错误分开记录；受控的未加载 catalogue 资源只满足后端夹具结构，不作为目标工具或角色原生加载证据。完成后终止并等待所属安全后端与原生进程、关闭模型传输、移除隔离凭据。该调用是轻量启用证据，不认领 21／22 的完整真实案例或六 Task 配对覆盖。
-
 ## 创建 Task＋Bot 外层真实兼容验收
 
-`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-outer --backend <本 worktree herdr-bot.exe> --toolkit <toolkit worktree> --hosts declared --paths-file <专用已安装依赖声明> --model-config <明确授权模型声明> --evidence-dir <不存在的独占目录>` 拥有 Task 创建者／既有 Task.prompt 优化者的独立 Chat 与实际外层 workflow 配对，以及旧两个独立创建入口兼容和未迁移 Map 范围保持。运行方式、完整 Suite/MCP 隔离、独立业务全文确认与报告发送确认、父子真实交接及证据边界见[包装能力运行说明](../create-bot-wrapper.md#真实外层与旧独立入口验收)。必须保留声明宿主，不能将原混合宿主改成单一 Pi 迁就 runner；`--hosts omp,pi` 要求两套完整场景各自通过。它不认领六共享 Task 独立配对或规划选择，也不能由组件、受控 provider、最终 completed 或全局回归代替。CLI fail-closed 回归设置 `OUTER_ACCEPTANCE_TOOLKIT` 后执行 `python "$TESTER/scripts/accept-workflow-nesting-outer.test.py"`；它仅验证拒绝边界，不是专项真实业务通过。
+`python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-outer --backend <本 worktree herdr-bot.exe> --toolkit <toolkit worktree> --hosts declared --paths-file <专用已安装依赖声明> --model-config <明确授权模型声明> --evidence-dir <不存在的独占目录>` 拥有 Task 创建者／既有 Task.prompt 优化者的独立 Chat 与实际外层 workflow 配对，以及旧两个独立创建入口兼容和未迁移 Map 范围保持。运行方式、完整 Suite/MCP 隔离、独立业务全文确认、节点成果批准与自由报告、父子真实交接及证据边界见[包装能力运行说明](../create-bot-wrapper.md#真实外层与旧独立入口验收)。必须保留声明宿主，不能将原混合宿主改成单一 Pi 迁就 runner；`--hosts omp,pi` 要求两套完整场景各自通过。它不认领六共享 Task 独立配对或规划选择，也不能由组件、受控 provider、最终 completed 或全局回归代替。CLI fail-closed 回归设置 `OUTER_ACCEPTANCE_TOOLKIT` 后执行 `python "$TESTER/scripts/accept-workflow-nesting-outer.test.py"`；它仅验证拒绝边界，不是专项真实业务通过。
 
 ## softlink（符号链接）手动验收
 

@@ -1,23 +1,15 @@
 # 无法启动（unstartable）夹具
 
-这一组夹具覆盖“操作目标无法启动”的情形。它们都不会被执行，因此**都不会写入调用记录**——
-记录里没有对应行，本身就是“目标没有跑起来”的证据。
+按[夹具隔离约束](../../README.md)复制夹具。在隔离的服务配置中逐项测试；除本次改变的字段外，使用有效的夹具脚本和工作目录。
 
-在 `herdr-bot.toml` 中按下列任一方式绑定：
-
-| 变体 | 配置 | 观测结果 |
+| 变体 | 配置 | 识别阶段 |
 |---|---|---|
-| 目标不存在 | `script = '<仓库>\fixtures\operations\unstartable\missing-script.bat'`（该文件故意不存在） | 后端在调用前就判定目标不存在，不创建任何进程：`started=false`、`exitCode=null`、`outcome=failed`、`failure=not-started`，夹具没有运行，记录文件无新增行 |
-| 存在但不可执行 | `script = '<仓库>\fixtures\operations\unstartable\invalid-target.exe'`（内容是文本，不是有效 PE 映像） | Windows 拒绝把它创建成进程（后端不再经 `cmd.exe` 折成退出码），同样报告 `started=false`、`exitCode=null`、`outcome=failed`、`failure=not-started`，夹具没有运行，记录文件无新增行 |
-| 工作目录不存在 | 保留任意 `script`，把 `working_directory` 指向 `...\fixtures\operations\unstartable\missing-working-directory`（该目录故意不存在） | 进程无法创建：`started=false`、`exitCode=null`、`outcome=failed`、`failure=not-started`，夹具没有运行，记录文件无新增行 |
+| 目标不存在 | 将 `script` 指向副本中故意不存在的 `operations/unstartable/missing-script.bat`。 | 后端在启动前拒绝。 |
+| 存在但不可执行 | 将 `script` 指向副本中的 `operations/unstartable/invalid-target.exe`，它是文本而非有效的 Windows 可执行映像。 | Windows 在创建进程时拒绝，目标不经 `cmd.exe`。 |
+| 工作目录不存在 | 将 `working_directory` 指向副本中故意不存在的 `operations/unstartable/missing-working-directory`。 | 后端在启动前拒绝。 |
 
-关于“不能被当作已启动成功”：以上三种情形都不会产生成功形状的结果（不会出现 `outcome=completed`，
-也不会出现 `exitCode=0`）。它们都属于结果分类里的“执行失败→无法启动”，与“脚本运行后失败退出”
-（`outcome=failed`、`failure=failed-exit`）可区分；字段定义见根目录 `README.md`
-的“操作响应与执行结果分类”。
+三种情况都应返回 `failed` 下的 `not-started`，不能归为已启动后失败或成功。公开响应字段见[固定操作](../../../docs/usage.md#server-固定操作)。缺失批处理须先检查，因为 `cmd.exe` 找不到批处理时的退出码 `1` 与脚本自己的 `exit /b 1` 无法区分。
 
-为什么三种情形都要在调用前判定：`cmd.exe` 找不到批处理时自己以退出码 1 结束，这与批处理自身
-`exit /b 1` 无法区分，因此退出码不足以判断“脚本到底有没有启动起来”。
+用独占空记录目录核对是否新增调用。先确认同一套记录设施能记录正常夹具调用；记录为空只能佐证未执行，须与响应分类和预检或 Windows 进程创建结果一起判断。退出码 `97` 表示记录设施失败，不能作为未执行的证据。
 
-自动化检查见 `backend/tests/execution_result.rs` 中的三个 `*_is_reported_as_failed_not_started`
-测试；`backend/tests/fixture_behavior.rs` 另有三个 `unstartable_*` 测试核对“从未被调用过”。
+集成测试见 [execution_result](../../../backend/tests/server/execution_result.rs) 与 [fixture_behavior](../../../backend/tests/infrastructure/fixture_behavior.rs)。

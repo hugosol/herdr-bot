@@ -1,13 +1,6 @@
 # Suite Chat lifecycle acceptance
 
-黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
-
-```powershell
-$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
-$BOT = 'E:/Developer/myhub/herdr-bot'
-```
-
-验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+Set `$TESTER` and `$BOT` and follow the isolation and evidence rules in the [testing guide](agents/testing.md).
 
 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-lifecycle` owns P12/P13/P28/P29/P30/P31/P32 and
 P35's **real concurrent startup consumption**. P35 assembly/publication tests
@@ -32,6 +25,11 @@ process cleanup succeed. A missing dependency or failed observation is nonzero,
 not a skip. Business actions are not retried. A narrowed successful slice is
 reported in `selectedScenarioSucceeded`; the overall `passed` flag and exit code
 remain unsuccessful while required host/scenario coverage is incomplete.
+
+The current tester filters `approve` out of its role-tool comparison. The
+`roles-native` and `roles-suite` results do not establish that nodes expose
+`approve` or that other roles lack it, even if their report and recovery checks
+pass. Keep that part of P13 unverified.
 
 The paths file contains only read-only native dependencies. The two integration
 roots deliberately name **individual installed Herdr extension files**, not agent
@@ -72,10 +70,10 @@ are retained. No other source copy is silently substituted. Custom Suite
 `extensions` are concrete source entries passed directly to native hosts; no
 extension-package links or loader manifests are generated. Module dependencies
 and assets are read by the native host from their original source directory.
-Skills also reference source paths directly; no generated skill links or Windows
-symlink privilege are required. Each Suite declares source paths directly in its host-keyed
-`extensions` lists. New native processes consume the current Suite declarations;
-there is no optional TOML catalog or extension ID lookup.
+Each Suite has one `harness` and a flat `extensions` array. Use separate Suites
+for OMP and Pi, even when they select the same source files. Skills reference
+source paths directly and need no generated links or symlink privileges. New
+native processes consume the current Suite declarations.
 
 ## Build, repository checks and invocation
 
@@ -122,8 +120,8 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-lifecycle `
   --evidence-dir "$EVIDENCE_DIR"
 ```
 
-Skills use host-specific source declarations: OMP selects collection directories
-exclusively, while Pi selects individual skill directories. `--timeout` bounds an
+For this matrix, OMP selects skill collections and Pi selects individual skill
+directories. These are fixture selections, not limits on OMP's supported sources. `--timeout` bounds an
 observation (default 90 seconds, maximum 300), not a retry budget. Evidence output
 must not already exist. Each scenario has its own deployment/native storage,
 named Herdr server, dynamic loopback model/backend ports and processes. stdout
@@ -133,71 +131,12 @@ process handles have exited. Original errors and cleanup errors are separate;
 cleanup failure invalidates coverage. Test credentials are not command arguments,
 headers in evidence, or logs; credential stores are removed after confirmed exit.
 
-## Executed parameter provenance
-
-The historical, pre-source-path ticket's first execution used the following explicit values (not discovery
-of a user deployment). These commands record what ran, not what passed. The
-product-root script path below no longer works in the current checkout. For a
-rerun, use [Build, repository checks and invocation](#build-repository-checks-and-invocation)
-with current paths and a new evidence directory.
-
-```powershell
-$HERDR_BOT_WT = 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-aGYCYZ'
-$TOOLKIT_WT = 'C:/Users/hugos/AppData/Local/Temp/hyper-ticket-dsExsC'
-$ORIGINAL_TOOLKIT_ROOT = 'E:/Developer/myhub/my-agent-toolkit'
-$env:CARGO_TARGET_DIR = "$HERDR_BOT_WT/backend/target"
-$ISOLATED_PATHS = "$HERDR_BOT_WT/.scratch/suite-cli-research/evidence/11-lifecycle/isolated-paths.toml"
-$EVIDENCE_DIR = "$HERDR_BOT_WT/.scratch/suite-cli-research/evidence/11-lifecycle/native-01"
-Set-Location $HERDR_BOT_WT
-$env:HERDR_BOT_MANUAL_SYMLINKS = '1'
-python scripts/accept-suite-lifecycle.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" --paths-file "$ISOLATED_PATHS" --scenario all --host all --evidence-dir "$EVIDENCE_DIR"
-# Second invocation: independent native-only slices are attempted even when links fail.
-$EVIDENCE_DIR = "$HERDR_BOT_WT/.scratch/suite-cli-research/evidence/11-lifecycle/native-02"
-python scripts/accept-suite-lifecycle.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" --paths-file "$ISOLATED_PATHS" --scenario all --host all --evidence-dir "$EVIDENCE_DIR"
-# Third invocation: native user-attributed Skill history and managed Workspace fixtures corrected.
-$EVIDENCE_DIR = "$HERDR_BOT_WT/.scratch/suite-cli-research/evidence/11-lifecycle/native-03"
-python scripts/accept-suite-lifecycle.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" --paths-file "$ISOLATED_PATHS" --scenario all --host all --evidence-dir "$EVIDENCE_DIR"
-# Fourth invocation: preserve stable zone IDs and reload native credential snapshots.
-$EVIDENCE_DIR = "$HERDR_BOT_WT/.scratch/suite-cli-research/evidence/11-lifecycle/native-04"
-python scripts/accept-suite-lifecycle.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" --paths-file "$ISOLATED_PATHS" --scenario all --host all --evidence-dir "$EVIDENCE_DIR"
-```
-
-Worktree roots came from the assignment. The dependency-only file was authored
-for this run from the installed PATH launcher locations: Herdr standalone
-`C:/Users/hugos/.herdr/packages/standalone/releases/0.9.5-x86_64-pc-windows-msvc`,
-Pi package `D:/nvm4w/nodejs/node_modules/@earendil-works/pi-coding-agent`, and OMP
-package `D:/nvm4w/nodejs/node_modules/@oh-my-pi/pi-coding-agent`. The individual
-read-only installed integrations were
-`C:/Users/hugos/.pi/agent/extensions/herdr-agent-state.ts` and
-`C:/Users/hugos/.omp/agent/extensions/herdr-omp-agent-state.ts`; no adjacent
-settings/auth data were read. Original toolkit root is solely the documented
-frozen baseline dependency anchor, never the tested toolkit source. The six
-repository verification commands above were separately invoked from their
-respective worktree roots. The initial backend attempt lacked frontend output;
-its later complete invocation followed this worktree's browser/build entrypoint.
-The final invocation used the same complete command with
-`$EVIDENCE_DIR = "$HERDR_BOT_WT/.scratch/suite-cli-research/evidence/11-lifecycle/native-05"`:
-
-```powershell
-$EVIDENCE_DIR = "$HERDR_BOT_WT/.scratch/suite-cli-research/evidence/11-lifecycle/native-05"
-python scripts/accept-suite-lifecycle.py --herdr-bot-worktree "$HERDR_BOT_WT" --toolkit-worktree "$TOOLKIT_WT" --backend "$env:CARGO_TARGET_DIR/debug/herdr-bot.exe" --paths-file "$ISOLATED_PATHS" --scenario all --host all --evidence-dir "$EVIDENCE_DIR"
-```
-
-It preserves the existing read-only authority boundary after backend restart
-([workflow contract](workflow-contract.md),
-[restart semantics](workflow-runtime.md#后端重启历史现场只读)). Restored native roles
-are not permission to take over a retained Run. Process ownership enumeration
-also checks parent/child creation times and the fixture's known native/terminal
-runtimes, so stale parent PIDs and shared OS input-method services are not mistaken
-for owned agent processes. Use a new evidence directory for every rerun, retaining
-earlier failures.
-
 ## Independent expectations and observations
 
 | Coverage | Scenario/oracle |
 | --- | --- |
 | P12 | Each host starts ordinary Chats with and without Suite, loads its real shipped model-cost entry, executes `/budget help` locally, and observes `detail`, `holiday`, `clear` without another model request. The real installed Herdr state integration supplies native identity. Pi's shipped fixed pi-suite consumes real selected resources. Role entries are exercised, not substituted by observer tools. |
-| P13 | The same ordinary Task is used independently and as a dispatched node. The independent role-tool sets are normal `{}`, manager `{run,collect}`, node `{report}`. Actual native `run status` and `report` reach public workflow HTTP. Manager/node native identity and original execution ID remain after native process exit and explicit resume within the creating backend. After a real backend restart the original Run is read-only: role tools must return `manager-unassociated` / `node-unassociated`, native role loading/identity remain, `managed=false`, and saved Run/report facts are unchanged. Resume never takes over or dispatches a new execution, following the existing workflow restart contract. |
+| P13 | Use the same Task independently and as a dispatched node. The expected workflow tools are normal `{}`, manager `{run,collect}`, and node `{approve,report}`. Observe actual native calls and public workflow HTTP, with approval and reporting recorded separately. Within the creating backend, manager and node identity and execution IDs survive native process exit and explicit Resume without replay. After a real backend restart, the original Run remains read-only. Native role loading and identity remain, role actions return `manager-unassociated` or `node-unassociated`, `managed=false`, and saved Run and report facts stay unchanged. Resume cannot take over a Run or dispatch another execution. |
 | P28 | Model definitions contain no apiKey. Native auth is seeded using installed hosts' public native auth-storage APIs, with random test-owned data, then every real model request must authenticate with that single key (only match booleans are retained). Same/different Suite startup overlaps. Two native credential writers update independent provider rows in the same default native store; native readback must preserve both rows and the launch credential. No absent `--agentDir` argument is used as evidence. |
 | P29 | The observer reads the effective native model and thinking level; a separate installed native SessionManager opens the actual native history and reads original identity/branch. Histories must stay under the test's native session root. Both native model configuration formats are independently reread unchanged. |
 | P30 | Literal provider/model `lifecycle-owned/lifecycle-probe`, thinking `high`, initial Skill body `LIFECYCLE-INITIAL-SKILL-463`, fixed text `LIFECYCLE-FIXED-172`, input `LIFECYCLE-INPUT-298`, and `Lifecycle {chat.id}` naming are independent oracles. Native user history contains the initial Skill and each fixed/input marker exactly once. Suite resources contain no replacement trigger. |
