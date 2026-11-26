@@ -10,6 +10,7 @@
 
 pub mod history;
 pub mod resume;
+pub(crate) mod startup;
 
 use crate::{AppState, tasks, herdr};
 use crate::herdr::placement::WorkspaceTarget;
@@ -587,35 +588,39 @@ pub(crate) async fn run_creation(
         });
         view.name.clone()
     };
-    let agent_name = new_agent_name();
-    let args = agent_launch_args(&preset.env, Some(&preset.trigger));
+    use startup::{Destination, Progress, StartError, TaskStartError};
     let kind = task.agent.label();
-    let launch = launches.begin(kind, Some(zone));
-    let target = match herdr.launch_tab(&workspace.id, Some(zone), &name, &agent_name, kind, &args, &launch).await {
-        Ok(target) => target,
-        Err(error) => {
-            fail(&job, FailureStage::Tab, &error, authority).await;
-            return;
+    let progress = |event: Progress<'_>| {
+        let tab = match event {
+            Progress::Tab(target) => Some((target.location.tab_id.clone(), target.location.pane_id.clone(), target.agent_name().map(str::to_owned))),
+            Progress::Started => None,
+        };
+        let job = job.as_ref();
+        async move {
+            let mut view = job.lock().await;
+            if let Some((tab_id, pane_id, alias)) = tab {
+                view.tab_id = Some(tab_id);
+                view.pane_id = Some(pane_id);
+                view.agent_name = alias;
+            } else {
+                view.stage = Stage::Initializing;
+            }
         }
     };
+    let started = match startup::start_task(&herdr, &launches,
+        Destination { workspace: &workspace.id, cwd: Some(zone), title: &name, kind }, &preset, progress).await
     {
-        let mut view = job.lock().await;
-        view.tab_id = Some(target.location.tab_id.clone());
-        view.pane_id = Some(target.location.pane_id.clone());
-        if !herdr.is_app() { view.agent_name = Some(agent_name); }
-    }
-    if let Err(error) = target.start_agent(&herdr, kind, &args).await {
-        fail(&job, FailureStage::Start, &error, authority).await;
-        return;
-    }
-    job.lock().await.stage = Stage::Initializing;
-    let identity = match launch.ready(&herdr).await {
-        Ok(identity) => identity,
+        Ok(started) => started,
         Err(error) => {
-            fail(&job, FailureStage::Start, &error, authority).await;
+            let (stage, error) = match error {
+                TaskStartError::Start(StartError::Tab(error)) => (FailureStage::Tab, error),
+                TaskStartError::Start(StartError::Agent { error, .. }) | TaskStartError::Ready(error) => (FailureStage::Start, error),
+            };
+            fail(&job, stage, &error, authority).await;
             return;
         }
     };
+    let identity = &started.identity;
 
     if chief.is_some() || delegation.is_some() {
         let creation_id = job.lock().await.id.clone();
@@ -685,7 +690,7 @@ pub(crate) async fn run_creation(
                 view.retry_reason = retry_reason;
             }
         };
-        match launch.submit_initial(&herdr, &target, text, progress).await {
+        match started.submit_retrying(text, progress).await {
             Ok(()) => {}
             Err(InitialInputError::BeforeSend(error)) => {
                 fail(&job, FailureStage::Start, &error, authority).await;
@@ -706,7 +711,6 @@ pub(crate) async fn run_creation(
         }
     }
 
-    if herdr.is_app() { launch.retain_app_target(); }
     let creation_id = {
         let mut view = job.lock().await;
         view.input_submitted = !text.is_empty();
@@ -715,6 +719,7 @@ pub(crate) async fn run_creation(
     };
     // History persistence remains independent of the ordinary creation result.
     if chief.is_none() && delegation.is_none() {
+        let identity = started.identity;
         tokio::spawn(async move {
             if let Err(error) = history.record_zone(
                 &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(), Some(&workspace.id), &task.id, identity.startup_identity_path.as_deref(),

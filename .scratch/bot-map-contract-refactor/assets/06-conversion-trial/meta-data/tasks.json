@@ -1,0 +1,67 @@
+{
+  "tasks": [
+    {
+      "id": "chief-bot",
+      "name": "chief-bot",
+      "group": "meta-task",
+      "chatName": "chat with chief bot",
+      "agent": "omp",
+      "taskType": "chief",
+      "model": "gpt-6.1-sol",
+      "thinking": "medium",
+      "skill": null,
+      "prompt": ""
+    },
+    {
+      "id": "task-18e2c2827c484128-0",
+      "name": "manager",
+      "group": "meta-task",
+      "chatName": "{zone.name} · {task.name} · {chat.id}",
+      "agent": "omp",
+      "taskType": "manager",
+      "model": "gpt-6.1-sol",
+      "thinking": "medium",
+      "skill": null,
+      "prompt": ""
+    },
+    {
+      "id": "task-18e318b13b71a8bc-0",
+      "name": "概要规划",
+      "group": "meta-task",
+      "chatName": "[概要规划] {zone.name} · {chat.id}",
+      "agent": "omp",
+      "taskType": "normal",
+      "model": "gpt-6-astra",
+      "thinking": "medium",
+      "skill": "grill-with-docs",
+      "prompt": "与用户澄清业务需求，组合可复用能力，交付经确认、满足转换条件的概要方案。使用初始 skill 组织讨论。\n\n产品仓库 ${herdr-bot-path}；服务 ${herdr-bot-api-url}。下文系统文档路径相对产品仓库，规划交付契约为 ${herdr-bot-path}/meta-data/workflow-maps/plan_workflow/planning-deliverables.md。\n\n**需求与材料**\n\n独立使用时读取用户提供的需求；流程内结合 Run 背景、节点委托和实际命名输入。完整读取所提供的参考资料，明确其用途及已有确认范围；必要信息缺失或冲突时与用户澄清。\n\n**能力调查**\n\n查询前读取 docs/scheduler.md「HTTP interface 与路径边界」；选择和组合能力前读取规划交付契约「能力选用与调用」。\n\n根据 Bot 能力摘要形成方案，按规划契约核实必要事实。存在能力缺口时，按该契约「能力建设需求」交付需求，由用户另行衔接；取得补齐结果后重新核实。\n\n**方案交付**\n\n编写或修订前读取规划交付契约「共同身份」「概要方案」，据此组织方案并取得用户确认。只有满足其转换条件的方案才可正式交接，其他版本保留为中间材料。\n\n独立使用且未要求文件时交付完整 Markdown 正文；要求文件时，按该契约「规划文档保存与交接」保存。流程内按声明交付方案文件。\n\n保存交付材料或配置前，读取规划交付契约「共同写入规则」；具体配置接口按目标平台文档操作。\n\n**操作边界**\n\n默认只读调查并交付规划材料。额外写入、试运行或外部业务调用须另获授权；本 Task 不修改能力定义、生成 Map 配置或启动业务。",
+      "suite": "codebase-exploration-omp"
+    },
+    {
+      "id": "task-18e319d73777fc6c-1",
+      "name": "概要方案转 Map",
+      "group": "meta-task",
+      "chatName": "[Plan to Map] {zone.name} · {chat.id}",
+      "agent": "omp",
+      "taskType": "normal",
+      "model": "gpt-6-astra",
+      "thinking": "medium",
+      "skill": null,
+      "prompt": "将经用户确认、满足转换条件的概要方案转化为完整业务 Map，保存配置并核实结果。\n\n产品仓库 ${herdr-bot-path}；服务 ${herdr-bot-api-url}。下文系统文档路径相对产品仓库，规划交付契约为 ${herdr-bot-path}/meta-data/workflow-maps/plan_workflow/planning-deliverables.md。\n\n**核实方案**\n\n独立使用时读取用户提供的完整方案；流程内读取命名输入 outline，结合 Run 背景及节点委托。\n\n核实前读取规划交付契约「共同身份」「概要方案」「能力选用与调用」，确认当前版本、有效确认范围和转换条件。读取所选 Bot 的目标引用及真实实现，不以 Bot 能力摘要代替实现规则。\n\n**转换定义**\n\n转换前读取 docs/scheduler.md「定义职责与唯一格式」「node.input 的业务职责」「文件输入与输出规则」。\n\n忠实落实方案中的工作、依赖、材料关系和操作边界。稳定职责由实现承担，接线与执行策略使用结构化字段，仅将本次业务差异写入 node.input；没有差异时允许为空。Map 型调用使用公开接口，不展开内部节点。\n\n格式决定自行完成；业务选择缺失或实现不能承接时，列明问题交回用户或规划者，不通过节点提示词补建稳定能力。\n\n**保存与交付**\n\n默认仅新增 Map；用户可以明确授权覆盖或调整检查范围。保存前读取 docs/scheduler.md「目录与定义管理」「HTTP interface 与路径边界」，核实实际服务目录及合法保存方式；按规划交付契约「共同写入规则」「保存与证据边界」保存并完成本次约定的检查。\n\n交付完整 Map 及实际核验结论，说明配置身份、待补条件和未验证事项；流程内按声明交付 Map JSON 文件。\n\n**完成条件**\n\n方案要求已完整落实，配置已保存，完成本次约定的检查并如实交付结果。保存或预检不代表业务运行验证通过。\n\n**操作边界**\n\n覆盖既有 Map 须明确授权；保持 Task、Bot 和运行记录不变，不启动生成的业务流程。",
+      "suite": "codebase-exploration-omp"
+    },
+    {
+      "id": "task-18e65aed740825f8-0",
+      "name": "prompt优化者——Map维度",
+      "group": "meta-task",
+      "chatName": "[Map 提示词优化] {zone.name} · {chat.id}",
+      "agent": "omp",
+      "taskType": "normal",
+      "model": "gpt-6-astra",
+      "thinking": "medium",
+      "skill": "writing-for-agents",
+      "prompt": "从整张 Map 的协作关系出发，按知识归属重新组织关联提示词，保存获准修改。保持已确认的业务语义，并确保各执行节点能够取得完成职责所需的全部信息。\n\n**明确目标**\n\n从本次需求取得目标 Map、优化目标及允许修改范围；流程内结合 Run 背景、节点委托和命名输入。完整读取提供的方案与参考资料，核实其用途和有效确认范围。\n\n明确修改仓库定义还是服务配置，读取目标平台的定义与保存契约；两者不自动同步。\n\n**核对知识归属**\n\n读取目标 Map、关联 Bot 的真实实现、适用 skill、引用文档及公共角色指引。按以下分工检查：\n\n- Bot 四个描述字段：能力选用及输入输出摘要。\n- Task 与实现文档：独立使用也必需的稳定职责。\n- Map 输入输出规则：整图接口要求。\n- node.input：相对实现的本次业务差异。\n- 结构化配置、后端流程说明与公共工具指引：接线、执行策略及运行协议。\n\n执行节点不自动获得 Bot 字段。删除或迁移内容前，核实其新权威位置和实际读取入口；不能以“别处已有”代替执行侧可达。\n\n**联合优化**\n\n使用初始 skill 统筹相关文本，同一知识只维护一份权威。Bot 的 when、description、input_rule、output_rule 可全部重新组织；Map 接口说明可保义优化。\n\n保持身份、名称、分组、目标绑定、拓扑、接口 ID、必需性、接线及执行配置不变。业务语义变化或超范围联动须先取得用户确认。\n\n修改共享对象前列明其他消费者及影响范围，兼顾 Task 独立使用；具体写入边界由本次授权确定。\n\n**保存与交付**\n\n保存交付材料或配置前，读取 ${herdr-bot-path}/meta-data/workflow-maps/plan_workflow/planning-deliverables.md「共同写入规则」；具体配置接口按目标平台文档操作。\n\n依据获准范围保存，按本次约定完成检查；冲突和部分效果按共同写入规则处理。\n\n交付修改范围、知识归属调整、共享影响、保存核对结果及未验证事项；流程内按声明交付最终 Map JSON 和优化交接说明。\n\n**完成条件**\n\n获准修改全部保存，完成本次约定的检查并如实交付结果；各节点的必要信息有明确承接，未完成项如实列出。本 Task 不启动目标业务，文本与定义优化不代表实际业务验证通过。",
+      "suite": "codebase-exploration-omp"
+    }
+  ]
+}

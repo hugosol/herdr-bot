@@ -270,18 +270,21 @@ impl HerdrClient {
     /// App creates the tab and its program together. TUI creates an owned
     /// pane first and passes the same launch correlation through its env.
     pub(crate) async fn launch_tab(
-        &self, workspace: &str, cwd: Option<&str>, label: &str, alias: &str,
-        kind: &str, args: &[String], launch: &super::launch::Launch,
+        &self, workspace: &str, cwd: Option<&str>, label: &str,
+        kind: &str, args: &[String], launch: Option<&super::launch::Launch>,
     ) -> Result<std::sync::Arc<LaunchTarget>, HerdrError> {
-        let (launch_id, target_id) = launch.correlation();
+        let correlation = launch.map(super::launch::Launch::correlation);
         let (tab, control) = match &self.host {
             Host::Tui(_) => {
-                let env = [format!("{}={launch_id}", super::launch::LAUNCH_ID_ENV), format!("{}={target_id}", super::launch::TARGET_ID_ENV)];
-                let tab = self.create_tui_tab(workspace, cwd, label, &env).await?;
-                (tab, LaunchControl::Tui { alias: alias.into() })
+                let env = correlation.map(|(launch_id, target_id)| [
+                    format!("{}={launch_id}", super::launch::LAUNCH_ID_ENV),
+                    format!("{}={target_id}", super::launch::TARGET_ID_ENV),
+                ]);
+                let tab = self.create_tui_tab(workspace, cwd, label, env.as_ref().map_or(&[], |env| &env[..])).await?;
+                (tab, LaunchControl::Tui { alias: crate::chats::new_agent_name() })
             }
             Host::App(app) => {
-                let (tab, terminal) = app.create(workspace, cwd, label, kind, args, Some((launch_id, target_id))).await?;
+                let (tab, terminal) = app.create(workspace, cwd, label, kind, args, correlation).await?;
                 (tab, LaunchControl::App { terminal })
             }
         };
@@ -289,27 +292,8 @@ impl HerdrClient {
             location: NavigationTarget { workspace_id: workspace.into(), tab_id: tab.tab_id, pane_id: tab.pane_id },
             control,
         });
-        launch.bind_target(target.clone());
+        if let Some(launch) = launch { launch.bind_target(target.clone()); }
         Ok(target)
-    }
-
-    pub(crate) async fn launch_unreported_app(&self, workspace: &str, cwd: Option<&str>, label: &str, kind: &str, args: &[String]) -> Result<std::sync::Arc<LaunchTarget>, HerdrError> {
-        let Host::App(app) = &self.host else { return Err(native_error("launch requires selected App host")); };
-        let (tab, terminal) = app.create(workspace, cwd, label, kind, args, None).await?;
-        Ok(std::sync::Arc::new(LaunchTarget {
-            location: NavigationTarget { workspace_id: workspace.into(), tab_id: tab.tab_id, pane_id: tab.pane_id },
-            control: LaunchControl::App { terminal },
-        }))
-    }
-
-    /// 在指定 TUI Workspace 中新建 Tab，不改变当前焦点。
-    pub(crate) async fn create_tab(
-        &self,
-        workspace_id: &str,
-        cwd: Option<&str>,
-        label: &str,
-    ) -> Result<CreatedTab, HerdrError> {
-        self.create_tui_tab(workspace_id, cwd, label, &[]).await
     }
 
     async fn create_tui_tab(&self, workspace_id: &str, cwd: Option<&str>, label: &str, env: &[String]) -> Result<CreatedTab, HerdrError> {
@@ -668,6 +652,13 @@ impl From<LaunchVerificationError> for HerdrError {
 
 impl LaunchTarget {
     pub(super) fn is_app(&self) -> bool { matches!(self.control, LaunchControl::App { .. }) }
+
+    pub(crate) fn agent_name(&self) -> Option<&str> {
+        match &self.control {
+            LaunchControl::Tui { alias } => Some(alias),
+            LaunchControl::App { .. } => None,
+        }
+    }
 
     pub(crate) async fn start_agent(&self, herdr: &HerdrClient, kind: &str, args: &[String]) -> Result<(), HerdrError> {
         if let LaunchControl::Tui { alias } = &self.control {

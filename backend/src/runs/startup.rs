@@ -1,4 +1,4 @@
-//! Run-only Chat preparation, startup protocol and failure finalization.
+//! Run-only Chat preparation, association, input and failure finalization.
 use super::*;
 
 async fn resolve_inputs(state: &AppState, run: &Run, rules: &[crate::scheduler::maps::InputRule]) -> Result<Vec<crate::scheduler::maps::ResolvedFile>, String> {
@@ -402,19 +402,28 @@ async fn protocol(
     };
     *stage = "tab";
     let kind = task.agent.label();
-    let alias = crate::chats::new_agent_name();
-    let args = crate::chats::agent_launch_args(&preset.env, Some(&preset.trigger));
-    let launch = state.launches.begin(kind, Some(zone));
-    let hosted = state.herdr.launch_tab(&workspace.id, Some(zone), &name, &alias, kind, &args, &launch)
-        .await.map_err(|e| e.message())?;
-    effects.tab_id = Some(hosted.location.tab_id.clone());
-    effects.pane_id = Some(hosted.location.pane_id.clone());
-    if !state.herdr.is_app() { effects.agent_name = Some(alias.clone()); }
-    *stage = "start";
-    hosted.start_agent(&state.herdr, kind, &args).await.map_err(|e| e.message())?;
-    effects.agent_started = true;
-    *stage = "identity";
-    let identity = launch.ready(&state.herdr).await.map_err(|e| e.message())?;
+    use crate::chats::startup::{self, Destination, Progress, StartError, TaskStartError};
+    let started = startup::start_task(&state.herdr, &state.launches,
+        Destination { workspace: &workspace.id, cwd: Some(zone), title: &name, kind }, &preset, |event| {
+            match event {
+                Progress::Tab(target) => {
+                    effects.tab_id = Some(target.location.tab_id.clone());
+                    effects.pane_id = Some(target.location.pane_id.clone());
+                    effects.agent_name = target.agent_name().map(str::to_owned);
+                    *stage = "start";
+                }
+                Progress::Started => {
+                    effects.agent_started = true;
+                    *stage = "identity";
+                }
+            }
+            std::future::ready(())
+        }).await.map_err(|error| match error {
+            TaskStartError::Start(StartError::Tab(error) | StartError::Agent { error, .. })
+            | TaskStartError::Ready(error) => error.message(),
+        })?;
+    let identity = &started.identity;
+    let location = &started.target.location;
     effects.session_id = Some(identity.session_id.clone());
     if let Role::Node { id, .. } = &role {
         let execution = run.nodes[*id].execution.as_ref().ok_or("缺少冻结执行。")?;
@@ -424,7 +433,7 @@ async fn protocol(
     }
     let chat = ChatReference {
         session_id: identity.session_id.clone(), workspace_id: workspace.id.clone(),
-        tab_id: hosted.location.tab_id.clone(), pane_id: hosted.location.pane_id.clone(),
+        tab_id: location.tab_id.clone(), pane_id: location.pane_id.clone(),
         // App launches the native agent directly; navigation never uses a TUI alias there.
         agent_name: effects.agent_name.clone().unwrap_or_else(|| kind.to_owned()),
     };
@@ -508,13 +517,11 @@ async fn protocol(
     let text = crate::chats::compose_prompt(&fixed_prompt, preset.trigger.native_skill.as_deref(), &input, &prompts.instructions(&task.trigger.prompt));
     std::borrow::Cow::Owned(text)
     };
-    launch.current(&state.herdr, &hosted).await.map_err(|e| e.message())?;
-    // A saved association stays locatable when the submission outcome is uncertain.
-    if state.herdr.is_app() { launch.retain_app_target(); }
-    effects.input_attempted = true;
-    effects.input_outcome = Some(InputOutcome::Unknown);
-    if let Err(error) = hosted.submit(&state.herdr, &text).await {
-        if matches!(error, crate::herdr::HerdrError::NotStarted(_) | crate::herdr::HerdrError::CommandFailed { .. }) {
+    if let Err(error) = started.submit_once(&text, || {
+        effects.input_attempted = true;
+        effects.input_outcome = Some(InputOutcome::Unknown);
+    }).await {
+        if effects.input_attempted && matches!(error, crate::herdr::HerdrError::NotStarted(_) | crate::herdr::HerdrError::CommandFailed { .. }) {
             effects.input_outcome = Some(InputOutcome::Rejected);
         }
         return Err(error.message());
