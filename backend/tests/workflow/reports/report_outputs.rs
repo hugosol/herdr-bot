@@ -157,7 +157,7 @@ async fn output_deltas_preserve_names_and_remain_scoped_to_the_real_execution() 
 }
 
 #[tokio::test]
-async fn report_rules_are_frozen_for_original_execution_and_retry() {
+async fn execution_rules_remain_frozen_on_retry_and_change_only_in_a_new_run() {
     let s = Scenario::new().await;
     let path = s.config.scheduler.map_directory.join("work.json");
     let mut map: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
@@ -188,25 +188,25 @@ async fn report_rules_are_frozen_for_original_execution_and_retry() {
     let status = manager(&s, "status", json!({"sessionId":"frozen-manager"}), 200).await;
     assert_eq!(status["snapshot"]["nodes"]["A"]["execution"], old);
     manager(&s, "fail", json!({"sessionId":"frozen-manager","nodeId":"A","reason":"Explicit replacement"}), 200).await;
-    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"frozen-new"},"native_cwd":s.data.path().join("node-zone")}));
-    let retry = manager(&s, "retry", json!({"sessionId":"frozen-manager","nodeId":"A","confirmed":true,"reason":"New execution within the original Run"}), 200).await;
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"frozen-retry"},"native_cwd":s.data.path().join("node-zone")}));
+    let retry = manager(&s, "retry", json!({"sessionId":"frozen-manager","nodeId":"A","confirmed":true,"reason":"Retry after inspecting old effects"}), 200).await;
     let current = &retry["snapshot"]["nodes"]["A"]["execution"];
     assert_ne!(current["id"], old["id"]);
     assert_eq!(current["inputRule"], original_inputs);
     assert_eq!(current["outputRule"], original_outputs);
     assert_eq!(current["inputs"], json!([{"id":"brief","path":s.data.path().join("original.md")}]));
-    submit(&s, json!({"sessionId":"frozen-new","body":"Same frozen declaration","canComplete":true,"outputs":[{"id":"old","path":"C:/old.md"}]}), 200).await;
-    submit(&s, json!({"sessionId":"frozen-new","body":"Current source does not leak","canComplete":true,"outputs":[{"id":"new","path":"Z:/new/result.md"}]}), 400).await;
+    submit(&s, json!({"sessionId":"frozen-retry","body":"The edit cannot widen retry output","canComplete":true,"outputs":[{"id":"new","path":"C:/forbidden.md"}]}), 400).await;
+    submit(&s, json!({"sessionId":"frozen-retry","body":"Retry uses the original contract","canComplete":true,"outputs":[{"id":"old","path":"C:/retry.md"}]}), 200).await;
 
-    s.start("replacement-manager").await;
-    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"replacement-worker"},"native_cwd":s.data.path().join("node-zone")}));
-    let dispatched = s.dispatch("replacement-manager", &["A"]).await;
-    let replacement = &dispatched["snapshot"]["nodes"]["A"]["execution"];
-    assert_eq!(replacement["inputRule"], json!([{"id":"replacement","type":"file","path":"replacement.md"}]));
-    assert_eq!(replacement["outputRule"], json!([{"id":"new"}]));
-    assert_eq!(replacement["inputs"], json!([{"id":"replacement","path":s.data.path().join("replacement.md")}]));
-    submit(&s, json!({"sessionId":"replacement-worker","body":"No inherited declaration","canComplete":true,"outputs":[{"id":"old","path":"C:/old.md"}]}), 400).await;
-    submit(&s, json!({"sessionId":"replacement-worker","body":"Replacement output","canComplete":true,"outputs":[{"id":"new","path":"Z:/new/result.md"}]}), 200).await;
+    s.start("new-manager").await;
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"new-node"},"native_cwd":s.data.path().join("node-zone")}));
+    let dispatch = s.dispatch("new-manager", &["A"]).await;
+    let current = &dispatch["snapshot"]["nodes"]["A"]["execution"];
+    assert_eq!(current["inputRule"], json!([{"id":"replacement","type":"file","path":"replacement.md"}]));
+    assert_eq!(current["outputRule"], json!([{"id":"new"}]));
+    assert_eq!(current["inputs"], json!([{"id":"replacement","path":s.data.path().join("replacement.md")}]));
+    submit(&s, json!({"sessionId":"new-node","body":"No inherited declaration","canComplete":true,"outputs":[{"id":"old","path":"C:/old.md"}]}), 400).await;
+    submit(&s, json!({"sessionId":"new-node","body":"Replacement output","canComplete":true,"outputs":[{"id":"new","path":"Z:/new/result.md"}]}), 200).await;
 }
 
 // P8: operation authorization still rejects ambiguous persisted associations.

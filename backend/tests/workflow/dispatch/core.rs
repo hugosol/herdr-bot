@@ -147,8 +147,10 @@ async fn node_dispatch_commits_identity_before_literal_trigger_and_uses_manager_
     let calls = s.herdr.calls();
     let prompt = calls.iter().filter(|c| c["kind"] == "agent_prompt").nth(1).unwrap();
     let text = common::prompt_body(prompt);
-    assert!(text.starts_with(&format!("/skill:teach NODE-FIXED\n\nNode ID: A\nNode: Worker A\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n", s.config.scheduler.run_instructions.display(),root.join("run.json").display(),root.join("history.jsonl").display(),root.join("messages.jsonl").display())));
-    assert!(text.ends_with("\nNODE-INPUT\n第二行"));
+    assert!(text.starts_with("/skill:teach NODE-FIXED\n\n你负责本次派发的工作"));
+    assert!(text.contains(&format!("\n\nNode ID: A\nNode: Worker A\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n", s.config.scheduler.run_instructions.display(),root.join("run.json").display(),root.join("history.jsonl").display(),root.join("messages.jsonl").display())));
+    assert!(text.contains("[Run background / runInput]\nMANAGER-USER-SECRET\n[/Run background / runInput]"));
+    assert!(text.ends_with("[Business input]\nNODE-INPUT\n第二行"));
     assert_eq!(saved["nodes"]["A"]["execution"]["autoApproved"], true);
     assert_eq!(saved["nodes"]["A"]["execution"]["approved"], false);
     let start = calls.iter().filter(|c| c["kind"] == "agent_start").nth(1).unwrap();
@@ -370,8 +372,10 @@ async fn startup_dispatch_ignores_unreadable_history_and_submits_full_input() {
     let prompts: Vec<_> = calls.iter().filter(|c| c["kind"] == "agent_prompt").collect();
     assert_eq!(prompts.len(), 2);
     let text = common::prompt_body(prompts[1]);
-    assert!(text.starts_with("/skill:teach NODE-FIXED\n\nNode ID: A\n"));
-    assert!(text.ends_with("\nNODE-INPUT\n第二行"));
+    assert!(text.starts_with("/skill:teach NODE-FIXED\n\n你负责本次派发的工作"));
+    assert!(text.contains("\n\nNode ID: A\n"));
+    assert!(text.contains("[Run background / runInput]\nMANAGER-USER-SECRET\n[/Run background / runInput]"));
+    assert!(text.ends_with("[Business input]\nNODE-INPUT\n第二行"));
     assert_eq!(fs::read(historical.join("run.json")).unwrap(), b"{}");
 }
 

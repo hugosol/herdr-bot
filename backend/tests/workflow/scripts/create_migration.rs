@@ -92,7 +92,14 @@ async fn published_approval_responsibilities_round_trip_every_shipped_node() {
     for (file, nodes) in expected {
         let definition = source(&format!("meta-data/workflow-maps/{file}"));
         assert_eq!(definition["nodes"].as_object().unwrap().len(), nodes.len());
-        fs::write(s.config.scheduler.map_directory.join(file), definition.to_string()).unwrap();
+        // Test the node contract under a legal, test-owned Map envelope. A
+        // published node's responsibility is checked below against the original
+        // asset; this does not treat unselected Maps as migrated definitions.
+        let fixture = json!({"title":"Approval responsibility fixture","description":"","nodes":definition["nodes"],"map_input_rule":{"files":[
+            {"id":"request","required":false}, {"id":"materials","required":false},
+            {"id":"clone_request","required":false}, {"id":"exploration_brief","required":false}
+        ]}});
+        fs::write(s.config.scheduler.map_directory.join(file), fixture.to_string()).unwrap();
         let response = get_over_tcp(s.server.addr(), &format!("/api/scheduler/maps/{file}")).await;
         assert_eq!(response.status, 200, "{file}: {}", response.body);
         let read: Value = serde_json::from_str(&response.body).unwrap();
