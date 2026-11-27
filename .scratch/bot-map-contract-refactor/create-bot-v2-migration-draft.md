@@ -25,9 +25,9 @@
 
 ## 父流程后续迁移边界
 
-用户明确需要新增嵌套 Run 输入向下传递机制，并决定在上游迁移时解决。本轮没有实现该机制：当前子 Run 的本次要求仍来自父调用节点 input，父 Run 输入和后续对话不自动下传。
+创建bot-V2 迁移会话中，用户明确需要新增嵌套 Run 输入向下传递机制，并决定在上游迁移时解决。当时子 Run 的本次要求仅来自父调用节点 input；该记录描述历史交接，不作为当前运行契约。
 
-创建task-V2 与创建task-script type 仍在离线 backup，原 request 内容、materials 接线、saved/handoff 要求及运行上下文传递均须在其迁移时调整。不改 backup 原件，不宣称旧父流程已经兼容新接口。
+创建bot-V2 迁移结束时，创建task-V2 与创建task-script type 均在离线 backup；其旧接口尚不兼容。后续创建task-V2 会话已批准并落地通用逐层输入下传及身份交付，当前状态见[迁移清单](../../docs/workflow-migration-inventory.md#创建task-v2本轮选择性迁移)。创建task-script type 仍未迁入；backup 原件不变。
 
 ## 交付与剩余证据
 

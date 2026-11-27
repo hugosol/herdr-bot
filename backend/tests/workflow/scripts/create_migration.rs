@@ -452,12 +452,14 @@ async fn selected_v2_delivers_request_to_both_nodes_and_returns_saved_bot_identi
     selected_v2_workflow(&s).await;
 }
 
-async fn selected_v2_workflow(s: &Scenario) -> Value {
+async fn install_selected_v2(s: &Scenario, bot_files: &[&str]) {
     fs::write(&s.config.prompts_file, format!("herdr-bot-path = '{}'\n", root().display())).unwrap();
     let worker = api(s, "/api/scheduler/bots/edit", json!({"id":"worker"}), 200).await;
-    for file in ["bot-1794846408546638600-12332-0.json", "bot-1794850150349270100-12332-3.json"] {
+    for file in ["bot-1794846408546638600-12332-0.json", "bot-1794850150349270100-12332-3.json"].into_iter().chain(bot_files.iter().copied()) {
         let mut bot = source(&format!("meta-data/bots/{file}"));
-        bot["task_id"] = worker["content"]["task_id"].clone();
+        if bot.get("task_id").is_some() {
+            bot["task_id"] = worker["content"]["task_id"].clone();
+        }
         fs::write(s.config.scheduler.bot_directory.join(file), bot.to_string()).unwrap();
     }
     let mut map = source("meta-data/workflow-maps/create-bot-v2.json");
@@ -465,13 +467,31 @@ async fn selected_v2_workflow(s: &Scenario) -> Value {
         node["zone"] = json!("node");
     }
     fs::write(s.config.scheduler.map_directory.join("create-bot-v2.json"), map.to_string()).unwrap();
+}
+
+async fn create_v2_target(s: &Scenario) -> Value {
     let tasks = api(s, "/api/tasks", json!({"name":"Independent V2 target","taskType":"normal","agent":"pi","chatName":"{chat.id}","model":"gpt-6-luna","thinking":"high","skill":null,"prompt":"Only report read-only CSV differences; never write invoices."}), 200).await;
-    let target = tasks["tasks"].as_array().unwrap().iter().find(|t|t["name"] == "Independent V2 target").unwrap().clone();
-    let request = json!({"type":"task","ref":target["id"]});
+    let target = tasks["tasks"].as_array().unwrap().iter().find(|t|t["name"] == "Independent V2 target").unwrap();
+    let read = get_over_tcp(s.server.addr(), &format!("/api/tasks/{}", target["id"].as_str().unwrap())).await;
+    assert_eq!(read.status, 200, "{}", read.body);
+    let reread = serde_json::from_str::<Value>(&read.body).unwrap()["task"].clone();
+    assert_eq!(reread, *target);
+    reread
+}
+
+async fn selected_v2_workflow(s: &Scenario) -> Value {
+    install_selected_v2(s, &[]).await;
+    let target = create_v2_target(s).await;
     let request_path = s.data.path().join("v2-request.json");
-    fs::write(&request_path, request.to_string()).unwrap();
+    fs::write(&request_path, json!({"type":"task","ref":target["id"]}).to_string()).unwrap();
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"v2-manager"},"native_cwd":s.data.path()}));
-    let run = api(s, "/api/scheduler/maps/create-bot-v2.json/runs", json!({"managerTaskId":s.manager_task,"zone":"manager","userInput":"Read-only CSV comparison; preserve the target Task and do not run it.","fileInputs":[{"id":"request","path":request_path}]}), 201).await;
+    let input = "Read-only CSV comparison; preserve the target Task and do not run it.";
+    let run = api(s, "/api/scheduler/maps/create-bot-v2.json/runs", json!({"managerTaskId":s.manager_task,"zone":"manager","userInput":input,"fileInputs":[{"id":"request","path":request_path}]}), 201).await;
+    run_v2_consumers(s, &run, &target, &request_path, input).await
+}
+
+async fn run_v2_consumers(s: &Scenario, run: &Value, target: &Value, request_path: &std::path::Path, input: &str) -> Value {
+    let request = json!({"type":"task","ref":target["id"]});
     api(s, "/api/workflow/manager/prepare_inputs", json!({"sessionId":"v2-manager","confirmed":true,"reason":"Review actual V2 target","fileInputs":[{"id":"request","path":request_path}]}), 200).await;
     let requirements_path = s.data.path().join("v2-requirements.md");
     let requirements = "# Confirmed V2 intent\nRead-only CSV differences. Never write invoices. No execution.\nBot creation permitted by isolated fixture; no Task.prompt optimization.\n";
@@ -482,6 +502,9 @@ async fn selected_v2_workflow(s: &Scenario) -> Value {
         let session = format!("v2-{node}");
         s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":session},"native_cwd":s.data.path().join("node-zone"),"consume_named_files":true}));
         assert_eq!(s.dispatch("v2-manager", &[node]).await["results"][0]["status"], "running");
+        let calls = s.herdr.calls();
+        let prompt = common::prompt_body(calls.iter().rfind(|call| call["kind"] == "agent_prompt").unwrap());
+        assert!(prompt.contains(&format!("[Run background / runInput]\n{input}\n[/Run background / runInput]")), "{prompt}");
         let before = detail(s, &run["id"]).await;
         let execution = &before["run"]["nodes"][node]["execution"];
         assert_eq!(execution["autoApproved"], false);
@@ -506,7 +529,7 @@ async fn selected_v2_workflow(s: &Scenario) -> Value {
             assert_eq!(serde_json::from_str::<Value>(read["revision"]["original"].as_str().unwrap()).unwrap(), expected_bot);
             let target_read = get_over_tcp(s.server.addr(), &format!("/api/tasks/{}", target["id"].as_str().unwrap())).await;
             assert_eq!(target_read.status, 200);
-            assert_eq!(serde_json::from_str::<Value>(&target_read.body).unwrap()["task"], target);
+            assert_eq!(serde_json::from_str::<Value>(&target_read.body).unwrap()["task"], *target);
             fs::write(&identity_path, identity.to_string()).unwrap();
             json!([{"id":"created_bot","path":identity_path}])
         };
@@ -536,4 +559,64 @@ async fn selected_v2_workflow(s: &Scenario) -> Value {
     assert_eq!(located["content"]["task_id"], target["id"]);
     assert_eq!(serde_json::from_slice::<Value>(&fs::read(request_path).unwrap()).unwrap(), request);
     v2
+}
+
+// The shipped caller supplies a Task locator, not a replacement requirements
+// file. Public Run state and real named-file consumers must retain both inputs.
+#[tokio::test]
+async fn create_migration_shipped_task_v2_delivers_created_task_and_nested_bot_identity() {
+    let s = Scenario::new().await;
+    install_selected_v2(&s, &["bot-1793309187825217800-58200-2.json", "bot-1794855295140784100-12332-6.json"]).await;
+    let mut map = source("meta-data/workflow-maps/create-task-v2.json");
+    for node in map["nodes"].as_object_mut().unwrap().values_mut() {
+        node["zone"] = json!("node");
+    }
+    map["nodes"]["create_bot_v2"]["manager_task_id"] = json!(s.manager_task);
+    fs::write(s.config.scheduler.map_directory.join("create-task-v2.json"), map.to_string()).unwrap();
+
+    let input = " \tRead-only CSV comparison; deliver a Task and its Bot without running either.\r\nNever write invoices.  ";
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"task-v2-manager"},"native_cwd":s.data.path()}));
+    let root = api(&s, "/api/scheduler/maps/create-task-v2.json/runs", json!({"managerTaskId":s.manager_task,"zone":"manager","userInput":input}), 201).await;
+    input_resolution::identity(&s, "task-v2-author");
+    let launched = s.dispatch("task-v2-manager", &["create_task"]).await;
+    assert_eq!(launched["results"][0]["status"], "running", "{launched}");
+    assert_eq!(launched["snapshot"]["nodes"]["create_task"]["execution"]["inputs"], json!([]));
+    assert_eq!(launched["snapshot"]["nodes"]["create_task"]["execution"]["autoApproved"], false);
+
+    let target = create_v2_target(&s).await;
+    let task_identity = json!({"task_id":target["id"]});
+    let task_path = s.data.path().join("created-task.json");
+    let request_path = s.data.path().join("v2-request.json");
+    fs::write(&task_path, task_identity.to_string()).unwrap();
+    fs::write(&request_path, json!({"type":"task","ref":task_identity["task_id"]}).to_string()).unwrap();
+    approve_execution(&s, "task-v2-author").await;
+    let produced = api(&s, "/api/workflow/node/report", json!({"sessionId":"task-v2-author","body":"Saved the Task and read back its actual identity","canComplete":true,"outputs":[{"id":"created_task","path":task_path},{"id":"request","path":request_path}]}), 200).await;
+    assert_eq!(material(&produced["report"], "created_task"), task_identity);
+    api(&s, "/api/workflow/manager/complete", json!({"sessionId":"task-v2-manager","nodeId":"create_task","reason":"Accept verified Task and its request"}), 200).await;
+
+    input_resolution::identity(&s, "v2-manager");
+    let nested = s.dispatch("task-v2-manager", &["create_bot_v2"]).await;
+    assert_eq!(nested["results"][0]["status"], "running", "{nested}");
+    let execution = &nested["snapshot"]["nodes"]["create_bot_v2"]["execution"];
+    let child = detail(&s, &execution["childRunId"]).await;
+    assert_eq!(child["run"]["parent"], json!({"runId":root["id"],"nodeId":"create_bot_v2","executionId":execution["id"]}));
+    assert_eq!(child["run"]["mapInput"], json!({"runInput":input,"files":[{"id":"request","path":request_path}]}));
+    let finished_child = run_v2_consumers(&s, &child["run"], &target, &request_path, input).await;
+    let bot_output = finished_child["run"]["mapOutput"]["files"][0].clone();
+    let waiting = detail(&s, &root["id"]).await;
+    assert_eq!(waiting["run"]["nodes"]["create_bot_v2"]["status"], "running");
+    assert_eq!(waiting["reports"], json!([produced["report"]]));
+
+    approve_execution(&s, "v2-manager").await;
+    let delivered = api(&s, "/api/workflow/node/report", json!({"sessionId":"v2-manager","body":"Deliver the finished child Run’s Bot","canComplete":true}), 200).await;
+    assert_eq!(delivered["report"]["outputs"], json!([bot_output]));
+    assert_eq!(material(&delivered["report"], "created_bot"), json!({"bot_id":"v2-result"}));
+    api(&s, "/api/workflow/manager/complete", json!({"sessionId":"task-v2-manager","nodeId":"create_bot_v2","reason":"Accept the actual nested Bot"}), 200).await;
+    let task_output = json!({"id":"created_task","path":task_path});
+    api(&s, "/api/workflow/manager/finish", json!({"sessionId":"task-v2-manager","mapOutput":{"files":[task_output]}}), 409).await;
+    let outputs = json!([task_output, bot_output]);
+    api(&s, "/api/workflow/manager/finish", json!({"sessionId":"task-v2-manager","mapOutput":{"files":outputs}}), 200).await;
+    let finished = detail(&s, &root["id"]).await;
+    assert_eq!(finished["run"]["status"], "completed");
+    assert_eq!(finished["run"]["mapOutput"]["files"], outputs);
 }

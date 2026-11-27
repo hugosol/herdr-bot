@@ -1,0 +1,10 @@
+{
+  "group": "meta-bot",
+  "id": "create-task",
+  "name": "Task 创建者",
+  "when": "需要将业务需求落实为独立可发起的 normal Task 时选用。",
+  "description": "## 能力职责\n澄清职责与执行条件，创建 Task 并完整读回。\n\n## 能力边界\n不包装 Bot、不优化既有 Task、不运行目标。\n\n## 用户参与\n用户确认完整指示、执行配置和创建授权。",
+  "input_rule": "业务职责、输入输出、验收、非目标、资源与权限；可附资料、已有确认及下游交付要求。",
+  "output_rule": "已保存并完整读回的 Task、真实 ID 与交接说明；缺失的执行资源与未验证事项明确列出。",
+  "task_id": "task-18e31d30fe69a51c-2"
+}

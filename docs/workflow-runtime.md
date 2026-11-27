@@ -128,11 +128,11 @@ approve 与 context 均只接受同机来源及真实执行关联；结束节点
 
 ## Map 型节点与子 Run
 
-Map 型 Bot 只保存 `map_file`，不固化管理者。具体 node 的 `manager_task_id` 必须引用 manager Task；派发使用该 node 的 `zone` 和原始 `input` 创建独立子 Run。内部节点仍使用子 Map 各自的 zone，不展开或复制进父图。同一 Map 的每次调用、每次明确 retry 都有独立 Run 和 execution，不能按 Map 名或 node 名猜测归属。
+Map 型 Bot 只保存 `map_file`，不固化管理者。具体 node 的 `manager_task_id` 必须引用 manager Task；派发使用该 node 的 `zone` 创建独立子 Run，本次要求按下述逐层规则组合。内部节点仍使用子 Map 各自的 zone，不展开或复制进父图。同一 Map 的每次调用、每次明确 retry 都有独立 Run 和 execution，不能按 Map 名或 node 名猜测归属。
 
 父 execution 的可选 `childRunId` 与子 Run 的可选 `parent: {runId,nodeId,executionId}` 保存双向执行关联；普通执行／根 Run 省略它们，旧非嵌套记录仍可读取。两侧真实 Chat 引用相同、来源 Task／agent 一致且关联唯一时，该子 manager 才同时拥有子 Run 的管理者与父 execution 的节点角色。OMP／Pi 启动装配各自的 manager-chat 和 node-chat；没有新增 Task 类型或普遍放宽身份唯一性。`run`／`collect` 只定位子 Run，`context`／`report` 只定位关联的父 execution，包括保留的旧 execution；`approve` 也只批准真实父 execution，但旧子 manager 不能批准 retry 后的新 execution，旧执行的批准请求按陈旧执行拒绝。批准请求的 executionId 只校验已取得上下文，不能选择其他归属。请求不能指定其他 Run／execution／接收者来选择身份；同 Run 混用、缺少／错误／多重关联和复用原生 Session 仍拒绝。
 
-父节点的 `node.input` 原文成为子 Run 的 `mapInput.runInput`；父 Run 的 `mapInput.runInput` 与父管理者后续对话不自动向下传递。需要把动态需求传入新 V2 接口的父流程，留待各上游迁移明确如何提供，不在本轮实现新传值机制。
+父 Run 的 `mapInput.runInput` 与调用子 Map 的父节点 `node.input` 组合为子 Run 新的 `mapInput.runInput`：两者均非空时按“父 Run 本次要求”和“调用节点委托”分段，只有一项非空时直接保留该项原文。每层重复同一规则，祖先输入继续保留；不拼入子 Map 其他节点的委托，不同步任何 Chat 后续对话。组合不替换用户原文中的词典变量，也不改变文件绑定。后续内部节点按通用机制取得所属 Run 背景与各自委托。
 
 父节点本次已经解析的 `inputs: [{id,path}]` 按**本地 id 同名**作为子 Run 的 `mapInput.files`。例如上游输出 `upstream-result` 被父 node 规则绑定为 `child-material` 时，子接口必须声明 `child-material`，而不是上游输出名。每层只解析所属 Run 的输入；同名跨 Map／Run 不串材料。空接口和可选缺席合法，不生成占位路径；即使子接口必需项暂缺，也可启动子管理者；子 Run 同样从 `inputsReady=false` 开始，须由子管理者澄清、补齐并确认后，才能派发任何内部业务节点。父 execution 已冻结的 inputs 不因子 Run 后续绑定而改变。
 

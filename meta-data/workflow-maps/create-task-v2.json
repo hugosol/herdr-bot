@@ -1,0 +1,67 @@
+{
+  "title": "创建task-V2",
+  "group": "meta-map",
+  "description": "创建可独立使用的 normal Task，并通过创建bot-V2 为其创建 Bot。",
+  "map_input_rule": {
+    "description": "说明拟创建能力的需求、约束、参考资料路径与用途，以及执行配置偏好。"
+  },
+  "nodes": {
+    "create_bot_v2": {
+      "title": "调用创建bot-V2",
+      "bot_id": "bot-map-create-bot-v2",
+      "manager_task_id": "task-18e2c2827c484128-0",
+      "input": "",
+      "input_rule": [
+        {
+          "type": "node",
+          "id": "request",
+          "node_id": "create_task",
+          "output_id": "request"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "created_bot"
+        }
+      ],
+      "auto_approved": true,
+      "auto_close": true,
+      "end_node": false,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "create_task"
+      ]
+    },
+    "create_task": {
+      "title": "创建 Task 并准备 V2 委托",
+      "bot_id": "create-task",
+      "input": "交付 created_task 或 request 前，读取 ${herdr-bot-path}/meta-data/workflow-maps/create-task-v2/materials.md 中对应章节；写入交接文件前，读取同文档「材料写入授权」。",
+      "input_rule": [],
+      "output_rule": [
+        {
+          "id": "created_task"
+        },
+        {
+          "id": "request"
+        }
+      ],
+      "auto_approved": false,
+      "auto_close": true,
+      "end_node": false,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": []
+    }
+  },
+  "map_output_rule": {
+    "files": [
+      {
+        "id": "created_task",
+        "description": "已创建 Task 的身份 JSON 文件，唯一字段 task_id 为正式配置的 Task ID；用于读取或引用该 Task，不是完整配置副本。"
+      },
+      {
+        "id": "created_bot",
+        "description": "已创建 Bot 的身份文件，沿用创建bot-V2 的 created_bot 公开输出，用于读取或引用该 Bot。"
+      }
+    ]
+  }
+}

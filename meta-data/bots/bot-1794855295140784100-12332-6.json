@@ -4,7 +4,7 @@
   "name": "创建bot-V2",
   "when": "需要为既有 Task、Map 或 TypeScript 脚本创建 Bot 时使用。",
   "description": "## 能力职责\n核实目标和需求，设计并保存完整的 Bot 能力索引。\n\n## 用户参与\n需求、完整候选及具体保存范围由用户确认。\n\n## 操作效果\n新增 Bot；Task 目标可在获准范围内保义优化 prompt，Map 和脚本目标保持不变。",
-  "input_rule": "既有 normal Task、Map 或 TypeScript 脚本的定位文件，以及本次创建需求、约束和参考资料。",
+  "input_rule": "既有 normal Task、Map 或 TypeScript 脚本的定位文件；可附额外创建要求、约束和参考资料。",
   "output_rule": "已保存的 Bot 配置及包含其 ID 的身份文件；交付止于配置，实际业务效果另行验证。",
   "map_file": "create-bot-v2.json"
 }

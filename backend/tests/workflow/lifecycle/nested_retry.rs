@@ -93,8 +93,18 @@ async fn confirmed_nested_retry_preserves_old_child_and_effects_unlike_recover_o
     let child: Value = serde_json::from_slice(&records(&s, &current["childRunId"])[0]).unwrap();
     assert_eq!(child["parent"], json!({"runId":root["id"],"nodeId":"A","executionId":current["id"]}));
     assert_eq!(child["manager"], current["chat"]);
+    let expected_input = "[父 Run 本次要求]\nMANAGER-USER-SECRET\n[/父 Run 本次要求]\n\n[调用节点委托]\nCALL\n[/调用节点委托]";
+    assert_eq!(child["mapInput"]["runInput"], expected_input);
+    let original: Value = serde_json::from_slice(&child_before_retry[0]).unwrap();
+    assert_eq!(original["mapInput"]["runInput"], expected_input);
     assert_eq!(fs::read_to_string(effect).unwrap(), "SIDE-EFFECT-731");
     assert_eq!(s.herdr.calls().iter().filter(|call| call["kind"] == "agent_prompt").count(), 3);
+    native(&s, "p29-retry-worker");
+    let worker = s.dispatch("p29-new", &["A"]).await;
+    assert_eq!(worker["results"][0]["status"], "running", "{worker}");
+    let calls = s.herdr.calls();
+    let prompt = common::prompt_body(calls.iter().rfind(|call| call["kind"] == "agent_prompt").unwrap());
+    assert!(prompt.contains(&format!("[Run background / runInput]\n{expected_input}\n[/Run background / runInput]")), "{prompt}");
     let history = common::read_json_lines(&s.config.scheduler.run_directory.join(root["id"].as_str().unwrap()).join("history.jsonl"));
     assert!(history.iter().any(|event| event["action"] == "retry" && event["previousExecution"] == old));
 }

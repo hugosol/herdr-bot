@@ -1,14 +1,36 @@
 # Bot／Map 重构：交付与现场交接
 
-**本报告区分仓库转换、隔离回归、跨仓联调、原生专项和现场事实。** 仓库已交付首条 [创建map 资产与配置清单](workflow-migration-inventory.md)，并按用户本轮授权迁入 [GitHub 仓库拉取与探索](workflow-migration-inventory.md#github-仓库拉取与探索2026-11-27-选择性迁移)的新定义及启动输入调整；本轮追加创建bot-V2 和两条创建流程的公开身份文件。定义落盘不是用户迁移完成确认或业务验收。其余流程未选择不等于废弃，不以这份 Markdown 决定运行资格。
+**本报告区分仓库转换、隔离回归、跨仓联调、原生专项和现场事实。** 仓库已交付首条 [创建map 资产与配置清单](workflow-migration-inventory.md)，并按用户本轮授权迁入 [GitHub 仓库拉取与探索](workflow-migration-inventory.md#github-仓库拉取与探索2026-11-27-选择性迁移)的新定义及启动输入调整；后续迁入创建bot-V2、创建task-V2，并补齐创建流程的公开身份文件。定义落盘不是用户迁移完成确认或业务验收。其余流程未选择不等于废弃，不以这份 Markdown 决定运行资格。
 
-## 创建bot-V2 与创建map身份输出：本轮变更范围
+## 创建task-V2：选择性迁移
+
+按本轮确认迁入 create-task-v2.json、入口 Bot 和共享 create-task Bot；原位更新 Task 创建者 prompt，完整保存/读回及真实 ID 交付成为完成门槛。公开 created_task 与 created_bot，request 只定位真实 Task；Task、Skill 和引用资料提供稳定知识，不增加需求交接。身份、模型、Skill、Suite、节点策略和 backup 保持，其他未选流程不迁入。
+
+通用嵌套机制将父 Run 本次要求与调用节点委托组合为子 Run 本次要求，逐层传递；不读取后续对话、不变更文件输入。产品契约见 [Map 型节点与子 Run](workflow-runtime.md#map-型节点与子-run)，资产与共享范围见[迁移清单](workflow-migration-inventory.md#创建task-v2本轮选择性迁移)。下方各历史轮次结果不替代本次验证。
+
+最后一次代码与定义修改后，使用 `CARGO_TARGET_DIR=E:/Developer/myhub/herdr-bot/backend/target` 执行：
+
+```sh
+cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- nesting:: nested_retry:: create_migration::create_migration_shipped_task_v2_delivers_created_task_and_nested_bot_identity create_migration::selected_v2_delivers_request_to_both_nodes_and_returns_saved_bot_identity
+```
+
+结果 **16/16 通过**，执行 3.40 秒。覆盖子/孙 Run 输入持久化与实际节点提示词、空/单来源输入原文、嵌套 retry，以及发布创建task-V2 的真实 Task 保存/读回、定位 request、子图 created_bot 和父图两份身份文件交接；既有创建bot-V2 定向用例同批通过。受控宿主与隔离文件证明机制，不证明真实模型业务判断。原始输出为本会话 `local://7.log`。
+
+独立 Python/JSON Schema 校验通过：新 Map 与两个 Bot 共 3 个定义；Task 正文与确认稿一致，其他 Task 字段及对象不变；稳定 Map/Bot 身份和节点策略保持，子图输入输出 ID 对接有效；213 个 backup 文件与修改前 SHA-256 一致；提示词引用目标及章节存在。未运行全仓回归或真实模型验收。
+
+### 逐项提示词审阅
+
+用户逐项确认 11 处正文调整后统一落盘：创建bot-V2 的额外要求改为可选；需求对齐按目标及引用资料展开 grilling，并在对齐前读取四字段编写标准；删除 Skill 方法复述；父子身份材料只维护格式入口与身份含义；父图 Bot 摘要不再描述内部编排；Task 步骤与操作范围去重。涉及三个 Task 的 prompt、子图输入说明、两个入口 Bot 摘要和两份材料契约，接口、节点接线、身份、执行设置及批准策略保持不变。正文以实际定义为唯一权威，不维护平行确认稿。
+
+未执行真实创建业务、部署重启、chief 清理或 backup 删除。用户批准方案和正文不等于迁移完成签收或业务验收。
+
+## 创建bot-V2 与创建map身份输出：历史变更范围
 
 按本会话逐项确认，迁入创建bot-V2 的 Map 和三个 Bot，原位更新 W1/W2 及 Map 维度优化者的 Task.prompt。流程材料契约位于 `meta-data/workflow-maps/create-bot-v2/materials.md`；W2 与 Map 维度优化者共同读取 `docs/prompt-information-ownership.md`，不各自维护一份分层清单。
 
 V2 的 request 仅保留 type/ref，直接交给两个节点；W1 只交 bot_requirements，W2 公开交 created_bot 身份文件。创建map保留内部 outline/map/handoff，新增公开 created_map 身份文件。Bot ID 和 Map 文件名各按真实对象引用，不复制完整配置作为公开成果。
 
-本轮没有实现嵌套 Run 输入下传；用户明确留到两个上游流程迁移时处理。旧父流程、backup、运行记录和用户业务保持原状，不执行部署重启或真实创建业务。正文与接口批准不等于用户迁移完成确认，两个已转换对象的清单状态仍为“未开始”。本节下方的旧轮次结果是历史证据，不替代本轮定向检查。
+创建bot-V2 这一轮没有实现嵌套 Run 输入下传；用户明确留到上游迁移时处理，后续实现见上方创建task-V2 记录。旧父流程、backup、运行记录和用户业务保持原状，不执行部署重启或真实创建业务。正文与接口批准不等于用户迁移完成确认，两个已转换对象的清单状态仍为“未开始”。本节下方的旧轮次结果是历史证据，不替代本轮定向检查。
 
 ### 本轮定向检查
 

@@ -440,8 +440,9 @@ async fn multilevel_local_ids_bind_only_the_owning_run() {
     let s = Scenario::new().await;
     nested(&s, &s.manager_task, "OUTER");
     let maps = &s.config.scheduler.map_directory;
+    fs::write(&s.config.prompts_file, "nested_probe = 'rendered in the calling node only'\n").unwrap();
     fs::write(s.config.scheduler.bot_directory.join("leaf.json"), json!({"id":"leaf","name":"Leaf","when":"","description":"","input_rule":"","output_rule":"","map_file":"leaf.json"}).to_string()).unwrap();
-    fs::write(maps.join("work.json"), json!({"title":"Root","description":"","map_input_rule":{"files":[{"id":"outer","required":true}]},"nodes":{"A":{"title":"Call","bot_id":"nested","manager_task_id":s.manager_task,"input":"OUTER","zone":"node","blocked_by":[],"input_rule":[{"type":"run","id":"shared","input_id":"outer"}]}}}).to_string()).unwrap();
+    fs::write(maps.join("work.json"), json!({"title":"Root","description":"","map_input_rule":{"files":[{"id":"outer","required":true}]},"nodes":{"A":{"title":"Call","bot_id":"nested","manager_task_id":s.manager_task,"input":" \tOUTER ${nested_probe}\r\n  ","zone":"node","blocked_by":[],"input_rule":[{"type":"run","id":"shared","input_id":"outer"}]}}}).to_string()).unwrap();
     fs::write(maps.join("inner.json"), json!({"title":"Middle","description":"","map_input_rule":{"files":[{"id":"shared","required":true}]},"nodes":{"A":{"title":"Call leaf","bot_id":"leaf","manager_task_id":s.manager_task,"input":"MIDDLE","zone":"manager","blocked_by":[],"input_rule":[{"type":"run","id":"shared","input_id":"shared"}]}}}).to_string()).unwrap();
     fs::write(maps.join("leaf.json"), json!({"title":"Leaf","description":"","map_input_rule":{"files":[{"id":"shared","required":true}]},"nodes":{"A":{"title":"Consume","bot_id":"worker","input":"LEAF","zone":"node","blocked_by":[],"input_rule":[{"type":"run","id":"local","input_id":"shared"}]}}}).to_string()).unwrap();
     let mut children = Vec::new();
@@ -449,13 +450,18 @@ async fn multilevel_local_ids_bind_only_the_owning_run() {
         let path = s.data.path().join(file);
         fs::write(&path, body).unwrap();
         native(&s, "omp", root_session, "");
-        let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/runs", &json!({"managerTaskId":s.manager_task,"zone":"manager","userInput":"root","fileInputs":[{"id":"outer","path":path}]}).to_string()).await;
+        let root_input = " \t根要求 ${not-a-dictionary-key}\r\n\r\n第二行  ";
+        let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/runs", &json!({"managerTaskId":s.manager_task,"zone":"manager","userInput":root_input,"fileInputs":[{"id":"outer","path":path}]}).to_string()).await;
         assert_eq!(response.status, 201, "{}", response.body);
         native(&s, "omp", child_session, "node-zone");
         let parent = s.dispatch(root_session, &["A"]).await;
         let child_id = parent["snapshot"]["nodes"]["A"]["execution"]["childRunId"].as_str().unwrap();
         let child = detail(&s, child_id).await;
-        assert_eq!(child["run"]["mapInput"]["files"], json!([{"id":"shared","path":path}]));
+        let child_input = concat!(
+            "[父 Run 本次要求]\n \t根要求 ${not-a-dictionary-key}\r\n\r\n第二行  \n[/父 Run 本次要求]\n\n",
+            "[调用节点委托]\n \tOUTER ${nested_probe}\r\n  \n[/调用节点委托]",
+        );
+        assert_eq!(child["run"]["mapInput"], json!({"runInput":child_input,"files":[{"id":"shared","path":path}]}));
         assert_eq!(child["run"]["inputsReady"], false, "parent preparation does not attest the child's business scope");
         let calls = s.herdr.calls();
         let rejected = role_request(&s, "/api/workflow/manager/dispatch", json!({"sessionId":child_session,"nodes":["A"]}), 200).await;
@@ -465,14 +471,39 @@ async fn multilevel_local_ids_bind_only_the_owning_run() {
         native(&s, "omp", grand_session, "");
         let middle = s.dispatch(child_session, &["A"]).await;
         let grand_id = middle["snapshot"]["nodes"]["A"]["execution"]["childRunId"].as_str().unwrap();
-        assert_eq!(detail(&s, grand_id).await["run"]["mapInput"]["files"], json!([{"id":"shared","path":path}]));
+        let grand_input = format!("[父 Run 本次要求]\n{child_input}\n[/父 Run 本次要求]\n\n[调用节点委托]\nMIDDLE\n[/调用节点委托]");
+        assert_eq!(detail(&s, grand_id).await["run"]["mapInput"], json!({"runInput":grand_input,"files":[{"id":"shared","path":path}]}));
         native(&s, "omp", worker_session, "node-zone");
         let leaf = s.dispatch(grand_session, &["A"]).await;
+        assert_eq!(leaf["results"][0]["status"], "running", "{leaf}");
         assert_eq!(leaf["snapshot"]["nodes"]["A"]["execution"]["inputs"], json!([{"id":"local","path":path}]));
+        let calls = s.herdr.calls();
+        let prompt = common::prompt_body(calls.iter().rfind(|call| call["kind"] == "agent_prompt").unwrap());
+        assert!(prompt.contains(&format!("[Run background / runInput]\n{grand_input}\n[/Run background / runInput]")), "{prompt}");
         assert_eq!(fs::read_to_string(&path).unwrap(), body);
         children.push(child_id.to_owned());
     }
     assert_ne!(children[0], children[1]);
+}
+
+#[tokio::test]
+async fn nested_input_keeps_empty_and_single_source_bytes() {
+    let s = Scenario::new().await;
+    nested(&s, &s.manager_task, "");
+    let path = s.config.scheduler.map_directory.join("work.json");
+    let mut map: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let node_only = " \tOnly the node supplied input\r\n  ";
+    map["nodes"]["B"]["input"] = json!(node_only);
+    fs::write(path, map.to_string()).unwrap();
+    native(&s, "omp", "empty-input-root", "");
+    role_request(&s, "/api/scheduler/maps/work.json/runs", json!({"managerTaskId":s.manager_task,"zone":"manager","userInput":""}), 201).await;
+    for (node, session, expected) in [("A", "empty-input-child", ""), ("B", "node-only-input-child", node_only)] {
+        native(&s, "omp", session, "node-zone");
+        let launch = s.dispatch("empty-input-root", &[node]).await;
+        assert_eq!(launch["results"][0]["status"], "running", "{launch}");
+        let child_id = launch["snapshot"]["nodes"][node]["execution"]["childRunId"].as_str().unwrap();
+        assert_eq!(detail(&s, child_id).await["run"]["mapInput"], json!({"runInput":expected,"files":[]}));
+    }
 }
 
 // P04/P05/P06/P10/P21: independent launch literals for both hosts. A launcher
@@ -495,7 +526,8 @@ async fn nested_dispatch_uses_node_manager_business_zone_and_independent_runs() 
         assert_eq!(child["run"]["managerTaskId"], task);
         assert_eq!(child["run"]["managerZoneId"], "node");
         assert_eq!(child["run"]["zone"], json!(s.data.path().join("node-zone")));
-        assert_eq!(child["run"]["mapInput"]["runInput"], business);
+        let expected_input = format!("[父 Run 本次要求]\nMANAGER-USER-SECRET\n[/父 Run 本次要求]\n\n[调用节点委托]\n{business}\n[/调用节点委托]");
+        assert_eq!(child["run"]["mapInput"]["runInput"], expected_input);
         assert_eq!(child["run"]["mapInput"]["files"], json!([]));
         assert_eq!(child["run"]["parent"], json!({"runId":root["id"],"nodeId":"A","executionId":execution["id"]}));
         assert_eq!(child["run"]["manager"], execution["chat"]);

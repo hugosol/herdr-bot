@@ -3,7 +3,7 @@
   "group": "meta-map",
   "description": "为既有 Task、Map 或 TypeScript 脚本对齐需求并创建 Bot，交付已保存配置及其身份。",
   "map_input_rule": {
-    "description": "通过本次要求说明创建需求、约束、已有确认，以及参考资料路径与用途。",
+    "description": "根据 request 定位的目标及其引用资料创建 Bot；有额外创建要求、约束或参考资料时，通过本次要求提供。",
     "files": [
       {
         "id": "request",

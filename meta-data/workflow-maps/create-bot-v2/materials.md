@@ -21,11 +21,7 @@ W1 生成、W2 消费的 UTF-8 Markdown 需求交接文件，内容遵循「Bot 
 
 ## created_bot
 
-按本 Map 定义的 map_output_rule 中 created_bot 文件声明生成身份文件；格式权威位于同目录上一级的 create-bot-v2.json。
-
-Bot 保存并读回核对后，使用实际 Bot ID 生成文件，保存后核对其指向本次创建对象。阶段交付仍须满足 W2 的最终结果确认条件。
-
-文件交付失败时，如实报告已保存配置和未完成事项。身份文件用于定位正式配置，不冻结配置或证明目标业务运行通过。
+按同目录上一级 create-bot-v2.json 的 map_output_rule 中 created_bot 声明生成身份文件，指向本次实际创建的 Bot。身份文件用于定位，当前配置按该 ID 从服务读取。
 
 ## 材料写入授权
 

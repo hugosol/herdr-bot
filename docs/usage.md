@@ -585,6 +585,14 @@ Task 配置分为两组：
 
 原生会话文件和附属记录由 agent 管理，herdr-bot 不搬动文件或修改 agent 原生配置。发起 Chat 不保证新建原生对话；agent 自身的自动续接设置不属于 herdr-bot 的功能。
 
+### Task 公开创建接口
+
+创建 normal Task 前，用 `GET /api/tasks` 读取已有 `tasks` 与当前 `options`，按本次需求选择合法执行配置。
+
+`POST /api/tasks` 接收 `name`、`chatName`、`agent`、`taskType`、`model`、`thinking`、`skill`、`prompt`、`suite`，可选 `group`；创建普通 Task 时 `taskType` 为 `normal`，无初始 Skill 或 Suite 时对应值为 null。ID 由服务分配，不提交 `id` 或已退役的 `extensions`。字段校验以当前 `backend/src/tasks/mod.rs` 的 `TaskInput` 为准。
+
+创建成功返回保存后的 `tasks/options`，不是单个 Task。核实新增对象的真实 ID，再以 `GET /api/tasks/{URL编码ID}` 从响应 `task` 完整读回；配置由服务持久化，不绕过接口写底层配置文件。此接口只创建定义，不启动 Chat 或执行目标业务。
+
 ### 仅修改 Task.prompt
 
 仅修改既有 Task.prompt 时，使用调用方明确提供的配置服务，结合本文“Task 类型与固定角色扩展”“Task 单 Suite 选择与引用保护”核实：

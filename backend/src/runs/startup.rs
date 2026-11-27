@@ -265,12 +265,29 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
     value
 }
 
+fn child_run_input(parent_input: &str, node_input: &str) -> String {
+    match (parent_input, node_input) {
+        ("", input) | (input, "") => input.to_owned(),
+        (parent_input, node_input) => {
+            // Keep both texts literal; only the source boundaries are generated.
+            let parts = ["[父 Run 本次要求]\n", parent_input, "\n[/父 Run 本次要求]\n\n[调用节点委托]\n", node_input, "\n[/调用节点委托]"];
+            let mut input = String::with_capacity(parts.iter().map(|part| part.len()).sum());
+            for part in parts {
+                input.push_str(part);
+            }
+            input
+        }
+    }
+}
+
 async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &str, target: &crate::scheduler::DispatchTarget<'_>, effects: &mut Effects, stage: &mut &'static str) -> Result<Run, String> {
     *stage = "child-preflight";
     let zone_id = target.zone_id.clone();
     let execution = parent.nodes[node_id].execution.as_ref().ok_or("缺少父 execution")?;
     let input = crate::runs::preflight::RunPreflightRequest {
-        manager_task_id: target.task.as_ref().ok_or("子 Run 缺少 manager Task")?.id.clone(), zone: zone_id.clone(), user_input: target.input.to_owned(),
+        manager_task_id: target.task.as_ref().ok_or("子 Run 缺少 manager Task")?.id.clone(),
+        zone: zone_id.clone(),
+        user_input: child_run_input(&parent.map_input.run_input, target.input),
         file_inputs: execution.inputs.clone().ok_or("缺少父执行输入")?,
         github_exploration: None,
     };
