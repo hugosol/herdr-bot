@@ -202,8 +202,8 @@ async fn execution_rules_remain_frozen_on_retry_and_change_only_in_a_new_run() {
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"new-node"},"native_cwd":s.data.path().join("node-zone")}));
     let dispatch = s.dispatch("new-manager", &["A"]).await;
     let current = &dispatch["snapshot"]["nodes"]["A"]["execution"];
-    assert_eq!(current["inputRule"], content["input_rule"]);
-    assert_eq!(current["outputRule"], content["output_rule"]);
+    assert_eq!(current["inputRule"], json!([{"id":"replacement","type":"file","path":"replacement.md"}]));
+    assert_eq!(current["outputRule"], json!([{"id":"new"}]));
     assert_eq!(current["inputs"], json!([{"id":"replacement","path":s.data.path().join("replacement.md")}]));
     submit(&s, json!({"sessionId":"new-node","body":"No inherited declaration","canComplete":true,"outputs":[{"id":"old","path":"C:/old.md"}]}), 400).await;
     submit(&s, json!({"sessionId":"new-node","body":"Replacement output","canComplete":true,"outputs":[{"id":"new","path":"Z:/new/result.md"}]}), 200).await;

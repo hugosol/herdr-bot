@@ -6,7 +6,7 @@ import { RunCurrentView } from '../../src/workflow/RunCurrentView'
 
 const current: CurrentDefinition = { map: { title: 'Dynamic map', description: '', nodes: { A: { title: 'Worker', bot_id: 'worker', input: '', blocked_by: [], zone: { type: 'dynamic' } } } }, mapError: null, bots: [], tasks: [], catalogErrors: [] }
 function runWith(execution: Execution | null): Run {
-  return { id: 'run', map: 'map.json', createdAt: 1, managerTaskId: 'manager', zone: 'C:/manager', workspaceName: 'workspace', mapInput: { runInput: '', files: [] }, status: 'running', manager: null, nodes: { A: { status: execution ? 'running' : 'pending', execution, failure: null, completion: null, previousExecutions: [] } } }
+  return { id: 'run', map: 'map.json', createdAt: 1, managerTaskId: 'manager', zone: 'C:/manager', workspaceName: 'workspace', mapInput: { runInput: '', files: [] }, mapOutput: { files: [] }, status: 'running', manager: null, nodes: { A: { status: execution ? 'running' : 'pending', execution, failure: null, completion: null, previousExecutions: [] } } }
 }
 const files = { autoApproved: true, approved: false, approvalSource: null, id: 'execution', zoneId: 'team/selected', zone: 'C:/frozen-actual-directory', inputRule: [], outputRule: [], inputs: [] }
 const executions: Execution[] = [

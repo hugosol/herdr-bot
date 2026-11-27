@@ -110,7 +110,7 @@ pub(crate) async fn manager_complete(
 pub(crate) async fn manager_finish(
     State(state): State<AppState>,
     _: LocalRunSource,
-    input: CommandJson<runs::StatusRequest, input::Finish>,
+    input: CommandJson<runs::completion::FinishRequest, input::Finish>,
 ) -> RunHttpResult {
     runs::completion::manager_finish(state, input.value).await.map(RunResponse).map_err(HttpError)
 }

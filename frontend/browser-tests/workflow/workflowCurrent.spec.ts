@@ -37,7 +37,7 @@ async function currentFixture() {
   expect(taskResponse.status).toBe(200)
   const taskId = (await taskResponse.json()).tasks[0].id
   fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '当前共享 Bot', when: '', description: '', input_rule: '', output_rule: '', task_id: taskId }))
-  const definition = { title: '当前 Beta Map', description: '', map_input_rule: { files: [{ id: 'brief', required: true }] }, nodes: {
+  const definition = { title: '当前 Beta Map', description: '', map_input_rule: { files: [{ id: 'brief', required: true }] }, map_output_rule: { files: [{ id: 'frozen-public-result' }] }, nodes: {
     A: { title: '交接工作', bot_id: 'worker', zone: 'test/definition-zone', input: '当前定义输入 A', blocked_by: [], output_rule: [{ id: 'material' }] },
     B: { title: '失败工作', bot_id: 'worker', zone: 'test/definition-zone', input: '当前定义输入 B', blocked_by: ['A'] },
     C: { title: '依赖工作', bot_id: 'worker', zone: 'test/definition-zone', input: '当前定义输入 C', blocked_by: ['B'] },
@@ -81,7 +81,7 @@ async function currentFixture() {
 // real graph selection and inspect separate visible definition/execution facts.
 test('P51.01 P52.01 current Map graph and node details distinguish execution facts from Chat status @time-contract', async ({ page }, info) => {
   const { server, root, run, mapPath, definition } = await currentFixture()
-  fs.writeFileSync(mapPath, JSON.stringify({ ...definition, title: 'UNRELATED CURRENT MAP', nodes: { ...definition.nodes, A: { ...definition.nodes.A, title: 'REPLACED SOURCE NODE' } } }))
+  fs.writeFileSync(mapPath, JSON.stringify({ ...definition, title: 'UNRELATED CURRENT MAP', map_output_rule: { files: [{ id: 'live-only-result' }] }, nodes: { ...definition.nodes, A: { ...definition.nodes.A, title: 'REPLACED SOURCE NODE' } } }))
   const persisted = await (await page.request.get(`${server.baseURL}/api/workflow/runs/new-run`)).json()
   expect(persisted.run.mapInput).toEqual({ runInput: 'USER INPUT new-run', files: run.mapInput.files })
   const calls = server.herdrCalls()
@@ -154,6 +154,25 @@ test('P51.01 P52.01 current Map graph and node details distinguish execution fac
   expect(['run.json', 'history.jsonl', 'messages.jsonl'].map(file => fs.readFileSync(path.join(root, 'new-run', file), 'utf8'))).toEqual(records)
   await page.screenshot({ path: info.outputPath('current-graph-details.png'), fullPage: true })
   fs.writeFileSync(info.outputPath('no-implicit-execution.json'), JSON.stringify({ observationMs: 750, recordsBefore: records, recordsAfter: ['run.json', 'history.jsonl', 'messages.jsonl'].map(file => fs.readFileSync(path.join(root, 'new-run', file), 'utf8')), callsBefore: calls, callsAfter: server.herdrCalls() }, null, 2))
+
+  // P32 (S2): load the saved result, not the current source Map rule or a report address.
+  const release = path.join(root, 'published-result.txt')
+  fs.writeFileSync(release, 'PUBLIC OUTPUT BODY NOT RENDERED')
+  const published = { files: [{ id: 'frozen-public-result', path: release }] }
+  const saved = { ...run, status: 'completed', nodes: Object.fromEntries(Object.keys(run.nodes).map(id => [id, { ...run.nodes[id], status: 'completed' }])), finished: { id: 'finish-browser-fixture', at: 6000, actor: run.manager }, mapOutput: published }
+  const savedRun = path.join(root, 'new-run/run.json')
+  fs.writeFileSync(savedRun, JSON.stringify(saved))
+  const beforeRead = fs.readFileSync(savedRun, 'utf8')
+  await page.getByRole('button', { name: '刷新 Run', exact: true }).click()
+  const output = page.getByRole('region', { name: 'Run 公开文件成果', exact: true })
+  await expect(output).toContainText('frozen-public-result')
+  await expect(output).toContainText(release)
+  await expect(output).not.toContainText(/live-only-result|PUBLIC OUTPUT BODY NOT RENDERED/)
+  const reread = await (await page.request.get(`${server.baseURL}/api/workflow/runs/new-run`)).json()
+  expect(reread.run.mapOutput).toEqual(published)
+  expect(fs.readFileSync(savedRun, 'utf8')).toBe(beforeRead)
+  expect(server.herdrCalls()).toEqual(calls)
+  await page.screenshot({ path: info.outputPath('saved-public-output.png'), fullPage: true })
 })
 
 // P13 / S1,S2,S4: the source remains valid while the Run copy fails. A

@@ -31,6 +31,10 @@ fn assert_no_node_role(s: &Scenario, offset: usize, host: &str) {
 async fn end_node_waits_for_every_node_then_explicit_finish_preserves_open_running_chat() {
     let s = Scenario::new().await;
     end_map(&s, true);
+    let map_path = s.config.scheduler.map_directory.join("work.json");
+    let mut definition: Value = serde_json::from_slice(&fs::read(&map_path).unwrap()).unwrap();
+    definition["map_output_rule"] = json!({"files":[{"id":"release"}]});
+    fs::write(&map_path, definition.to_string()).unwrap();
     let started = s.start("end-manager").await;
     let blocked = s.dispatch("end-manager", &["end"]).await;
     assert_eq!(blocked["results"][0]["status"], "rejected");
@@ -70,7 +74,17 @@ async fn end_node_waits_for_every_node_then_explicit_finish_preserves_open_runni
     let approval = post_json_over_tcp(s.server.addr(), "/api/workflow/node/approve", &json!({"sessionId":"end-chat","executionId":execution["id"],"source":"manual"}).to_string()).await;
     assert_eq!(approval.status, 403, "{}", approval.body);
     action(&s, "end-manager", "complete", json!({"nodeId":"end","reason":"Not a workflow completion"}), 409).await;
-    let finished = action(&s, "end-manager", "finish", json!({}), 200).await;
+    // P21 (S1/S4): issuing the handoff is not a substitute for the required file.
+    let rejected = action(&s, "end-manager", "finish", json!({}), 409).await;
+    assert_eq!(rejected["code"], "output-missing");
+    assert_eq!(rejected["snapshot"]["status"], "running");
+    assert!(rejected["snapshot"]["finished"].is_null());
+    let release = s.data.path().join("prepared-before-finish.txt");
+    fs::write(&release, b"USER-HANDOFF-RELEASE").unwrap();
+    let output = json!({"files":[{"id":"release","path":release}]});
+    let finished = action(&s, "end-manager", "finish", json!({"mapOutput":output}), 200).await;
+    assert_eq!(finished["snapshot"]["mapOutput"], output);
+    assert_eq!(fs::read(release).unwrap(), b"USER-HANDOFF-RELEASE");
     assert_eq!(finished["snapshot"]["status"], "completed");
     assert_eq!(finished["snapshot"]["finished"]["reason"], "handed-to-user");
     assert_eq!(finished["snapshot"]["nodes"]["end"]["status"], "running");
@@ -79,6 +93,154 @@ async fn end_node_waits_for_every_node_then_explicit_finish_preserves_open_runni
     let persisted: Value = serde_json::from_slice(&fs::read(s.config.scheduler.run_directory.join(started["id"].as_str().unwrap()).join("run.json")).unwrap()).unwrap();
     assert_eq!(persisted, finished["snapshot"]);
     assert!(!s.herdr.calls().iter().any(|call| call["kind"] == "tab_close"));
+}
+
+async fn ready_to_finish(s: &Scenario, rule: Option<Value>) -> Value {
+    end_map(s, false);
+    if let Some(rule) = rule {
+        let path = s.config.scheduler.map_directory.join("work.json");
+        let mut definition: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        definition["map_output_rule"] = rule;
+        fs::write(path, definition.to_string()).unwrap();
+    }
+    let started = s.start("public-finish-manager").await;
+    native(s, "omp", "public-finish-end");
+    assert_eq!(s.dispatch("public-finish-manager", &["end"]).await["canFinish"], true);
+    started
+}
+
+async fn finish_detail(s: &Scenario, id: &str) -> Value {
+    let response = get_over_tcp(s.server.addr(), &format!("/api/workflow/runs/{id}")).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    serde_json::from_str::<Value>(&response.body).unwrap()["run"].clone()
+}
+
+// P15/P16/P17 (S1/S4): with the graph already finishable, break exactly
+// one file condition at a time. Then submit valid files and a different valid
+// set. A terminal rewrite or any validation bypass changes public facts/bytes.
+#[tokio::test]
+async fn public_finish_rejects_each_bad_binding_and_preserves_first_delivery() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let s = Scenario::new().await;
+    let started = ready_to_finish(&s, Some(json!({"files":[{"id":"report"},{"id":"receipt"}]}))).await;
+    let id = started["id"].as_str().unwrap();
+    let root = s.config.scheduler.run_directory.join(id);
+    let paths = ["run.json", "history.jsonl", "messages.jsonl"].map(|name| root.join(name));
+    let before = paths.each_ref().map(|path| fs::read(path).unwrap());
+    let current = finish_detail(&s, id).await;
+    let calls = s.herdr.calls();
+    let report = s.data.path().join("written-report.txt");
+    let receipt = s.data.path().join("written-receipt.txt");
+    let alternate = s.data.path().join("alternate.txt");
+    let denied = s.data.path().join("denied.txt");
+    for (path, bytes) in [(&report,"REPORT-031"),(&receipt,"RECEIPT-041"),(&alternate,"ALTERNATE-051"),(&denied,"EXISTS-BUT-LOCKED")] {
+        fs::write(path, bytes).unwrap();
+    }
+    let held = fs::OpenOptions::new().read(true).share_mode(0).open(&denied).unwrap();
+    let correct = json!({"id":"report","path":report});
+    let good_receipt = json!({"id":"receipt","path":receipt});
+    for (code, files) in [
+        ("invalid-output-id", json!([correct,good_receipt,correct])),
+        ("undeclared-output", json!([correct,good_receipt,{"id":"foreign","path":receipt}])),
+        ("output-missing", json!([correct])),
+        ("invalid-output-path", json!([correct,{"id":"receipt","path":"relative.txt"}])),
+        ("output-unreadable", json!([correct,{"id":"receipt","path":s.data.path()}])),
+        ("output-unreadable", json!([correct,{"id":"receipt","path":s.data.path().join("not-written.txt")}])),
+        ("output-unreadable", json!([correct,{"id":"receipt","path":denied}])),
+    ] {
+        let rejected = action(&s, "public-finish-manager", "finish", json!({"mapOutput":{"files":files}}), 409).await;
+        assert_eq!(rejected["code"], code);
+        assert_eq!(rejected["changed"], false);
+        assert_eq!(rejected["snapshot"], current);
+        assert!(rejected["snapshot"]["finished"].is_null());
+        assert_eq!(finish_detail(&s, id).await, current);
+        assert_eq!(paths.each_ref().map(|path| fs::read(path).unwrap()), before);
+    }
+    drop(held);
+    for invalid in [Value::Null, json!([[correct,good_receipt]]), json!({"files":[["report",report]]}), json!({"files":[],"unexpected":true})] {
+        action(&s, "public-finish-manager", "finish", json!({"mapOutput":invalid}), 400).await;
+        assert_eq!(paths.each_ref().map(|path| fs::read(path).unwrap()), before);
+    }
+    let output = json!({"files":[correct,good_receipt]});
+    action(&s, "public-finish-end", "finish", json!({"mapOutput":output}), 403).await;
+    let finished = action(&s, "public-finish-manager", "finish", json!({"mapOutput":output}), 200).await;
+    assert_eq!(finished["snapshot"]["mapOutput"], output);
+    assert_eq!(finished["snapshot"]["status"], "completed");
+    assert_eq!(finished["snapshot"]["finished"]["actor"]["sessionId"], "public-finish-manager");
+    let saved = paths.each_ref().map(|path| fs::read(path).unwrap());
+    let history = common::read_json_lines(&paths[1]);
+    assert_eq!(history.iter().filter(|event| event["action"] == "finish").count(), 1);
+    assert_eq!(history.last().unwrap()["id"], finished["snapshot"]["finished"]["id"]);
+    let repeated = action(&s, "public-finish-manager", "finish", json!({"mapOutput":{"files":[{"id":"report","path":alternate},good_receipt]}}), 200).await;
+    assert_eq!(repeated["changed"], false);
+    assert_eq!(finish_detail(&s, id).await, finished["snapshot"]);
+    assert_eq!(repeated["snapshot"], finished["snapshot"]);
+    assert_eq!(paths.each_ref().map(|path| fs::read(path).unwrap()), saved);
+    assert_eq!(fs::read(report).unwrap(), b"REPORT-031");
+    assert_eq!(fs::read(receipt).unwrap(), b"RECEIPT-041");
+    assert_eq!(fs::read(alternate).unwrap(), b"ALTERNATE-051");
+    assert_eq!(s.herdr.calls(), calls);
+}
+
+#[tokio::test]
+async fn public_finish_without_file_rule_accepts_no_output_parameter() {
+    let s = Scenario::new().await;
+    let started = ready_to_finish(&s, None).await;
+    let id = started["id"].as_str().unwrap();
+    let calls = s.herdr.calls();
+    let finished = action(&s, "public-finish-manager", "finish", json!({}), 200).await;
+    assert_eq!(finished["snapshot"]["status"], "completed");
+    assert_eq!(finished["snapshot"]["mapOutput"], json!({"files":[]}));
+    assert_eq!(finish_detail(&s, id).await, finished["snapshot"]);
+    let saved = fs::read(s.config.scheduler.run_directory.join(id).join("run.json")).unwrap();
+    assert_eq!(serde_json::from_slice::<Value>(&saved).unwrap(), finished["snapshot"]);
+    assert_eq!(s.herdr.calls(), calls);
+}
+
+// P29 (S1/S4): deny a real replace, then deny only the independent history
+// append. Only the latter may durably publish the finish/output fact.
+#[tokio::test]
+async fn public_finish_preserves_truth_across_current_save_and_history_failures() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let s = Scenario::new().await;
+    let started = ready_to_finish(&s, Some(json!({"files":[{"id":"release"}]}))).await;
+    let id = started["id"].as_str().unwrap();
+    let root = s.config.scheduler.run_directory.join(id);
+    let state = root.join("run.json");
+    let history = root.join("history.jsonl");
+    let saved_state = fs::read(&state).unwrap();
+    let saved_history = fs::read(&history).unwrap();
+    let release = s.data.path().join("pre-existing-effect.txt");
+    fs::write(&release, b"PRE-EXISTING-PUBLIC-EFFECT").unwrap();
+    let output = json!({"files":[{"id":"release","path":release}]});
+    let calls = s.herdr.calls();
+    let held = fs::OpenOptions::new().read(true).share_mode(3).open(&state).unwrap();
+    let failed = action(&s, "public-finish-manager", "finish", json!({"mapOutput":output}), 500).await;
+    assert_eq!(failed["code"], "finish-failed");
+    assert_eq!(finish_detail(&s, id).await["status"], "running");
+    assert_eq!(fs::read(&state).unwrap(), saved_state);
+    assert_eq!(fs::read(&history).unwrap(), saved_history);
+    assert_eq!(fs::read(&release).unwrap(), b"PRE-EXISTING-PUBLIC-EFFECT");
+    drop(held);
+    let held = fs::OpenOptions::new().read(true).share_mode(1).open(&history).unwrap();
+    let partial = action(&s, "public-finish-manager", "finish", json!({"mapOutput":output}), 200).await;
+    assert_eq!(partial["code"], "history-append-failed");
+    assert_eq!(partial["stateCommitted"], true);
+    assert_eq!(partial["changed"], true);
+    assert!(partial["historyError"].as_str().unwrap().contains("history.jsonl"));
+    let detail = finish_detail(&s, id).await;
+    assert_eq!(detail["status"], "completed");
+    assert_eq!(detail["mapOutput"], output);
+    assert_eq!(detail, partial["snapshot"]);
+    assert_eq!(serde_json::from_slice::<Value>(&fs::read(state).unwrap()).unwrap(), detail);
+    assert_eq!(fs::read(&history).unwrap(), saved_history);
+    drop(held);
+    let repeated = action(&s, "public-finish-manager", "finish", json!({}), 200).await;
+    assert_eq!(repeated["changed"], false);
+    assert_eq!(repeated["snapshot"], detail);
+    assert_eq!(fs::read(history).unwrap(), saved_history);
+    assert_eq!(fs::read(release).unwrap(), b"PRE-EXISTING-PUBLIC-EFFECT");
+    assert_eq!(s.herdr.calls(), calls);
 }
 
 #[tokio::test]

@@ -38,6 +38,7 @@ async fn historical_run_rename_trims_preserves_records_and_survives_restart() {
     expected["name"] = json!("历史 Run");
     expected["zoneBindings"] = json!({});
     expected["inputsReady"] = json!(false);
+    expected["mapOutput"] = json!({"files":[]});
     assert_eq!(renamed["run"], expected);
     assert_eq!(renamed["managed"], false);
     assert_eq!(renamed["reports"], json!([]));

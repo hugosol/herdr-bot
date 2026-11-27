@@ -28,7 +28,7 @@ async fn edited_source_map_cannot_change_prepare_dispatch_retry_or_finish() {
     let source = s.config.scheduler.map_directory.join("work.json");
     let old = json!({"title":"Original route","description":"Original graph",
         "map_input_rule":{"files":[{"id":"old-brief","required":true}]},
-        "map_output_rule":{"description":"Hand the old Chat to the caller"},
+        "map_output_rule":{"description":"Hand the old Chat to the caller","files":[{"id":"old-result"}]},
         "nodes":{
             "A":{"title":"Original worker","bot_id":"worker","input":"ORIGINAL-WORK","zone":"manager","blocked_by":[],
                 "input_rule":[{"id":"source","type":"run","input_id":"old-brief"}]},
@@ -83,7 +83,17 @@ async fn edited_source_map_cannot_change_prepare_dispatch_retry_or_finish() {
     native(&s, "frozen-handoff");
     let handoff = manager_action(&s, "dispatch", json!({"sessionId":"frozen-original","nodes":["B"]}), 200).await;
     assert_eq!(handoff["snapshot"]["nodes"]["B"]["execution"]["endNode"], true);
-    let finish = manager_action(&s, "finish", json!({"sessionId":"frozen-original"}), 200).await;
+    let old_result = s.data.path().join("original-delivery.txt");
+    let new_result = s.data.path().join("replacement-delivery.txt");
+    fs::write(&old_result, b"ORIGINAL-RESULT").unwrap();
+    fs::write(&new_result, b"REPLACEMENT-RESULT").unwrap();
+    let old_output = json!({"files":[{"id":"old-result","path":old_result}]});
+    let new_output = json!({"files":[{"id":"new-result","path":new_result}]});
+    let wrong = manager_action(&s, "finish", json!({"sessionId":"frozen-original","mapOutput":new_output}), 409).await;
+    assert_eq!(wrong["code"], "undeclared-output");
+    assert!(wrong["snapshot"]["finished"].is_null());
+    let finish = manager_action(&s, "finish", json!({"sessionId":"frozen-original","mapOutput":old_output}), 200).await;
+    assert_eq!(finish["snapshot"]["mapOutput"], old_output);
     assert_eq!(finish["snapshot"]["status"], "completed");
     assert_eq!(finish["snapshot"]["finished"]["reason"], "handed-to-user");
     assert_eq!(fs::read(&frozen).unwrap(), old_bytes.as_bytes());
@@ -97,6 +107,22 @@ async fn edited_source_map_cannot_change_prepare_dispatch_retry_or_finish() {
     assert!(ready["snapshot"]["nodes"].get("B").is_none());
     let replacement_copy = s.config.scheduler.run_directory.join(replacement["id"].as_str().unwrap()).join("map.json");
     assert_eq!(serde_json::from_slice::<Value>(&fs::read(replacement_copy).unwrap()).unwrap(), new);
+    for (node, session) in [("C", "frozen-new-c"), ("A", "frozen-new-a")] {
+        native(&s, session);
+        let dispatched = manager_action(&s, "dispatch", json!({"sessionId":"frozen-replacement","nodes":[node]}), 200).await;
+        assert_eq!(dispatched["results"][0]["status"], "running");
+        approve_execution(&s, session).await;
+        submit_report(&s, session, "Replacement work accepted", true).await;
+        manager_action(&s, "complete", json!({"sessionId":"frozen-replacement","nodeId":node,"reason":"Reviewed replacement work"}), 200).await;
+    }
+    let wrong = manager_action(&s, "finish", json!({"sessionId":"frozen-replacement","mapOutput":old_output}), 409).await;
+    assert_eq!(wrong["code"], "undeclared-output");
+    assert!(wrong["snapshot"]["finished"].is_null());
+    let newer = manager_action(&s, "finish", json!({"sessionId":"frozen-replacement","mapOutput":new_output}), 200).await;
+    assert_eq!(newer["snapshot"]["mapOutput"], new_output);
+    assert_eq!(newer["snapshot"]["status"], "completed");
+    assert_eq!(fs::read(old_result).unwrap(), b"ORIGINAL-RESULT");
+    assert_eq!(fs::read(new_result).unwrap(), b"REPLACEMENT-RESULT");
 }
 
 // P13 / S1,S4: a still-legitimate source would mask either failure if any

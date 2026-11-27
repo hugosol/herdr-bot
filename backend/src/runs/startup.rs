@@ -281,6 +281,7 @@ async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &
         zone_bindings: { let mut bindings = checked.zone_bindings; bindings.insert(zone_id, target.zone.clone()); bindings },
         workspace_name: parent.workspace_name.clone(),
         map_input: MapInput { run_input: input.user_input, files: input.file_inputs },
+        map_output: MapOutput::default(),
         inputs_ready: false, manager: None, status: "running".into(), finished: None,
         nodes: checked.map.nodes.into_keys().map(|id| (id, NodeState { status: "pending".into(), execution: None, failure: None, completion: None, auto_close_failure: None, previous_executions: Vec::new() })).collect(),
     };
