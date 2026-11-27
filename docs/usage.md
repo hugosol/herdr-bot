@@ -18,7 +18,7 @@
 
 服务 TOML 的 `prompts_file` 默认 `prompts.local.toml`，相对服务配置目录。将 [`prompts.example.toml`](../prompts.example.toml) 复制为本机文件并填写实际路径和 API URL，不覆盖已有配置。词典只为提示词提供参考信息，不解析程序路径、不设置执行目录，也不修改 Toolkit 扩展的实际连接配置。不要写入不应暴露给 agent 的密钥。
 
-- Task 固定 prompt、Bot 的 `when`、`description`、`input_rule`、`output_rule`、Map 的 `description` 和 node 的 `input` 保存 `${key}` 原文。系统按需使用这些定义字段时读取最新词典，仅替换一次，不递归解释词典值。`$${key}` 输出字面量 `${key}`；临时输入、Run 本次要求、报告和 agent 产物不替换。改词典不用重启。
+- Task 固定 prompt、Bot 的 `when`、`description`、`input_rule`、`output_rule`、Map 的 `description` 和 node 的 `input` 保存 `${key}` 原文。系统装配每条初始消息时读取一份最新词典快照，同条消息的 Task 固定设定、节点委托及词典说明共用该快照；仅替换一次，不递归解释词典值。`$${key}` 输出字面量 `${key}`；临时输入、Run 本次要求、报告和 agent 产物不替换。改词典不用重启。
 - agent 直接读定义仍会看到标签。只有替换前的 Task 固定 prompt 含未转义、完整闭合的 `${key}` 时，系统发起的 Chat（含流程派发）才收到词典绝对路径和读取说明。其他消息段、替换值、转义或未闭合标签不触发说明。系统不会改写原定义或自动注入 Bot 能力摘要。
 - 词典不完整时允许保存定义。发送时遇到未知标签会报告字段和标签并停止发送。缺失文件视为空词典；非法 TOML 或不可读文件报错，不猜值。
 
@@ -175,7 +175,7 @@ Task 型 Bot 委派使用公开 HTTP：
 
 Map 型 Bot 使用同一组委派 HTTP 操作，不把它转换成没有 Run 的 manager Chat：
 
-- 预览请求明确提供 `sessionId`、Map 型 `botId`、本次业务 `input`、manager 的 `zoneId`、`managerTaskId` 和 `materials: [{id, zoneId, path}]`。manager 必须是 manager 类型 Task，不能省略或从名称猜测；Task 型 Bot 则不接受 `managerTaskId`。材料 ID 对应目标 Map 的 `input_files`，必需项必须齐备，可选项可以不提供，不接受未声明的材料 ID。文件解析及预检复用既有 zone／Run 输入规则。
+- 预览请求明确提供 `sessionId`、Map 型 `botId`、本次业务 `input`、manager 的 `zoneId`、`managerTaskId` 和 `materials: [{id, zoneId, path}]`。manager 必须是 manager 类型 Task，不能省略或从名称猜测；Task 型 Bot 则不接受 `managerTaskId`。材料 ID 对应目标 Map 的 `map_input_rule.files`，必需项必须齐备，可选项可以不提供，不接受未声明的材料 ID。文件解析及预检复用既有 zone／Run 输入规则。
 - `facts.task` 是明确选择的 manager，`facts.map.file` 是 Bot 实际引用的 Map，`facts.map.definitions` 包含所选 Map／嵌套 Map／Bot 定义，`tasks`、`zoneBindings`、`directMaterials` 展示内部执行预设、位置和直接材料。`facts.prompt` 是完整、已组装的 manager 初始输入。预览不创建 Run 或 Chat；必须完整展示后取得本次原生批准。
 - 批准后提交仍只含 `{sessionId, previewId}`。重新检查所选定义闭包及提示词词典解析后的业务含义、manager、内部 Task／zone、材料绑定及材料当前字节；变化或失效返回 `409 delegation-preview-stale`，保留原因并要求重新预览确认，既不悄悄执行更新后的工作，也不重试启动。未关联的定义改动不要求重新确认。这个检查不冻结执行后的文件，之后的改动仍由实际执行者观察。
 - Map 提交复用既有 Run 发起协议，完成启动返回 `201` 的 Run detail（`id`、`run` 等），不是 Task 的 `202` Chat 轮询回执。通过 `GET /api/workflow/runs/{id}` 读取运行事实；启动失败保持既有 `500`、`startupError`／`readError` 和真实外部效果，不声称回滚。Run 记录初始化失败时不启动 manager。

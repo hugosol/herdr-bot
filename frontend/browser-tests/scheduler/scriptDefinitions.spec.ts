@@ -225,7 +225,7 @@ test(`P30 ${capability} preflight accepts available materials and explicitly rej
   fs.writeFileSync(botFile, JSON.stringify(bot))
   fs.writeFileSync(path.join(maps, 'material-target.json'), JSON.stringify({ title: '不执行的材料目标', description: '', nodes: {} }))
   const inputIds = capability === 'create-blank-bot.ts' ? ['request'] : ['baseline', 'when_text', 'description_text', 'input_rule_text', 'output_rule_text']
-  const map = { title: '脚本真实预检', description: '', input_files: inputIds.map(id => ({ id, required: true })), nodes: { script: { title: '预检文件业务', bot_id: bot.id, input: '', zone: 'test/script', blocked_by: [], input_rule: inputIds.map(id => ({ id, type: 'run', input_id: id })), output_rule: [{ id: capability === 'create-blank-bot.ts' ? 'baseline' : 'saved' }, { id: 'handoff' }] } } }
+  const map = { title: '脚本真实预检', description: '', map_input_rule: { files: inputIds.map(id => ({ id, required: true })) }, nodes: { script: { title: '预检文件业务', bot_id: bot.id, input: '', zone: 'test/script', blocked_by: [], input_rule: inputIds.map(id => ({ id, type: 'run', input_id: id })), output_rule: [{ id: capability === 'create-blank-bot.ts' ? 'baseline' : 'saved' }, { id: 'handoff' }] } } }
   const mapFile = path.join(maps, 'script-preflight.json')
   fs.writeFileSync(mapFile, JSON.stringify(map))
   const request = { schema_version: 1, kind: 'request', target: { type: 'map', map_file: 'material-target.json' }, bot: { id: 'preflight-target', name: '预检保存目标' }, requirements: '仅创建空白能力，不执行目标', constraints: [], non_goals: [], resource_limits: [] }

@@ -31,7 +31,7 @@
 
 Run 仅有 running、paused、completed；node 仅有 pending、running、failed、completed。ready、blocked 和 canFinish 从当前事实与当前定义派生，不保存第二套生命周期。completed 表示结果可交接并满足依赖，不表示 Chat 退出。详细准入见[批准动作矩阵](workflow-runtime.md#角色责任与批准动作矩阵)。
 
-- 启动整图预检必须通过；必需文件暂缺不阻止启动管理者，已提供的无效文件仍拒绝。新 Run 从 inputsReady=false 开始，管理者须先按 input_requirements 的非文件总体要求与各项 input_files[].description 核实全部输入、对话澄清并通过 prepare_inputs 确认，之后才允许 dispatch/retry；嵌套子 Run 同样适用。Run 文件绑定可经管理者整批替换，已派发的 execution 输入仍冻结；保存定义则允许外部绑定未完善。空图可保存但不能启动。只支持当前唯一格式；zone 与文件引用升级使用显式离线迁移，不做运行时旧格式兼容或角色猜测。
+- 启动整图预检必须通过；必需文件暂缺不阻止启动管理者，已提供的无效文件仍拒绝。新 Run 从 inputsReady=false 开始，管理者须先按 map_input_rule.description 的非文件总体要求与各项 map_input_rule.files[].description 核实全部输入、对话澄清并通过 prepare_inputs 确认，之后才允许 dispatch/retry；嵌套子 Run 同样适用。Run 文件绑定可经管理者整批替换，已派发的 execution 输入仍冻结；保存定义则允许外部绑定未完善。空图可保存但不能启动。只支持当前唯一格式；zone 与文件引用升级使用显式离线迁移，不做运行时旧格式兼容或角色猜测。
 - 三份记录初始化后才启动管理者；有 Chat 的执行先保存原生身份关联，再提交初始指示。每次 dispatch/retry 创建独立执行，不以新 Tab 证明原生身份隔离。部署应确认 omp 未启用 autoResume，不改原生存储目录。
 - Task 固定职能、公共 Prompt 角色指引和本次工作输入分开。管理者和节点收到本次要求原文及适用的命名文件地址，不自动获得 Bot 指南、整图、上游聊天或材料正文。字段和词典替换规则见[派发](workflow-runtime.md#管理者显式批量派发)。
 - 依赖边不传文件。按命名接口交接，dispatch/retry 冻结规则与实际地址，不冻结正文。生产者仍负责授权、安全写入、防覆盖和完整读回；消费者按本次地址读取并核实业务内容，不追踪旧或新执行替换地址。[统一文件交接约定](workflow-runtime.md#统一文件交接约定)定义具体规则。

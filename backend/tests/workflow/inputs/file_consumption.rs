@@ -8,7 +8,9 @@ pub(super) async fn declare_inputs(s: &Scenario, inputs: Value) {
     let draft = get_over_tcp(s.server.addr(), route).await;
     assert_eq!(draft.status, 200, "{}", draft.body);
     let draft: Value = serde_json::from_str(&draft.body).unwrap();
-    let saved = post_json_over_tcp(s.server.addr(), route, &json!({"input_files":inputs,"input_requirements":"","revision":draft["revision"]}).to_string()).await;
+    let mut edited = json!({"map_input_rule":{"files":inputs},"revision":draft["revision"]});
+    if let Some(output) = draft.get("map_output_rule") { edited["map_output_rule"] = output.clone(); }
+    let saved = post_json_over_tcp(s.server.addr(), route, &edited.to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
 }
 

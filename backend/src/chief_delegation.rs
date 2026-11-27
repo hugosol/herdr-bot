@@ -315,18 +315,20 @@ async fn resolve(
         }
         Some(json!({"file":file,"definitions":closure.definitions,"rootBotMeaning":bot_meaning,"tasks":tasks,"zoneBindings":bindings,"directMaterials":direct_materials}))
     } else { None };
+    let fixed = &task.trigger.prompt;
+    let skill = preset.trigger.native_skill.as_deref();
     let prompt = if let Some(run) = &run {
-        crate::runs::manager_prompt(state, run, &task, &preset)
-            .map_err(|error| rejected("prompt-dictionary-invalid", error))?
+        state.prompts.manager(fixed, skill, &run.manager_context(state), &run.user_input)
     } else {
-        let context = json!({"delegationId":id,"botId":request.bot_id,"sourceChiefSessionId":request.session_id,"zoneId":request.zone_id,"cwd":cwd,"materials":materials});
-        let business_input = format!("{}\n\n[Chief delegation]\n{}", request.input,
-            serde_json::to_string_pretty(&context).expect("context serialization"));
-        let snapshot = state.prompts.snapshot().map_err(|error| rejected("prompt-dictionary-invalid", error.to_string()))?;
-        let fixed = snapshot.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt)
-            .map_err(|error| rejected("prompt-dictionary-invalid", error.to_string()))?;
-        chats::compose_prompt(&fixed, preset.trigger.native_skill.as_deref(), &business_input, &snapshot.instructions(&task.trigger.prompt))
-    };
+        state.prompts.chief_delegated_task(fixed, skill, &crate::prompts::ChiefDelegationContext {
+            id,
+            bot_id: &request.bot_id,
+            chief_session_id: &request.session_id,
+            zone_id: &request.zone_id,
+            cwd: &cwd,
+            materials: &materials,
+        }, &request.input)
+    }.map_err(|error| rejected("prompt-dictionary-invalid", error.to_string()))?;
     Ok(Prepared {
         facts: Facts {
             request,

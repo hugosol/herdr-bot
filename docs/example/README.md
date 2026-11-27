@@ -5,7 +5,7 @@
 ## 文件与事先规定的核对结果
 
 - `maps/trip-readiness.json`：A「上海出行天气」、B「北京出行天气」并行，**仅 A → C、B → C** 两条边，C「汇总出行准备」汇合，D「独立额度估算」无连接。
-- `maps/another-trip.json`：独立 E「广州出行天气」。
+- `maps/another-trip.json`：独立 E「广州出行天气」，含只有总体说明、未声明文件的公开输入输出规则；`trip-readiness.json` 整体省略两侧规则。
 - `bots/weather-capability.json`：身份为 `destination-weather`，被 A、B、E 跨 node／跨 Map 复用；**文件名故意不同于 id**。
 - `bots/summary-capability.json`：身份为 `trip-summary`，用于 C。
 - `bots/quota-capability.json`：身份为 `quota-estimate`，用于 D。

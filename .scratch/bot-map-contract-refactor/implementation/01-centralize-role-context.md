@@ -8,7 +8,9 @@
 
 **Repositories:** bot
 
-**Status:** ready-for-agent
+**Status:** closed
+
+独立集成验收：原开发分支已同步成功合入的提交 `05828a4a10eba20e0fdc55bce3bed89fa84cfedf`，没有遗留冲突。使用原 worktree 及其独占 `backend/target`：`cargo check --manifest-path backend/Cargo.toml --all-targets`、下列 5 项单元和 11 项公开接口回归均通过；另运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch --test workflow_start --test chief_delegation p42`，3 项角色恢复回归通过。未运行全仓测试、真实宿主或模型；本票只列出 bot 仓，无跨仓联调项，新跨仓接缝归 11。
 
 ## 权威与范围
 
@@ -18,15 +20,29 @@
 
 ## Acceptance criteria
 
-- [ ] 迁移实际拼接逻辑及其调用者，不保留散落正文、仅转发的第二入口或重复角色政策；复用批准的既有模块组织决定。
-- [ ] 调用者仍拥有身份判定、状态准入、材料解析与 Chat 启动；不把这些职责搬入提示词模块。
-- [ ] 保持独立 Task 的初始 Skill、固定设定、用户输入、根/子管理者差异、chief 路径、结束节点例外与真实恢复关联。
-- [ ] 词典仍仅作用于既定类型字段，每条消息采用同一快照；不新建模板引擎、角色框架或运行时正文部署依赖。
-- [ ] 这是保行为 prefactor，不提前实现新业务政策；后续 05 负责新语义的公开提交内容测试。
+- [x] 迁移实际拼接逻辑及其调用者，不保留散落正文、仅转发的第二入口或重复角色政策；复用批准的既有模块组织决定。
+- [x] 调用者仍拥有身份判定、状态准入、材料解析与 Chat 启动；不把这些职责搬入提示词模块。
+- [x] 保持独立 Task 的初始 Skill、固定设定、用户输入、根/子管理者差异、chief 路径、结束节点例外与真实恢复关联。
+- [x] 词典仍仅作用于既定类型字段，每条消息采用同一快照；不新建模板引擎、角色框架或运行时正文部署依赖。
+- [x] 这是保行为 prefactor，不提前实现新业务政策；后续 05 负责新语义的公开提交内容测试。
 
 ## 检查与证据
 
-保行为检查：从本票 bot worktree 执行 `cargo check --manifest-path backend/Cargo.toml --all-targets`；记录原始结果。若发现既有公开行为变化，应修正 prefactor，而不是改旧期望来认可它。
+- 集中既有词典、消息组合、运行事实格式及角色正文。根与子管理者共用事实与结束节点协议的装配，保留两条路径的既有措辞与子 Run 向父层交接差异；chief Map 复用根管理者装配，chief Task 保留委派上下文及经确认的预览文本。权威判定、材料解析、启动和恢复仍由原调用方处理，不启用新协议。
+- 本票 worktree 执行 `cargo check --manifest-path backend/Cargo.toml --all-targets`，退出 0。改动后原始结果：``Finished `dev` profile [unoptimized + debuginfo] target(s) in 12.07s``。
+- 同一 worktree 执行 `cargo test --manifest-path backend/Cargo.toml --lib prompts::`：原组合和词典回归 5 通过、0 失败，包括字面输入、单次 Skill 调用、转义、缺键和快照重读。
+- 复用 S1 公开 HTTP 及受控宿主提交记录，既有断言不改；实际命令如下，11 通过、0 失败：
+
+  ```sh
+  cargo test --manifest-path backend/Cargo.toml --test chat_creation --test workflow_start --test workflow_dispatch --test chief_delegation -- \
+    dictionary_ both_skills_submit_one_native_skill_invocation_with_the_full_body a_skill_only_task_submits_the_bare_skill_call \
+    app_root_run_waits_for_native_readiness_and_persists_before_business_input app_nested_manager_and_end_chat_keep_separate_run_roles \
+    end_node_start_and_persisted_resume_do_not_require_node_extension_for_either_host app_delegated_map_binds_manager_before_approved_input \
+    task_bot_launches_independent_chat_with_previewed_input_and_durable_sender_identity
+  ```
+
+  `chat_creation` 5 项核对 Skill、固定设定、原样输入和词典错误停止发送；`workflow_dispatch` 2 项核对节点词典与原样 Run 输入、结束节点启动及真实执行关联恢复；`workflow_start` 3 项核对根／子管理者与 chief Map 启动控制及结束节点例外；`chief_delegation` 1 项核对独立 Task 的已预览原文、材料及委派关联。
+- 这些是保行为证据，不证明实际安装的原生宿主、工具包接缝或模型行为。覆盖分区没有分配 01 新语义用例；不认领 promise 完成。
 
 ## 覆盖及测试所有权
 

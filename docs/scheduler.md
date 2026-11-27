@@ -18,7 +18,7 @@ Map 目录可按名称、文件名或组名搜索，并与分组筛选组合使�
 
 | 对象 | 字段与职责 |
 | --- | --- |
-| Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。可选 `input_requirements` 为 Markdown 字符串（缺省为空），给用户与管理者共同说明非文件的总体输入要求；可选 `input_files: [{id,required,description?}]` 声明命名文件材料（见下文）。不含运行状态、管理者配置或重试策略。 |
+| Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。可选 `map_input_rule` 与 `map_output_rule` 是整图公开输入输出约定（见下文）。`description` 只描述用途，不作为 Map 专属执行指令。不含运行状态、管理者配置或重试策略。 |
 | node | 必需 `title`、`bot_id`、`input` 字符串、`zone`（固定 ID 字符串或 `{"type":"dynamic"}`）及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`auto_approved` 为布尔值（缺省 `true`），`auto_close` 与 `end_node` 为布尔值（缺省 `false`）。`end_node: true` 标记唯一普通 Task 型结束节点（见下文）。批准模式与自动关闭只属于 node，不从 Bot 或 Task 继承。Map 型 Bot 的调用节点使用可选字符串 `manager_task_id` 指定 manager Task，执行前必需且必须为 manager 类型；普通 Task 型节点不得指定它。Bot 不接受此字段。 |
 | Bot | 必需 `id`、`name`、`when`、`description`、`input_rule`、`output_rule` 字符串；可选 `task_id`（normal Task）、`map_file`（目录内确切 Map JSON 文件名）或 `script`（scripts 目录内的相对 .ts 路径），三者互斥，也可都未绑定。跨 Map 共享，只保存目标引用，不复制定义。 |
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
@@ -26,14 +26,16 @@ Map 目录可按名称、文件名或组名搜索，并与分组筛选组合使�
 
 Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归属形成分组，不需要独立定义或 ID。省略或 `null` 表示未分组；非空名称不得带首尾空白，区分大小写。分组仅用于组织列表与选择控件，不影响引用、运行或校验资格，node 不拥有分组字段。界面归属编辑和自举归类范围见[定义分组](usage.md#taskbot-与-map-分组)。
 
-只接受这一种命名字段格式，没有 `schema_version` 或运行时旧格式兼容。旧 node 的 `parameters`、旧 Bot 的 `use_when`、`plan_guide`、`node_guide`、`inputs`、`outputs`、`implementation` 都是未知字段，连同版本 1 也明确拒绝。上线前停止服务、备份旧文件，再由规划者改写为新格式：把业务参数整理成 `input` 原文，明确选择 `zone` ID；逐项把旧能力知识归还实际实现、公共协议或四字段摘要。不能从旧业务参数猜测 Task／zone 绑定。不改写旧 Run 或 Chat 记录。
+只接受这一种命名字段格式，没有 `schema_version` 或运行时旧格式兼容。旧 Map 的 `input_requirements`／`input_files`、旧 node 的 `parameters`、旧 Bot 的 `use_when`、`plan_guide`、`node_guide`、`inputs`、`outputs`、`implementation` 都是未知字段，连同版本 1 也明确拒绝。上线前停止服务、备份旧文件，再由规划者改写为新格式：把业务参数整理成 `input` 原文，明确选择 `zone` ID；逐项把旧能力知识归还实际实现、公共协议或四字段摘要。不能从旧业务参数猜测 Task／zone 绑定。未转换的旧 Map／Bot 保留在配置定义目录之外；新版不会以旧字段或离线副本作为读取回退。不改写旧 Run 或 Chat 记录。
 
 完整 Map 示例：
 
 ```json
 {
   "title": "检查计划",
-  "description": "先准备，再核对。",
+  "description": "汇总本次检查的记录。",
+  "map_input_rule": {"description":"说明核对范围。","files":[{"id":"brief","required":false}]},
+  "map_output_rule": {"description":"交付本次核对记录。","files":[{"id":"report"}]},
   "nodes": {
     "A": {
       "title": "准备",
@@ -45,7 +47,9 @@ Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归�
     "B": {
       "title": "核对",
       "bot_id": "review-work",
-      "input": "对照要求核对 beta 材料。",
+      "input": "结合可选的 brief 核对 beta 材料。",
+      "input_rule": [{"id":"brief","type":"run","input_id":"brief"}],
+      "output_rule": [{"id":"internal-review"}],
       "zone": "default/review",
       "blocked_by": ["A"]
     }
@@ -89,21 +93,23 @@ Bot 摘要修订可直接引用同一 `baseline` 及四组 `*_text`、`*_handoff
 
 迁移旧定义时，先声明真实输出并补齐消费者的输入规则，再移除人工寻址、全图工作—文件映射、持续追踪上游当前 execution 和重复报告策略。通用保存与交接要求遵循[统一文件交接约定](workflow-runtime.md#统一文件交接约定)。规则仍为空或通用职责尚无承接方时，不得仅删文字造成信息丢失；本规范不表示存量 Map 或 Task 提示词已经迁移。
 
-### Map 命名文件输入与根 Run 绑定
+### Map 公开输入与输出规则
 
-`input_requirements` 只承载非文件的总体要求；非空时在发起 Run 表单的“本次文件输入”上方以 Markdown 展示，缺省或空字符串时不显示独立要求块。每份文件的要求放在对应 `input_files[].description`，与总体要求共同供用户准备和管理者核实输入，不是自动业务校验器。点击“编辑文件输入声明”，一并编辑输入要求与声明数组并保存，例如：
+点击“编辑 Map 公开规则”，分别启用、编辑或移除输入和输出规则。`map_input_rule` 与 `map_output_rule` 均可整体省略；启用的对象内 `description` 缺省为空字符串，`files` 缺省为空数组。总体 Markdown 说明写跨文件或非文件要求，不是自动业务校验器。各文件的纯文本 `description` 可省略（等同空字符串），不解析 Markdown。禁止以 `null` 代替对象、数组、字符串或布尔值；未知字段拒绝。
 
-```json
-[{"id":"brief","required":true,"description":"业务委托：包含目标与约束。"},{"id":"appendix","required":false,"description":"参考材料：注明用途。"}]
-```
+输入文件项为 `{id,required,description?}`，必须显式填写布尔 `required`；输出文件项为 `{id,description?}`，不接受 `required`，声明即必交。ID 必须非空且各侧独立唯一；输入和输出可以同名。规则不填写实际文件地址。只需交接对话或传达完成状态时，可以只填写输出说明，不声明任何输出文件。
 
-`input_files` 声明材料 ID、布尔 `required` 及可选纯文本字符串 `description`，不保存每次实际文件地址。`description` 可省略或为空字符串，显式 `null` 及其他非字符串均拒绝；它作为标签显示在对应文件输入框上方，不解析 Markdown，缺省或为空时回退显示该项 ID。必需／可选状态由 `required` 单独渲染为标签后缀，不写入描述。ID 必须非空且在本接口内唯一；其他 Map 与其他 Run 可重复使用同名 ID，各自解析。缺省或 `[]` 表示无文件接口。重复 ID 保存被拒绝且不改变原 Map；编辑带原文 revision，文件已被其他操作修改时拒绝覆盖。
+基于 Map 执行的父 node，其 `input_rule` 内的本地 `id` 对接子 Map 同名公开输入（不使用来源 ID），`output_rule` 只选子 Map 公开输出的所需子集。保存时拒绝子 Map 未声明的 ID；公开输出和内部节点输出无需同名，不配置静态导出映射，也不按子节点位置寻址。
+
+### 根 Run 输入绑定
+
+发起表单按 `map_input_rule.files` 展示输入项，以各文件说明或 ID 作为标签，并另标必需／可选。总体输入说明非空时在文件输入上方单独呈现。
 
 “+ 发起 Run”中，“本次要求”只承载业务文字，文件输入控件分别填写服务器上已有文件的绝对地址。所有文件项（包括必需项）均可在启动时留空，交由管理者对话补齐；持久 `fileInputs` 不生成未提供项；不填占位地址、默认路径，也不从业务文字或目录自动找文件。启动表单更换文件只改变新 Run 的初始绑定，不需要重写 Map；已有 Run 可由管理者通过 `prepare_inputs` 整批替换绑定，但不改变已派发 execution 的输入地址。地址绑定不是文件内容快照，不复制或锁定源文件。
 
-公开声明编辑入口为 `GET /api/scheduler/maps/{filename}/inputs`，返回 `input_requirements`、`input_files` 和 `{file,original}` revision；`POST` 同一路径提交 `{input_requirements,input_files,revision}`，成功返回更新后 Map。启动／预检接受可选 `fileInputs: [{id,path}]`，省略与 `[]` 均表示没有绑定。启动允许必需文件暂缺；未声明 ID、同次绑定 ID 重复或已提供文件缺失／不可读仍在 Run 分配与宿主启动前拒绝（文件错误为 `run-input-unreadable`），反馈 `target: "run-input"` 与 `inputId`，页面可定位对应文件输入。
+公开声明编辑入口为 `GET /api/scheduler/maps/{filename}/inputs`，返回已声明的 `map_input_rule`／`map_output_rule` 和 `{file,original}` revision；`POST` 同一路径提交 `{map_input_rule?,map_output_rule?,revision}`，一并替换两侧，省略任一侧即移除该规则，成功返回更新后 Map。非法规则不写文件；revision 已变化时拒绝覆盖。启动／预检接受可选 `fileInputs: [{id,path}]`，省略与 `[]` 均表示没有绑定。启动允许必需文件暂缺；未声明 ID、同次绑定 ID 重复或已提供文件缺失／不可读仍在 Run 分配与宿主启动前拒绝（文件错误为 `run-input-unreadable`），反馈 `target: "run-input"` 与 `inputId`，页面可定位对应文件输入。
 
-新 Run 的 `inputsReady=false`。管理者须先阅读 Map 的 `input_requirements`、每项 `input_files[].description` 及已有材料，接收用户文字／文件、澄清语义与授权，必要时在授权范围内整理文件，再用 `prepare_inputs` 绑定并确认；全部业务节点在确认前均不得 dispatch／retry，不能先派发“准备节点”代替管理者完成输入准备。必需项在确认时强制齐全；直接与嵌套调用遵循同一规则，协议见[运行输入准备](workflow-runtime.md#管理者输入准备prepare_inputs)。
+新 Run 的 `inputsReady=false`。管理者须先阅读 Map 的 `map_input_rule.description`、每项 `map_input_rule.files[].description` 及已有材料，接收用户文字／文件、澄清语义与授权，必要时在授权范围内整理文件，再用 `prepare_inputs` 绑定并确认；全部业务节点在确认前均不得 dispatch／retry，不能先派发“准备节点”代替管理者完成输入准备。必需项在确认时强制齐全；直接与嵌套调用遵循同一规则，协议见[运行输入准备](workflow-runtime.md#管理者输入准备prepare_inputs)。
 
 ### 动态执行 zone
 
@@ -130,7 +136,7 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 
 `id` 是当前节点内用户自定的逻辑标识，不是固定字段名称或磁盘文件名。两个规则数组各自的 ID 必须非空且唯一；数组顺序不表示派发顺序。一个输出 ID 在一次执行中绑定一个实际地址。
 
-`type: file` 接受 `id`、`type`、字符串 `path` 及可选字符串 `zone_id`；省略 `zone_id` 时使用本次 Run 的 manager zone，绝不是 node 的执行 zone。`path` 是对应 zone 内以 `/` 分隔的相对文件路径，不接受绝对路径或越界访问，并沿用 zone 的链接安全规则。启动 Run 时确定所有引用的 zone 绑定，派发时检查文件与边界，实际输入保存本机绝对路径。`type: node` 只接受 `id`、`type`、字符串 `node_id`、`output_id`。`type: run` 只接受 `id`、`type`、字符串 `input_id`，引用本 Map 的 `input_files` 声明，并按节点本地 `id` 重命名；不接受 `run_id`，不能选择其他 Run。未提供的可选输入不出现在执行 `inputs` 中；已提供但错误的地址不能当成缺席。三类实际文件在派发前检查存在且可打开；报告／Run 来源可在所有 zone 外，沿用公开文件的链接／重解析点／路径安全约定。其他必需字段、类型与未知字段校验不变；不自动同步文件或校验业务内容。
+`type: file` 接受 `id`、`type`、字符串 `path` 及可选字符串 `zone_id`；省略 `zone_id` 时使用本次 Run 的 manager zone，绝不是 node 的执行 zone。`path` 是对应 zone 内以 `/` 分隔的相对文件路径，不接受绝对路径或越界访问，并沿用 zone 的链接安全规则。启动 Run 时确定所有引用的 zone 绑定，派发时检查文件与边界，实际输入保存本机绝对路径。`type: node` 只接受 `id`、`type`、字符串 `node_id`、`output_id`。`type: run` 只接受 `id`、`type`、字符串 `input_id`，引用本 Map 的 `map_input_rule.files` 声明，并按节点本地 `id` 重命名；不接受 `run_id`，不能选择其他 Run。未提供的可选输入不出现在执行 `inputs` 中；已提供但错误的地址不能当成缺席。三类实际文件在派发前检查存在且可打开；报告／Run 来源可在所有 zone 外，沿用公开文件的链接／重解析点／路径安全约定。其他必需字段、类型与未知字段校验不变；不自动同步文件或校验业务内容。
 
 引用节点须存在于同图，`output_id` 须由提供方 `output_rule` 预先声明，否则拒绝保存整张 Map；删除提供方或移除被引用的输出 ID 同样拒绝，不级联清理。规则与 `blocked_by` 独立，不补依赖、不自动派发。
 
@@ -253,8 +259,8 @@ Map 文件加载、结构或依赖失败时清除当前图和详情，不把上�
 | `PATCH /api/scheduler/maps/{filename}/group` | `{group: 字符串或null}` → 更新后的 Map 字段与 `revision` |
 | `PATCH /api/scheduler/bots/{id}/group` | `{group: 字符串或null}` → 更新后的 Bot 字段与 `revision` |
 | `GET /api/scheduler/maps/{filename}` | 完整校验后的 Map |
-| `GET /api/scheduler/maps/{filename}/inputs` | `input_requirements`、`input_files` 与 revision |
-| `POST /api/scheduler/maps/{filename}/inputs` | `{input_requirements,input_files,revision}` → 更新后 Map |
+| `GET /api/scheduler/maps/{filename}/inputs` | 已声明的 `map_input_rule`／`map_output_rule` 与 revision |
+| `POST /api/scheduler/maps/{filename}/inputs` | `{map_input_rule?,map_output_rule?,revision}` → 更新后 Map |
 | `GET /api/scheduler/bots` | Bot 目录和局部问题 |
 | `GET /api/scheduler/bots/new` | 打包草稿，不含 id |
 | `POST /api/scheduler/bots/edit` | `{id}` → content、revision |
@@ -269,4 +275,4 @@ revision 为 `{file, original}`，绑定服务端目录内文件名与原始全�
 
 目录及各级父路径不跟随符号链接、目录联接或重解析点，目录项也不能越界读取。全部标题、文档、input、zone 仅作文本显示，不按 HTML、CSS、脚本或 Agent 指令执行；文中路径不触发文件读取或 Chat。浏览、筛选、预览、恢复、刷新不改写现存定义；只有显式保存／确认删除才修改目标。
 
-复验入口与安全边界见[测试指引](agents/testing.md)。定义检查须区分成功保存的读回与失败或取消后原始字节不变。定义、页面及预检证据不证明真实 Chat 已启动或消费材料，也不证明业务脚本执行成功。
+复验入口与安全边界见[测试指引](agents/testing.md)。用 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch map_rules::` 检查真实 HTTP 保存、公开 ID 与独立文件读回；用 `npm --prefix frontend run test:browser:build -- schedulerNodeEditing.spec.ts --workers=1` 检查页面编辑和重载。定义检查须区分成功保存的读回与失败或取消后原始字节不变。定义、页面及预检证据不证明真实 Chat 已启动或消费材料，也不证明业务脚本执行成功。

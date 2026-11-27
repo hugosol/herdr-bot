@@ -176,7 +176,7 @@ async fn add_node(s: &Scenario, id: &str, content: Value) {
 async fn nested_outputs_use_frozen_parent_rules_and_feed_both_downstream_kinds() {
     let s = Scenario::new().await;
     setup(&s).await;
-    fs::write(s.config.scheduler.map_directory.join("sink.json"), json!({"title":"Sink","description":"","input_files":[{"id":"renamed","required":true}],"nodes":{"sink-work":{"title":"Sink work","bot_id":"worker","input":"Sink","zone":"node","blocked_by":[]}}}).to_string()).unwrap();
+    fs::write(s.config.scheduler.map_directory.join("sink.json"), json!({"title":"Sink","description":"","map_input_rule":{"files":[{"id":"renamed","required":true}]},"nodes":{"sink-work":{"title":"Sink work","bot_id":"worker","input":"Sink","zone":"node","blocked_by":[]}}}).to_string()).unwrap();
     request(&s, "/api/scheduler/bots/save", json!({"id":"sink","content":json!({"name":"Sink","when":"","description":"","input_rule":"","output_rule":"","map_file":"sink.json"}).to_string(),"revision":null}), 200).await;
     add_node(&s, "map-consumer", json!({"title":"Map consumer","bot_id":"sink","manager_task_id":s.manager_task,"input":"MAP-CONSUME","zone":"node","blocked_by":["call"],"input_rule":[{"type":"node","id":"renamed","node_id":"call","output_id":"result"}]})).await;
     add_node(&s, "retained-consumer", json!({"title":"Retained consumer","bot_id":"worker","input":"Retained","zone":"node","blocked_by":["call"],"input_rule":[{"type":"node","id":"retained","node_id":"call","output_id":"missing"}]})).await;
@@ -239,7 +239,7 @@ async fn finished_child_without_current_output_cannot_reuse_previous_delivery() 
     setup(&s).await;
     let inner_path = s.config.scheduler.map_directory.join("inner.json");
     let mut inner: Value = serde_json::from_slice(&fs::read(&inner_path).unwrap()).unwrap();
-    inner["input_files"] = json!([{"id":"material","required":false}]);
+    inner["map_input_rule"]["files"] = json!([{"id":"material","required":false}]);
     fs::write(inner_path, inner.to_string()).unwrap();
     add_node(&s, "missing-map", json!({"title":"Missing Map consumer","bot_id":"nested","manager_task_id":s.manager_task,"input":"Consume","zone":"node","blocked_by":["call"],"input_rule":[{"type":"node","id":"material","node_id":"call","output_id":"result"}]})).await;
     let root = s.start("missing-root").await;
