@@ -57,8 +57,6 @@ impl Store {
         }
     }
 
-    pub(super) fn remove(&self, run: &str) { self.0.lock().unwrap().remove(run); }
-
     fn snapshot(&self, run: Run) -> ScriptOutputSnapshot {
         let entries = self.0.lock().unwrap();
         let mut nodes = Vec::new();

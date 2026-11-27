@@ -29,10 +29,10 @@
 
 ## 状态与关键取舍
 
-Run 仅有 running、paused、completed；node 仅有 pending、running、failed、completed。ready、blocked 和 canFinish 从当前事实与当前定义派生，不保存第二套生命周期。completed 表示结果可交接并满足依赖，不表示 Chat 退出。详细准入见[批准动作矩阵](workflow-runtime.md#角色责任与批准动作矩阵)。
+Run 仅有 running、paused、completed；node 仅有 pending、running、failed、completed。ready、blocked 和 canFinish 从当前事实与本 Run 的冻结 Map 派生，不保存第二套生命周期。completed 表示结果可交接并满足依赖，不表示 Chat 退出。详细准入见[批准动作矩阵](workflow-runtime.md#角色责任与批准动作矩阵)。
 
 - 启动整图预检必须通过；必需文件暂缺不阻止启动管理者，已提供的无效文件仍拒绝。新 Run 从 inputsReady=false 开始，管理者须先按 map_input_rule.description 的非文件总体要求与各项 map_input_rule.files[].description 核实全部输入、对话澄清并通过 prepare_inputs 确认，之后才允许 dispatch/retry；嵌套子 Run 同样适用。Run 文件绑定可经管理者整批替换，已派发的 execution 输入仍冻结；保存定义则允许外部绑定未完善。空图可保存但不能启动。只支持当前唯一格式；zone 与文件引用升级使用显式离线迁移，不做运行时旧格式兼容或角色猜测。
-- 三份记录初始化后才启动管理者；有 Chat 的执行先保存原生身份关联，再提交初始指示。每次 dispatch/retry 创建独立执行，不以新 Tab 证明原生身份隔离。部署应确认 omp 未启用 autoResume，不改原生存储目录。
+- 校验通过的 Map 副本与三份记录都落盘后才启动管理者；有 Chat 的执行先保存原生身份关联，再提交初始指示。每次 dispatch/retry 创建独立执行，不以新 Tab 证明原生身份隔离。部署应确认 omp 未启用 autoResume，不改原生存储目录。
 - Task 固定职能、公共 Prompt 角色指引和本次工作输入分开。管理者和节点收到本次要求原文及适用的命名文件地址，不自动获得 Bot 指南、整图、上游聊天或材料正文。字段和词典替换规则见[派发](workflow-runtime.md#管理者显式批量派发)。
 - 依赖边不传文件。按命名接口交接，dispatch/retry 冻结规则与实际地址，不冻结正文。生产者仍负责授权、安全写入、防覆盖和完整读回；消费者按本次地址读取并核实业务内容，不追踪旧或新执行替换地址。[统一文件交接约定](workflow-runtime.md#统一文件交接约定)定义具体规则。
 - 同 Run 动作串行到完整派发批次结束，单项失败不取消其他合法项；另一 Run 和已有 Chat 工作不被该业务队列阻止。文件协调只覆盖实际访问，不跨启动、投递或 collect 等待。直接读三文件不承诺跨文件一致快照。
@@ -41,11 +41,11 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 - [报告](workflow-runtime.md#节点报告与独立通知)先保存，再独立通知。提交成功不保证已读、顺序或打断。通知失败不撤销报告，不触发重投；collect 不清除待交接事项。
 - [首次 complete](workflow-runtime.md#显式交接完成与结束-run)要求当前执行已批准、按追加顺序的最新报告严格为 true，且全部冻结输出 ID 已登记。人工处理同样受限，后端不把登记当业务质量证明。报告保存与交接在同 Run 内串行，完成后的报告不撤销首次事实。
 - 状态保存失败不发布候选事实；当前状态提交后历史追加失败明确部分生效，不回滚、不持续封锁 Run。已启动 Chat 不假报回滚；崩溃/关联失败窗口不承诺完整幂等，先核实副作用再行动。
-- 每 Run 仅有当前事实、追加历史、追加报告三份业务记录；便于直接读取但不提供数据库事务、跨文件原子、断电安全或多进程协议。Windows 替换不先删正式文件，残缺记录拒绝追加，不自动修复。
+- 每个新 Run 保存自身完整 Map 副本，另有当前事实、追加历史、追加报告三份运行记录；便于直接读取但不提供数据库事务、跨文件原子、断电安全或多进程协议。Windows 替换不先删正式文件，残缺记录拒绝追加，不自动修复。
 - 后端重启后旧 Run 的执行事实只读，保留原状态、报告和 Chat 关联，拒绝动作/report/collect；人类仍可修改名称。普通 Chat Resume 不接管。未接管是服务上下文事实，不是持久 Run 状态。
-- Run 可选 `name` 仅供人类识别，不参与 Map、身份、依赖或执行逻辑；旧记录缺字段无需迁移。详情标题优先名称，否则沿用当前 Map 标题 / 保存 Map 标识；列表优先名称，否则沿用保存 Map 标识，名称、ID 与 Map 均可搜索。标题旁「重命名」展开以当前显示标题为初值的输入；保存去除首尾空白、拒绝空名称、允许重名，取消不写入，失败保留草稿。`PATCH /api/workflow/runs/{id}` 接收 `{ name: string }`，成功返回与 GET 相同的详情；保存后同步列表/详情并刷新，切换 Run 不应用迟到结果。历史/未接管 Run 同样可重命名，不恢复管理或修改执行事实。
+- Run 可选 `name` 仅供人类识别，不参与 Map、身份、依赖或执行逻辑；旧记录缺字段无需迁移。详情标题优先名称，否则沿用冻结 Map 标题 / 保存 Map 标识；列表优先名称，否则沿用保存 Map 标识，名称、ID 与 Map 均可搜索。标题旁「重命名」展开以当前显示标题为初值的输入；保存去除首尾空白、拒绝空名称、允许重名，取消不写入，失败保留草稿。`PATCH /api/workflow/runs/{id}` 接收 `{ name: string }`，成功返回与 GET 相同的详情；保存后同步列表/详情并刷新，切换 Run 不应用迟到结果。历史/未接管 Run 同样可重命名，不恢复管理或修改执行事实。
 - 同机来源限制不是认证，session_id 不是秘密；接受同机进程冒用风险，不引入 token 或沙箱。未来提高认证、归属、事务或存储保证须同步接口、迁移及验证，不能静默改变调用者依赖。
-- 图来自当前定义而非历史快照，定义无法可靠对应时保留保存事实但不画假图。轮询默认 5 秒、collect 默认 90 分钟；有效配置、稳定路径和较长 HTTP 预算见[记录及配置](workflow-runtime.md#记录及配置)。
+- 图来自本 Run 的冻结 Map；副本缺失、损坏或无法与节点身份对应时保留保存事实但不画图，也不读取原 Map 作为回退。轮询默认 5 秒、collect 默认 90 分钟；有效配置、稳定路径和较长 HTTP 预算见[记录及配置](workflow-runtime.md#记录及配置)。
 
 ## 可观察承诺与长期规则索引
 
@@ -121,12 +121,12 @@ Run 仅有 running、paused、completed；node 仅有 pending、running、failed
 | --- | --- | --- |
 | P50 | workflow 默认跨 Map 倒序、按日期列全部 Run；时间在前，无表头/归属列，完成数仅 n/m；提供显式组合筛选，进详情隐藏列表，切换其他 Tab 再返回保持已选 Run 与详情 hash 一致；「返回全部 Run」清空选择、使用 `#workflow` 并恢复列表筛选/滚动。详情区分未接管事实，允许人类重命名元数据，不增加运行控制。 | [观察](workflow-runtime.md#发起与观察) |
 | P51 | 只读图用文字与视觉标记，不以颜色/Chat 状态独自替代 node 状态；manager 不是 node。 | [观察](workflow-runtime.md#发起与观察) |
-| P52 | 详情区分当前定义/执行/适用报告/旧历史及各 Chat，无关联不补建。 | [观察](workflow-runtime.md#发起与观察) |
+| P52 | 详情区分冻结定义/执行/适用报告/旧历史及各 Chat，无关联不补建。 | [观察](workflow-runtime.md#发起与观察) |
 | P53 | Resume 指定 Chat，如实成功/失败/未知，不改节点、不接管旧 Run。 | [观察](workflow-runtime.md#发起与观察)、[普通恢复](usage.md#历史-chat-resume) |
 | P54 | manager 启动错误仅当前后端内存，刷新保留、重启后只查诊断；node 失败持久化。 | [重启与错误](workflow-runtime.md#后端重启历史现场只读) |
 | P55 | 可见 workflow 才按有效配置轮询，默认 5 秒、同页不重叠，返回立即读取。 | [轮询](workflow-runtime.md#发起与观察) |
 | P56 | 查询失败保留上次成功内容，显示更新失败/最后成功时间，恢复后更新，不改状态。 | [查询反馈](workflow-runtime.md#发起与观察) |
-| P57 | 图注明当前定义；丢失/损坏/不对应不伪造历史图，保存事实/关联仍可读。 | [历史降级](workflow-runtime.md#发起与观察) |
+| P57 | 图注明冻结 Map；副本丢失/损坏/不对应不回退也不伪造历史图，保存事实/关联仍可读。 | [历史降级](workflow-runtime.md#发起与观察) |
 | P58 | manager 角色随 manager Task 启用，node 角色随节点派发及关联 Resume 启用，不同 node cwd 下读取稳定配置。 | [部署检查](workflow-runtime.md#角色归属与来源集成检查) |
 | P59 | 实际 Chat 通过公共 Prompt 获得角色指引，工具参数不暴露自报身份/归属。 | [角色矩阵](workflow-runtime.md#角色责任与批准动作矩阵) |
 | P60 | 扩展经公共能力工作、支持取消，不依赖 connect-bot 开关或私有实现。 | [公共能力](workflow-runtime.md#角色调用方及公共能力的部署边界) |

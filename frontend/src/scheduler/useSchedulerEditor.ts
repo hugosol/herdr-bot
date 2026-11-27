@@ -206,11 +206,11 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
     update({ deleteMapTarget: current.current.file, deleteMapError: null })
   }
   function closeMapDeletion() { if (!inFlight.current) update({ deleteMapTarget: null, deleteMapError: null }) }
-  async function removeMap(deleteHistory: boolean) {
+  async function removeMap() {
     const file = current.current.deleteMapTarget
     if (file === null) return
     await operation(async valid => {
-      const catalog = await deleteMap(file, deleteHistory)
+      const catalog = await deleteMap(file)
       if (valid()) update({ listing: { kind: 'ready', ...catalog }, file: null, preview: null, selectedId: null, returnProblem: null, deleteMapTarget: null })
     }, true)
   }

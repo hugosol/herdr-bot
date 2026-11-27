@@ -310,6 +310,7 @@ pub fn app_with_state(
         .route("/api/scheduler/maps/{name}/runs", post(controllers::runs_controller::start_run))
         .route("/api/workflow/runs", get(controllers::runs_controller::list_runs))
         .route("/api/workflow/runs/{id}", get(controllers::runs_controller::get_run).patch(controllers::runs_controller::rename_run))
+        .route("/api/workflow/runs/{id}/map", get(controllers::runs_controller::get_run_map))
         .route("/api/workflow/runs/{id}/locate", post(controllers::runs_controller::locate_chat))
         .route("/api/workflow/manager/status", post(controllers::runs_controller::manager_status))
         .route("/api/workflow/manager/prepare_inputs", post(controllers::runs_controller::manager_prepare_inputs))

@@ -14,7 +14,9 @@ pub(crate) struct MapRead;
 pub(crate) struct MapList;
 pub(crate) struct BotList;
 pub(crate) struct NewDraft;
-pub(crate) struct DeleteMap;
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DeleteMap {}
 pub(crate) struct PreflightRun;
 
 impl CommandAction for DeleteMap { const ACTION: &'static str = "删除 Map"; }

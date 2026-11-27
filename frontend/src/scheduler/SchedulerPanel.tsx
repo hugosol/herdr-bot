@@ -360,16 +360,13 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
       onCancel={(event) => { event.preventDefault(); closeMapDeletion() }}>
       <h2 id="scheduler-map-delete-title" className="zone-dialog__title">删除 Map「{deleteMapTarget}」？</h2>
       <div id="scheduler-map-delete-description" className="zone-dialog__hint">
-        <p>“删除历史”和“保留历史”都会不可撤销地删除此 Map 定义。</p>
-        <p>删除历史：同时删除此 Map 关联的所有 Run 记录及详情，不论 Run 状态或 Chat 是否在线。仍在运行的 Chat 不会停止，后续汇报可能因 Run 已删除而失败。</p>
-        <p>保留历史：保留关联 Run，仍可在工作流中查看已保存事实，但当前 Map 定义与依赖图将不可用。</p>
-        <p>两种选择都不会停止 Chat，也不会删除 Chat、原生会话历史、共享 Bot、Task 或 zone 文件。</p>
+        <p>只删除此 Map 定义，不能撤销。关联 Run 及其冻结图仍可在 workflow 查看。</p>
+        <p>不会停止 Chat，也不会删除共享 Bot、Task、对话历史或工作文件。</p>
       </div>
       {deleteMapError && <p role="alert">{deleteMapError}</p>}
       {deletingMap && <p role="status">正在删除，请勿重复提交……</p>}
       <div className="zone-dialog__actions">
-        <button type="button" className="zone-dialog__cancel" disabled={deletingMap} onClick={() => void removeMap(true)}>删除历史</button>
-        <button type="button" className="zone-dialog__cancel" disabled={deletingMap} onClick={() => void removeMap(false)}>保留历史</button>
+        <button type="button" className="zone-dialog__cancel" disabled={deletingMap} onClick={() => void removeMap()}>删除 Map</button>
         <button type="button" className="zone-dialog__cancel" ref={cancelMapDeletion} autoFocus disabled={deletingMap} onClick={closeMapDeletion}>取消</button>
       </div>
     </dialog>}

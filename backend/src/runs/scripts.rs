@@ -219,16 +219,12 @@ fn execute(state: &AppState, run: &Run, execution: &NodeExecution, prepared: Pre
     Outcome { failure, outputs }
 }
 
-pub(super) async fn launch(state: AppState, run: Run, node_id: String, prepared: PreparedScript, input: String) {
+pub(super) fn launch(state: AppState, run: Run, node_id: String, prepared: PreparedScript, input: String) {
     let execution = run.nodes[&node_id].execution.as_ref().expect("saved script execution").clone();
     let script = execution.script().expect("only TS targets launch");
     let started_at = match script.lifecycle { Lifecycle::Running { started_at } => started_at, _ => unreachable!("new script must be running") };
     let binding = script.script.clone();
-    let live = {
-        let deleted = state.runs.deleted.lock().await;
-        if deleted.contains(&run.id) { Weak::new() }
-        else { state.runs.script_output.start(&run.id, &node_id, &execution.id) }
-    };
+    let live = state.runs.script_output.start(&run.id, &node_id, &execution.id);
     tokio::spawn(async move {
         let runtime = tokio::runtime::Handle::current();
         let owned = state.clone();

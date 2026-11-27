@@ -39,7 +39,7 @@ test('Map node manager is editable and referenced Map deletion is refused withou
   await page.getByRole('button', { name: '取消', exact: true }).click()
   expect(fs.readFileSync(path.join(maps, 'child.json'), 'utf8')).toBe(target)
   await page.getByRole('button', { name: '删除 Map', exact: true }).click()
-  await page.getByRole('button', { name: '保留历史', exact: true }).click()
+  await page.getByRole('dialog', { name: '删除 Map「child.json」？' }).getByRole('button', { name: '删除 Map', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('nested')
   expect(fs.readFileSync(path.join(maps, 'child.json'), 'utf8')).toBe(target)
   expect(fs.readFileSync(path.join(bots, 'nested.json'), 'utf8')).toBe(capability)

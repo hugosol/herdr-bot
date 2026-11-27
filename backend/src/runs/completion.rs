@@ -141,23 +141,27 @@ async fn close_execution_tab(state: &AppState, chat: &ChatReference) -> Result<(
     result.map_err(|error| (error.code(), error.message()))
 }
 
-pub(super) fn can_finish(run: &Run) -> bool {
-    matches!(run.status.as_str(), "running" | "paused") && run.nodes.values().all(|node| node.status == "completed" || handed_to_user(node))
+pub(super) fn can_finish(run: &Run, map: &WorkflowMap) -> bool {
+    matches!(run.status.as_str(), "running" | "paused") && map.nodes.iter().all(|(id, definition)| {
+        run.nodes.get(id).is_some_and(|node| node.status == "completed" || (definition.0.end_node && handed_to_user(node)))
+    })
 }
 
 fn handed_to_user(node: &NodeState) -> bool {
     node.status == "running" && node.failure.is_none() && node.execution.as_ref().is_some_and(|execution| execution.end_node && execution.chat().is_some())
 }
 
-pub(super) fn finish(run: &mut Run) -> Result<Decision, String> {
+pub(super) fn finish(run: &mut Run, map: &WorkflowMap) -> Result<Decision, String> {
     if run.status == "completed" {
         return Ok(Decision::Unchanged);
     }
     if !matches!(run.status.as_str(), "running" | "paused") {
         return Decision::reject("run-not-finishable", "仅 running 或 paused 的 Run 可结束。");
     }
-    let handed_to_user = run.nodes.values().any(handed_to_user);
-    if !can_finish(run) {
+    let handed_to_user = map.nodes.iter().any(|(id, definition)| {
+        definition.0.end_node && run.nodes.get(id).is_some_and(handed_to_user)
+    });
+    if !can_finish(run, map) {
         return Decision::reject("nodes-incomplete", "仍有 node 未 completed；请显式完成交接后再 finish。");
     }
     let finished = Finished {

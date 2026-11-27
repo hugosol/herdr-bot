@@ -2,7 +2,7 @@ use super::*;
 
 // S2 P37: reference locations and unchanged bytes are independent observations.
 // A scanner treating malformed/unreadable Bot files as an empty catalog would
-// wrongly delete the Map (and, with deleteHistory, its run records).
+// wrongly delete the Map despite an unverified live reference.
 #[tokio::test]
 async fn map_delete_protects_bot_references_and_fails_closed_on_unverifiable_catalog() {
     let s = Scenario::new().await;
@@ -11,7 +11,7 @@ async fn map_delete_protects_bot_references_and_fails_closed_on_unverifiable_cat
     let bot = s.config.scheduler.bot_directory.join("nested.json");
     let reference = capability("nested", "work.json").to_string();
     fs::write(&bot, &reference).unwrap();
-    let delete = || post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/delete", r#"{"deleteHistory":true}"#);
+    let delete = || post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/delete", "{}");
     let rejected = delete().await;
     assert!(rejected.status >= 400, "{}", rejected.body);
     let body: Value = serde_json::from_str(&rejected.body).unwrap();

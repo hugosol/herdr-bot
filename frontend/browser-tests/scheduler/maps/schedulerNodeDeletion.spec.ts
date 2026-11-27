@@ -24,6 +24,46 @@ async function setup(page: Page, source: unknown = original) {
   await expect(page.getByRole('region', { name: 'Map 预览', exact: true })).toBeVisible()
   return root
 }
+// P30 / S1,S2,S4: a confirmed Map deletion must not touch any saved Run
+// record. The real request shape and workflow graph catch hidden cascades.
+test('P30 deleting a Map retains its Run and frozen workflow graph', async ({ page }) => {
+  const root = await setup(page)
+  const directory = path.join(server!.cwd, '.data/workflow-runs/retained-run')
+  fs.mkdirSync(directory, { recursive: true })
+  const map = { ...original, nodes: { A: original.nodes.A } }
+  fs.writeFileSync(path.join(directory, 'map.json'), JSON.stringify(map))
+  fs.writeFileSync(path.join(directory, 'run.json'), JSON.stringify({
+    id: 'retained-run', map: 'work.JSON', createdAt: 1000, status: 'completed', managerTaskId: 'manager', zone: server!.cwd,
+    workspaceName: 'recorded workspace', userInput: 'Retained Run input', manager: null, finished: null,
+    nodes: { A: { status: 'completed', execution: null, failure: null, completion: null, previousExecutions: [] } },
+  }))
+  fs.writeFileSync(path.join(directory, 'history.jsonl'), '')
+  fs.writeFileSync(path.join(directory, 'messages.jsonl'), '')
+  const records = inventory(directory)
+
+  await page.getByRole('button', { name: '删除 Map', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '删除 Map「work.JSON」？' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('button', { name: /历史/ })).toHaveCount(0)
+  const response = page.waitForResponse(reply => reply.url().endsWith('/api/scheduler/maps/work.JSON/delete'))
+  await dialog.getByRole('button', { name: '删除 Map', exact: true }).click()
+  const deleted = await response
+  expect(deleted.request().postDataJSON()).toEqual({})
+  expect(deleted.ok(), await deleted.text()).toBe(true)
+  await expect(dialog).toHaveCount(0)
+  expect(fs.existsSync(path.join(root, 'work.JSON'))).toBe(false)
+  expect(fs.existsSync(path.join(root, 'untouched.json'))).toBe(true)
+  expect(inventory(directory)).toEqual(records)
+
+  await page.getByRole('tab', { name: 'workflow', exact: true }).click()
+  const retained = page.locator('a[href="#workflow/retained-run"]')
+  await expect(retained).toBeVisible()
+  await retained.click()
+  await expect(page.getByRole('group', { name: 'Map 依赖图' })).toContainText('独立审计')
+  expect(inventory(directory)).toEqual(records)
+  expect(server!.herdrCalls()).toEqual([])
+})
+
 async function request(page: Page, operation: string, data: unknown) {
   return page.request.post(`${server!.baseURL}/api/scheduler/maps/work.JSON/nodes/${operation}`, { data })
 }

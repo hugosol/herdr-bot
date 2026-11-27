@@ -19,11 +19,11 @@ include!("../../scheduler/maps/report_policy.rs");
 
 // P3/P15/P38: recovery preserves approval, while retry inherits neither approval nor report eligibility.
 #[tokio::test]
-async fn approval_mode_is_frozen_recovery_keeps_approval_and_retry_reads_current_map() {
+async fn approval_mode_is_frozen_recovery_keeps_approval_and_retry_reads_run_map() {
     let s = Scenario::without_output_contract().await;
-    // Run creation is not a policy snapshot; dispatch reads the current Map.
-    let started = s.start("policy-manager").await;
     set_policy(&s, "A", json!(false));
+    set_policy(&s, "B", json!(false));
+    let started = s.start("policy-manager").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"policy-old"},"native_cwd":s.data.path().join("node-zone")}));
     let first = s.dispatch("policy-manager", &["A"]).await;
     let initial = first["snapshot"]["nodes"]["A"]["execution"].clone();
@@ -70,14 +70,14 @@ async fn approval_mode_is_frozen_recovery_keeps_approval_and_retry_reads_current
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"policy-new"},"native_cwd":s.data.path().join("node-zone")}));
     let retried = action(&s, "retry", json!({"sessionId":"policy-manager","nodeId":"A","confirmed":true,"reason":"User checked old effects"})).await;
     let node = &retried["snapshot"]["nodes"]["A"];
-    assert_eq!(node["execution"]["autoApproved"], true);
+    assert_eq!(node["execution"]["autoApproved"], false);
     assert_eq!(node["execution"]["approved"], false);
     assert!(node["execution"]["approvalSource"].is_null());
     assert_ne!(node["execution"]["id"], old["id"]);
     assert_eq!(node["previousExecutions"][0]["execution"], old);
     let before_lookup = action(&s, "status", json!({"sessionId":"policy-manager"})).await;
     let calls = s.herdr.calls();
-    for (session, execution, policy, approved, source) in [("policy-old", &old["id"], false, true, json!("manual")), ("policy-new", &node["execution"]["id"], true, false, Value::Null)] {
+    for (session, execution, policy, approved, source) in [("policy-old", &old["id"], false, true, json!("manual")), ("policy-new", &node["execution"]["id"], false, false, Value::Null)] {
         let context = post_json_over_tcp(s.server.addr(), "/api/workflow/node/context", &json!({"sessionId":session}).to_string()).await;
         assert_eq!(context.status, 200, "{}", context.body);
         assert_eq!(serde_json::from_str::<Value>(&context.body).unwrap(), json!({"runId":started["id"],"nodeId":"A","executionId":execution,"autoApproved":policy,"approved":approved,"approvalSource":source}));
@@ -99,7 +99,7 @@ async fn approval_mode_is_frozen_recovery_keeps_approval_and_retry_reads_current
     submit_report(&s, "policy-new", "Replacement execution ready", true).await;
     let completed = action(&s, "complete", json!({"sessionId":"policy-manager","nodeId":"A","reason":"Verified handoff"})).await;
     assert_eq!(completed["snapshot"]["nodes"]["A"]["status"], "completed");
-    set_policy(&s, "B", json!(false));
+    set_policy(&s, "B", json!(true));
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"policy-manual-complete"},"native_cwd":s.data.path().join("node-zone")}));
     let manual = s.dispatch("policy-manager", &["B"]).await;
     assert_eq!(manual["snapshot"]["nodes"]["B"]["execution"]["autoApproved"], false);

@@ -277,7 +277,7 @@ impl Drop for Lifecycle {
 #[tokio::test]
 async fn script_lifecycle_disconnect_and_pause_preserve_accepted_business_without_holding_run() {
     let s = Lifecycle::new().await;
-    let gate = super::history_integrity::file_gate::Gate::new(&s.root.path().join("tasks.json"));
+    let gate = crate::common::file_gate::Gate::new(&s.root.path().join("tasks.json"));
     let caller = common::OpenJsonRequest::submit(s.backend.addr, "/api/workflow/manager/dispatch", r#"{"sessionId":"script-lifecycle-manager","nodes":["create"]}"#).await;
     let observed = std::panic::AssertUnwindSafe(async {
         assert!(common::wait_until(Duration::from_secs(5), ||gate.reached()).await, "compiled business must reach held external task file");
@@ -341,7 +341,7 @@ async fn script_lifecycle_real_restart_preserves_finished_and_interrupted_facts_
     s.action("dispatch", json!({"nodes":["create"]}), 200).await;
     let finished = s.ended().await;
     s.assert_delivery(&finished, &finished["run"]["nodes"]["create"]["execution"]).await;
-    let gate = super::history_integrity::file_gate::Gate::new(&s.root.path().join("tasks.json"));
+    let gate = crate::common::file_gate::Gate::new(&s.root.path().join("tasks.json"));
     let interrupted = std::panic::AssertUnwindSafe(async {
         s.action("dispatch", json!({"nodes":["later"]}), 200).await;
         assert!(common::wait_until(Duration::from_secs(5), ||gate.reached()).await, "second compiled business must actually enter external file gate");

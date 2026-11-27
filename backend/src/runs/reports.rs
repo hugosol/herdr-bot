@@ -295,7 +295,6 @@ pub(super) async fn submit(state: AppState, run_id: String, node_id: String, exe
             let paths = Runs::paths(&state, &run.id);
             let owned = state.clone();
             state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
-                owned.runs.ensure_retained(&run.id).await?;
                 access.append_jsonl::<Report>(&paths[2], &report)?;
                 owned.runs.changed(&run.id, true).await;
                 Ok::<_, String>(report)

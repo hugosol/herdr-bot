@@ -877,6 +877,10 @@ async fn manager_trigger_and_status_follow_committed_identity() {
         .into_iter()
         .find(|c| c["kind"] == "agent_start")
         .unwrap();
+    // P11 (S1/S4): the external launch gate is already entered. Deferring the
+    // copy to association or initial prompt would leave no definition here.
+    let frozen_path = root.join("map.json");
+    let frozen_at_launch = fs::read(&frozen_path);
     assert_eq!(
         &start["args"].as_array().unwrap()[..4],
         &[
@@ -904,7 +908,6 @@ async fn manager_trigger_and_status_follow_committed_identity() {
     assert!(body.ends_with("\n\nLAST-USER-MARKER"));
     assert!(body.contains(original["id"].as_str().unwrap()));
     for required_path in [
-        config.scheduler.map_directory.join("work.json"),
         config.scheduler.run_instructions.clone(),
         root.join("run.json"),
         root.join("history.jsonl"),
@@ -940,6 +943,18 @@ async fn manager_trigger_and_status_follow_committed_identity() {
     assert_eq!(invented.status, 400);
     fs::write(prompt_release, b"release").unwrap();
     assert_eq!(request.await.unwrap().status, 201);
+    let frozen: Value = serde_json::from_slice(&frozen_at_launch.expect("map.json must already exist when Herdr enters agent_start")).unwrap();
+    assert_eq!(frozen["title"], "map");
+    assert_eq!(frozen["description"], "MAP-BODY-NOT-INJECTED");
+    assert_eq!(frozen["nodes"]["A"]["input"], "NODE-INPUT-NOT-INJECTED");
+    assert_eq!(frozen["nodes"]["A"]["bot_id"], "worker");
+    assert_eq!(frozen["nodes"]["A"]["blocked_by"], json!([]));
+    assert!(frozen_path.is_absolute());
+    assert!(body.contains(&frozen_path.display().to_string()));
+    assert!(!body.contains(&config.scheduler.map_directory.join("work.json").display().to_string()));
+    let map = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{}/map", original["id"].as_str().unwrap())).await;
+    let map = run_reply(map, 200);
+    assert_eq!(map["nodes"]["A"]["input"], "NODE-INPUT-NOT-INJECTED");
     let saved = common::get_over_tcp(server.addr(), &format!("/api/tasks/{}", ids[0])).await;
     assert_eq!(
         serde_json::from_str::<Value>(&saved.body).unwrap()["task"]["prompt"],
@@ -1241,7 +1256,12 @@ async fn initialization_and_identity_failures_stop_before_initial_instructions()
         let calls = herdr.calls();
         if stage == "initialize" {
             assert!(calls.is_empty());
+            assert_eq!(detail["startupError"]["effects"]["recordsInitialized"], false);
+            assert_eq!(detail["startupError"]["effects"]["agentStarted"], false);
+            assert!(detail["run"].is_null());
+            assert_eq!(fs::read(&config.scheduler.run_directory).unwrap(), b"not a directory");
         } else {
+            assert_eq!(detail["startupError"]["effects"]["recordsInitialized"], true);
             assert_eq!(
                 calls.iter().filter(|c| c["kind"] == "agent_start").count(),
                 1
@@ -1256,6 +1276,7 @@ async fn initialization_and_identity_failures_stop_before_initial_instructions()
                 .join(detail["id"].as_str().unwrap());
             assert_eq!(fs::read(root.join("history.jsonl")).unwrap(), b"");
             assert_eq!(fs::read(root.join("messages.jsonl")).unwrap(), b"");
+            assert_eq!(fs::read(root.join("map.json")).unwrap(), fs::read(config.scheduler.map_directory.join("work.json")).unwrap());
         }
         let refreshed = get_over_tcp(
             server.addr(),
@@ -1416,7 +1437,7 @@ async fn valid_empty_bot_documents_start_manager_and_preserve_literal_requiremen
             .find(|c| c["kind"] == "agent_prompt")
             .unwrap());
         assert!(prompt.starts_with("FIXED-MANAGER-ROLE\n\nRun ID: "));
-        assert!(prompt.contains("work.json"));
+        assert!(prompt.contains(&root.join("map.json").display().to_string()));
         assert!(!prompt.contains("MAP-BODY-NOT-INJECTED"));
         assert!(!prompt.contains("NODE-INPUT-NOT-INJECTED"));
         if requirements.is_empty() {

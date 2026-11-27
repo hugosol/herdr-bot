@@ -47,6 +47,8 @@ async function currentFixture() {
   const mapPath = path.join(maps, 'beta.json')
   fs.writeFileSync(mapPath, JSON.stringify(definition))
   const runPath = path.join(root, 'new-run/run.json')
+  const frozenPath = path.join(root, 'new-run/map.json')
+  fs.writeFileSync(frozenPath, JSON.stringify(definition))
   const run = JSON.parse(fs.readFileSync(runPath, 'utf8'))
   run.status = 'running'
   // This fixture isolates dependency readiness after the manager has confirmed
@@ -67,7 +69,7 @@ async function currentFixture() {
   expect(online.status).toBe(200)
   const working = await fetch(`${server.baseURL}/api/sessions/events`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId: chat.sessionId, kind: 'state', data: { value: 'working' } }) })
   expect(working.status).toBe(200)
-  return { ...context, mapPath, definition, run, runPath, report }
+  return { ...context, mapPath, frozenPath, definition, run, runPath, report }
 }
 
 // P51.01/P52.01 source: literal definitions, execution facts and report above.
@@ -144,13 +146,12 @@ test('P51.01 P52.01 current Map graph and node details distinguish execution fac
   fs.writeFileSync(info.outputPath('no-implicit-execution.json'), JSON.stringify({ observationMs: 750, recordsBefore: records, recordsAfter: ['run.json', 'history.jsonl', 'messages.jsonl'].map(file => fs.readFileSync(path.join(root, 'new-run', file), 'utf8')), callsBefore: calls, callsAfter: server.herdrCalls() }, null, 2))
 })
 
-// P57.01 source: ticket's three unavailable-definition conditions. Violation:
-// reconstructing a graph from saved statuses or attaching old nodes to a renamed
-// current node. Start with a real current graph, then change the owned file and
-// manually read again. Reports and retained identities must remain accessible.
+// P13 / S1,S2,S4: the source remains valid while the Run copy fails. A
+// live-source fallback or retained stale graph would mask the explicit error.
+// Previously saved execution facts and reports remain independently readable.
 for (const condition of ['missing', 'invalid', 'mismatch'] as const) {
-  test(`P57.01 ${condition} current definition never fabricates a historical graph @time-contract`, async ({ page }, info) => {
-    const { server, root, mapPath, definition, run, runPath, report } = await currentFixture()
+  test(`P13 ${condition} frozen definition never falls back to the legal source Map @time-contract`, async ({ page }, info) => {
+    const { server, root, mapPath, frozenPath, definition, run, runPath, report } = await currentFixture()
     run.nodes.E.previousExecutions = [{ execution: { autoApproved: true, approved: false, approvalSource: null, agent: 'omp', id: 'old-exec-E', taskId: 'old-saved-task', zone: 'C:/old-zone', chat: { ...chat, sessionId: 'saved-old-chat' } }, failure: { stage: 'execution', message: '旧执行已保留的失败' } }]
     fs.writeFileSync(runPath, JSON.stringify(run))
     fs.writeFileSync(path.join(root, 'new-run/messages.jsonl'), JSON.stringify({ ...report, id: 'report-old', executionId: 'old-exec-E', body: '旧执行报告正文仍可读取', from: run.nodes.E.previousExecutions[0].execution.chat, at: 4500 }) + '\n' + JSON.stringify(report) + '\n')
@@ -158,10 +159,14 @@ for (const condition of ['missing', 'invalid', 'mismatch'] as const) {
     const calls = server.herdrCalls()
     await page.goto(`${server.baseURL}/#workflow/new-run`)
     await expect(page.getByRole('group', { name: 'Map 依赖图', exact: true })).toBeVisible()
-    if (condition === 'missing') fs.unlinkSync(mapPath)
-    else if (condition === 'invalid') fs.writeFileSync(mapPath, '{ broken current Map')
-    else fs.writeFileSync(mapPath, JSON.stringify({ ...definition, nodes: { Z: { ...definition.nodes.A, title: '不应关联的改名工作' } } }))
-    fs.unlinkSync(path.join(server.cwd, 'meta-data/bots/worker.json'))
+    if (condition === 'missing') fs.unlinkSync(frozenPath)
+    else if (condition === 'invalid') fs.writeFileSync(frozenPath, '{ broken frozen Map')
+    else fs.writeFileSync(frozenPath, JSON.stringify({ ...definition, nodes: { Z: { ...definition.nodes.A, title: '不应关联的改名工作' } } }))
+    expect(JSON.parse(fs.readFileSync(mapPath, 'utf8'))).toEqual(definition)
+    expect((await page.request.get(`${server.baseURL}/api/scheduler/maps/beta.json`)).ok()).toBe(true)
+    const failedMap = await page.request.get(`${server.baseURL}/api/workflow/runs/new-run/map`)
+    expect(failedMap.status()).toBe(500)
+    expect(await failedMap.text()).toContain('map.json')
     await page.getByRole('button', { name: '刷新 Run', exact: true }).click()
     await expect(page.getByRole('alert').filter({ hasText: '不补造历史图' })).toBeVisible()
     await expect(page.getByRole('group', { name: 'Map 依赖图', exact: true })).toHaveCount(0)
@@ -247,8 +252,8 @@ test('handoff facts preserve frozen rules and resolved inputs while accumulating
   await expect(history.locator('dt').filter({ hasText: /^autoApproved$/ }).locator('+ dd')).toHaveText('false')
   await expect(history.locator('dt').filter({ hasText: /^approved$/ }).locator('+ dd')).toHaveText('true · 已批准')
   await expect(history.locator('dt').filter({ hasText: /^approvalSource$/ }).locator('+ dd')).toHaveText('manual · 人工批准')
-  const currentDefinition = page.getByRole('group', { name: '当前节点定义', exact: true })
-  await expect(currentDefinition.locator('dt').filter({ hasText: /^auto_approved$/ }).locator('+ dd')).toHaveText('false')
+  const currentDefinition = page.getByRole('group', { name: '冻结节点定义', exact: true })
+  await expect(currentDefinition.locator('dt').filter({ hasText: /^auto_approved$/ }).locator('+ dd')).toHaveText('true')
   await expect(history.getByRole('region', { name: '执行交接快照', exact: true })).toContainText('未知')
   await expect(history.getByRole('region', { name: '执行交接快照', exact: true })).not.toContainText('C:/frozen/source.txt')
   await expect(history.getByRole('region', { name: '执行交接快照', exact: true })).not.toContainText('C:/outputs/old.txt')

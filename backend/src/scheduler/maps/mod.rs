@@ -117,7 +117,7 @@ pub(crate) struct MapNode {
     #[serde(default)]
     pub(crate) end_node: bool,
     pub(crate) zone: NodeZone,
-    pub(super) blocked_by: Vec<String>,
+    pub(crate) blocked_by: Vec<String>,
 }
 
 pub(super) fn map_error(message: impl Into<String>) -> DirectoryError {
@@ -139,7 +139,7 @@ pub(super) fn map_file_path(access: &FileAccess, directory: &Path, name: &str) -
     Ok(file)
 }
 
-fn read_map_source(access: &FileAccess, directory: &Path, name: &str) -> Result<String, DirectoryError> {
+pub(crate) fn read_map_source(access: &FileAccess, directory: &Path, name: &str) -> Result<String, DirectoryError> {
     access.read_to_string(map_file_path(access, directory, name)?)
         .map_err(|e| map_error(format!("Map 文件读取失败：{e}")))
 }
@@ -148,16 +148,7 @@ pub(crate) fn read_map(access: &FileAccess, directory: &Path, name: &str) -> Res
     parse_map(&read_map_source(access, directory, name)?)
 }
 
-pub(crate) fn node_dependencies(directory: &Path, name: &str) -> Result<BTreeMap<String, Vec<String>>, String> {
-    let mut map = with_definitions(&[directory.to_owned()], "map-read-failed", |access| read_map(access, directory, name)).map_err(|e| e.message)?;
-    if let Some(id) = map.nodes.iter().find_map(|(id, node)| node.0.end_node.then(|| id.clone())) {
-        let dependencies = map.nodes.keys().filter(|other| **other != id).cloned().collect();
-        map.nodes.get_mut(&id).expect("end node belongs to Map").0.blocked_by = dependencies;
-    }
-    Ok(map.nodes.into_iter().map(|(id, node)| (id, node.0.blocked_by)).collect())
-}
-
-fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
+pub(crate) fn parse_map(source: &str) -> Result<WorkflowMap, DirectoryError> {
     let mut deserializer = serde_json::Deserializer::from_str(source);
     let JsonObject(map): JsonObject<WorkflowMap> = serde_path_to_error::deserialize(&mut deserializer)
         .map_err(|e| map_error(format!("Map 结构无效：{e}")))?;
@@ -575,41 +566,19 @@ fn read_map_catalog(access: &FileAccess, directory: &Path) -> Result<MapCatalog,
     }
     Ok(MapCatalog { files, titles, groups })
 }
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct MapDelete {
-    delete_history: bool,
-}
-
-pub(crate) async fn delete_map(state: crate::AppState, name: String, input: MapDelete) -> Result<MapCatalog, DirectoryError> {
-    let lock = state.runs.map_lock(&name).await;
-    let _operation = lock.lock().await;
-    // Validate the file boundary without parsing its definition: broken JSON is
-    // still a safely identifiable Map file which the user must be able to remove.
-    let validation = with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "map-delete-failed", |access| {
-        map_file_path(access, &state.map_directory, &name)?;
-        check_map_references(access, &state.bot_directory, &name)?;
-        let files = read_files(access, &state.map_directory)?;
-        if !files.files.contains(&name) {
-            return Err(edit_error("map-delete-failed", "删除只接受列表中的确切 Map 文件名。"));
-        }
-        Ok(())
-    });
-    validation?;
-    if input.delete_history {
-        if let Err(message) = state.runs.delete_map_history(&state, &name).await {
-            return Err(edit_error("map-history-delete-failed", format!("Map 文件尚未删除；Run 历史删除未完成（部分历史可能已删除）：{message}")));
-        }
-    }
+pub(crate) async fn delete_map(state: crate::AppState, name: String) -> Result<MapCatalog, DirectoryError> {
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "map-delete-failed", |access| {
+        // Broken JSON can still be removed if it is an identifiable Map file.
         let path = map_file_path(access, &state.map_directory, &name)?;
         check_map_references(access, &state.bot_directory, &name)?;
-        access.remove_file(path).map_err(|error| edit_error("map-delete-failed", format!("Map {name} 文件删除失败：{error}；所选 Run 历史处理已完成。")))?;
+        if !read_files(access, &state.map_directory)?.files.contains(&name) {
+            return Err(edit_error("map-delete-failed", "删除只接受列表中的确切 Map 文件名。"));
+        }
+        access.remove_file(path).map_err(|error| edit_error("map-delete-failed", format!("Map {name} 文件删除失败：{error}")))?;
         read_map_catalog(access, &state.map_directory).map_err(|error| edit_error("map-list-after-delete-failed", format!("Map {name} 已删除，但剩余 Map 列表读取失败：{}", error.message)))
     })).await {
-        Ok(Ok(files)) => Ok(files),
-        Ok(Err(error)) => Err(error),
-        Err(error) => Err(edit_error("map-delete-failed", format!("Map 删除任务失败：{error}；所选 Run 历史处理已完成，请重新加载确认文件状态。" ))),
+        Ok(result) => result,
+        Err(error) => Err(edit_error("map-delete-failed", format!("Map 删除任务失败：{error}；请重新加载确认文件状态。"))),
     }
 }
 
