@@ -24,7 +24,7 @@ async function fixture() {
   const maps = path.join(server.cwd, 'meta-data/workflow-maps'), bots = path.join(server.cwd, 'meta-data/bots')
   fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
   fs.writeFileSync(path.join(maps, 'launch.json'), JSON.stringify({ title: '启动图', description: '', nodes: { A: { title: 'A', bot_id: 'worker', input: 'NODE ONLY', zone, blocked_by: [] } } }))
-  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '', when: '', plan_guide: '', node_guide: '', task_id: ids.normal }))
+  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '', when: '', description: '', input_rule: '', output_rule: '', task_id: ids.normal }))
   return { server, zone, ids }
 }
 

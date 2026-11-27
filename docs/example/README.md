@@ -90,8 +90,8 @@ try {
 ### 依次操作
 
 1. 从配置组进入 **scheduler**。目录只有两张 Map，不包含 Bot 文件。选 **出行准备核对（人工示例）**（`trip-readiness.json`），在常驻依赖图中核对 A → C、B → C 和独立的 D。逐项选择节点，对照上表的 ID、输入和依赖。图可选中节点，不能拖动节点改定义或创建连线。
-2. 从外侧 **bot** 入口选择 `destination-weather`。按任意顺序阅读 `when`、`plan_guide`、`node_guide`，在 `json` 查看原始定义。它们是说明，不是工作结果。回到 **scheduler** 打开另一张 Map，核对 E 仍引用同一个 ID。在隔离 `capabilities` 目录改天气 Bot 的文件名，回到 **scheduler** 点 **刷新全部**，核对关联不变。
-3. 在 **bot** 里修改天气 Bot 的 `plan_guide` 并显式保存。已有 ID 只读，内容 JSON 不含顶层 `id`。A、B、E 仍引用同一份定义。Bot 页 **refresh** 重读 Bot；Map 页 **刷新全部** 重读目录、当前 Map 与 Bot，并保留仍存在的节点选择。
+2. 从外侧 **bot** 入口选择 `destination-weather`。按任意顺序阅读 `when`、`description`、`input_rule`、`output_rule`，在 `json` 查看原始定义。它们是说明，不是工作结果。回到 **scheduler** 打开另一张 Map，核对 E 仍引用同一个 ID。在隔离 `capabilities` 目录改天气 Bot 的文件名，回到 **scheduler** 点 **刷新全部**，核对关联不变。
+3. 在 **bot** 里修改天气 Bot 的 `description` 并显式保存。已有 ID 只读，内容 JSON 不含顶层 `id`。A、B、E 仍引用同一份定义。Bot 页 **refresh** 重读 Bot；Map 页 **刷新全部** 重读目录、当前 Map 与 Bot，并保留仍存在的节点选择。
 4. 回到 `trip-readiness.json`，选 **新增 node**，在独立 ID 控件填 `manual-node`。设为固定 zone `example/travel`，在独立的成果批准设置选自动，保持自动关闭和结束节点未勾选。切到 **JSON 编辑**，填入下面的内容并保存。再次打开节点，核对设置和文字；A、B、C、D 的定义和依赖不变，也不应启动 Chat。
 
    ```json

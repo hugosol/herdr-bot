@@ -108,7 +108,7 @@ for (const agent of ['omp', 'pi'] as const) {
     const maps = path.join(host.cwd, 'meta-data/workflow-maps'), bots = path.join(host.cwd, 'meta-data/bots')
     fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
     fs.writeFileSync(path.join(maps, 'shared.json'), JSON.stringify({ title: 'Shared Task', description: '', nodes: { A: { title: 'Shared node', bot_id: 'worker', input: 'WORKFLOW INPUT', zone, blocked_by: [] } } }))
-    fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: 'Worker', when: '', plan_guide: '', node_guide: '', task_id: task.id }))
+    fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: 'Worker', when: '', description: '', input_rule: '', output_rule: '', task_id: task.id }))
     identity('shared-manager')
     const run = await post('/api/scheduler/maps/shared.json/runs', { managerTaskId: manager.id, zone, userInput: 'MANAGER INPUT' }, 201)
     await post('/api/workflow/manager/prepare_inputs', { sessionId: 'shared-manager', fileInputs: [], confirmed: true, reason: 'Reviewed shared task fixture inputs' })

@@ -185,7 +185,7 @@ for (const failure of ['json', 'trailing-json', 'structure', 'dependency', 'file
     const bots = path.join(server.cwd, 'meta-data', 'bots')
     fs.mkdirSync(maps, { recursive: true })
     fs.mkdirSync(bots, { recursive: true })
-    const botBytes = '{"id":"shared","name":"Shared recovery capability","when":"Inspect plans","plan_guide":"Read-only recovery evidence","node_guide":""}'
+    const botBytes = '{"id":"shared","name":"Shared recovery capability","when":"Inspect plans","description":"Read-only recovery evidence","input_rule":"","output_rule":""}'
     fs.writeFileSync(path.join(bots, 'capability.json'), botBytes)
     const operationScript = path.join(server.cwd, 'record-operation.bat')
     const operationMarker = path.join(server.cwd, 'operation-executed.txt')

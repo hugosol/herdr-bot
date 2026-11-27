@@ -38,8 +38,8 @@ async function setup(page: Page) {
   const targetId = target.tasks.find((task: { name: string }) => task.name === 'Unbound target').id
   const request = { schema_version: 1, kind: 'request', target: { type: 'task', task_id: targetId }, bot: { id: 'page-product', name: 'Page product' }, requirements: 'Read only', constraints: [], non_goals: [], resource_limits: [] }
   fs.writeFileSync(path.join(zone, 'request.json'), JSON.stringify(request))
-  await post(page, '/api/scheduler/bots/save', { id: 'script', revision: null, content: JSON.stringify({ name: 'Script', when: '', plan_guide: '', node_guide: '', script: 'create-blank-bot.ts' }) })
-  await post(page, '/api/scheduler/bots/save', { id: 'worker', revision: null, content: JSON.stringify({ name: 'Worker', when: '', plan_guide: '', node_guide: '', task_id: tasks.normal }) })
+  await post(page, '/api/scheduler/bots/save', { id: 'script', revision: null, content: JSON.stringify({ name: 'Script', when: '', description: '', input_rule: '', output_rule: '', script: 'create-blank-bot.ts' }) })
+  await post(page, '/api/scheduler/bots/save', { id: 'worker', revision: null, content: JSON.stringify({ name: 'Worker', when: '', description: '', input_rule: '', output_rule: '', task_id: tasks.normal }) })
   const map = { title: 'Script workflow', description: '', nodes: {
     create: { title: 'Create blank', bot_id: 'script', input: 'Not script parameters', input_rule: [{ id: 'request', type: 'file', zone_id: 'script-zone', path: 'request.json' }], output_rule: [{ id: 'baseline' }, { id: 'handoff' }], zone: 'script-zone', blocked_by: [] },
     consume: { title: 'Consumer', bot_id: 'worker', input: 'Read result', zone: 'script-zone', blocked_by: ['create'] },

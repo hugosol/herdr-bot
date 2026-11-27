@@ -48,7 +48,7 @@ async fn mixed_target_planning_shape_saves_and_preflights_without_running_busine
     fs::write(s.data.path().join("node-zone/source.txt"), "ORDER-SOURCE-617\nEUR 12.50").unwrap();
     let child_before = fs::read(s.config.scheduler.map_directory.join("work.json")).unwrap();
     fs::write(s.config.scheduler.map_directory.join("planned.json"), r#"{"title":"Confirmed order review","description":"Only authorized order review","nodes":{}}"#).unwrap();
-    let bot = json!({"name":"Order review process","when":"Review orders","plan_guide":"Use the existing process","node_guide":"Provide source and review result","map_file":"work.json"});
+    let bot = json!({"name":"Order review process","when":"Review orders","description":"Use the existing process","input_rule":"Provide source and review result","output_rule":"","map_file":"work.json"});
     let created = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/save", &json!({"id":"review-process","content":bot.to_string(),"revision":null}).to_string()).await;
     assert_eq!(created.status, 200, "{}", created.body);
     let interface = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/inputs").await;

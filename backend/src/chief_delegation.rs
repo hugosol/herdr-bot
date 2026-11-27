@@ -283,7 +283,12 @@ async fn resolve(
         let mut tasks = std::collections::BTreeMap::new();
         let prompts = state.prompts.snapshot().map_err(|error| rejected("prompt-dictionary-invalid", error.to_string()))?;
         let mut bot_meaning = std::collections::BTreeMap::new();
-        for (key, field) in [("when", crate::prompts::Field::BotWhen), ("plan_guide", crate::prompts::Field::BotPlanGuide), ("node_guide", crate::prompts::Field::BotNodeGuide)] {
+        for (key, field) in [
+            ("when", crate::prompts::Field::BotWhen),
+            ("description", crate::prompts::Field::BotDescription),
+            ("input_rule", crate::prompts::Field::BotInputRule),
+            ("output_rule", crate::prompts::Field::BotOutputRule),
+        ] {
             bot_meaning.insert(key, prompts.render(field, bot[key].as_str().expect("validated Bot guidance"))
                 .map_err(|error| rejected("prompt-dictionary-invalid", error.to_string()))?);
         }

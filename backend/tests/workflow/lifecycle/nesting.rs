@@ -16,7 +16,7 @@ async fn detail(s: &Scenario, id: &str) -> Value {
     serde_json::from_str(&response.body).unwrap()
 }
 fn nested(s: &Scenario, task: &str, input: &str) {
-    fs::write(s.config.scheduler.bot_directory.join("nested.json"), json!({"id":"nested","name":"Nested","when":"","plan_guide":"","node_guide":"","map_file":"inner.json"}).to_string()).unwrap();
+    fs::write(s.config.scheduler.bot_directory.join("nested.json"), json!({"id":"nested","name":"Nested","when":"","description":"","input_rule":"","output_rule":"","map_file":"inner.json"}).to_string()).unwrap();
     fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner","description":"","nodes":{"A":{"title":"Internal A","bot_id":"worker","input":"INNER-WORK","zone":"manager","blocked_by":[]}}}).to_string()).unwrap();
     fs::write(s.config.scheduler.map_directory.join("work.json"), json!({"title":"Outer","description":"","nodes":{"A":{"title":"Call","bot_id":"nested","manager_task_id":task,"input":input,"zone":"node","blocked_by":[]},"B":{"title":"Call again","bot_id":"nested","manager_task_id":task,"input":input,"zone":"node","blocked_by":[]}}}).to_string()).unwrap();
 }
@@ -68,7 +68,7 @@ async fn nested_chat_names_use_titles_frozen_at_each_run_creation() {
     let s = Scenario::new().await;
     for (bot, map) in [("build", "build.json"), ("release", "release.json")] {
         fs::write(s.config.scheduler.bot_directory.join(format!("{bot}.json")), json!({
-            "id":bot, "name":bot, "when":"", "plan_guide":"", "node_guide":"", "map_file":map
+            "id":bot, "name":bot, "when":"", "description":"","input_rule":"","output_rule":"", "map_file":map
         }).to_string()).unwrap();
     }
     let maps = &s.config.scheduler.map_directory;
@@ -391,7 +391,7 @@ async fn multilevel_local_ids_bind_only_the_owning_run() {
     let s = Scenario::new().await;
     nested(&s, &s.manager_task, "OUTER");
     let maps = &s.config.scheduler.map_directory;
-    fs::write(s.config.scheduler.bot_directory.join("leaf.json"), json!({"id":"leaf","name":"Leaf","when":"","plan_guide":"","node_guide":"","map_file":"leaf.json"}).to_string()).unwrap();
+    fs::write(s.config.scheduler.bot_directory.join("leaf.json"), json!({"id":"leaf","name":"Leaf","when":"","description":"","input_rule":"","output_rule":"","map_file":"leaf.json"}).to_string()).unwrap();
     fs::write(maps.join("work.json"), json!({"title":"Root","description":"","map_input_rule":{"files":[{"id":"outer","required":true}]},"nodes":{"A":{"title":"Call","bot_id":"nested","manager_task_id":s.manager_task,"input":"OUTER","zone":"node","blocked_by":[],"input_rule":[{"type":"run","id":"shared","input_id":"outer"}]}}}).to_string()).unwrap();
     fs::write(maps.join("inner.json"), json!({"title":"Middle","description":"","map_input_rule":{"files":[{"id":"shared","required":true}]},"nodes":{"A":{"title":"Call leaf","bot_id":"leaf","manager_task_id":s.manager_task,"input":"MIDDLE","zone":"manager","blocked_by":[],"input_rule":[{"type":"run","id":"shared","input_id":"shared"}]}}}).to_string()).unwrap();
     fs::write(maps.join("leaf.json"), json!({"title":"Leaf","description":"","map_input_rule":{"files":[{"id":"shared","required":true}]},"nodes":{"A":{"title":"Consume","bot_id":"worker","input":"LEAF","zone":"node","blocked_by":[],"input_rule":[{"type":"run","id":"local","input_id":"shared"}]}}}).to_string()).unwrap();

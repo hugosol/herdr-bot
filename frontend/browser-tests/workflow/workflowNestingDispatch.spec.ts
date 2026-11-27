@@ -25,8 +25,8 @@ test('nested dispatch launches node-local manager and exposes success and requir
   }
   const maps = path.join(server.cwd, 'meta-data/workflow-maps'), bots = path.join(server.cwd, 'meta-data/bots')
   fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
-  fs.writeFileSync(path.join(bots, 'nested.json'), JSON.stringify({ id: 'nested', name: 'Nested', when: '', plan_guide: '', node_guide: '', map_file: 'inner.json' }))
-  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: 'Worker', when: '', plan_guide: '', node_guide: '', task_id: tasks.Worker }))
+  fs.writeFileSync(path.join(bots, 'nested.json'), JSON.stringify({ id: 'nested', name: 'Nested', when: '', description: '', input_rule: '', output_rule: '', map_file: 'inner.json' }))
+  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: 'Worker', when: '', description: '', input_rule: '', output_rule: '', task_id: tasks.Worker }))
   const inner = { title: 'Inner dispatch map', description: '', map_input_rule: { files: [{ id: 'material', required: false }] }, nodes: { A: { title: 'Internal work', bot_id: 'worker', input: 'INNER', zone: 'root-zone', blocked_by: [] } } }
   fs.writeFileSync(path.join(maps, 'inner.json'), JSON.stringify(inner))
   const call = { title: 'Nested call', bot_id: 'nested', manager_task_id: tasks['Child manager'], input: 'CHILD 原始业务\nNo production access', zone: 'child-zone', blocked_by: [] }

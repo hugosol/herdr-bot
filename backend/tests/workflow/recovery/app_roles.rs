@@ -12,7 +12,7 @@ async fn p42_app_resume_preserves_original_run_roles_and_ownership() {
         let cwd = data.path().join("alpha");
         let addr = server.addr();
         fs::write(config.scheduler.bot_directory.join("nested.json"), json!({
-            "id":"nested","name":"Nested","when":"","plan_guide":"","node_guide":"","map_file":"inner.json"
+            "id":"nested","name":"Nested","when":"","description":"","input_rule":"","output_rule":"","map_file":"inner.json"
         }).to_string()).unwrap();
         fs::write(config.scheduler.map_directory.join("work.json"), json!({"title":"Root","description":"","nodes":{
             "A":{"title":"Work","bot_id":"worker","input":"Ordinary node business input","zone":zone,"blocked_by":[]},

@@ -121,7 +121,7 @@ impl Fixture {
                     .clone(),
             );
         }
-        fs::write(root.path().join("bots/worker.json"),json!({"id":"brief-bot","name":"Brief analyst","when":"Summarize a brief","plan_guide":"Use supplied material","node_guide":"Do not invent findings","task_id":tasks[1]["id"]}).to_string()).unwrap();
+        fs::write(root.path().join("bots/worker.json"),json!({"id":"brief-bot","name":"Brief analyst","when":"Summarize a brief","description":"Use supplied material","input_rule":"Do not invent findings","output_rule":"","task_id":tasks[1]["id"]}).to_string()).unwrap();
         let fixture = Self {
             root,
             herdr,
@@ -258,7 +258,7 @@ async fn preview_rejects_incomplete_or_invalid_business_targets_and_materials() 
         .await;
         assert_eq!(body(response, 409)["code"], "delegation-task-role");
     }
-    fs::write(f.root.path().join("bots/worker.json"),json!({"id":"brief-bot","name":"Map only","when":"Flow","plan_guide":"Flow","node_guide":"Flow","map_file":"flow.json"}).to_string()).unwrap();
+    fs::write(f.root.path().join("bots/worker.json"),json!({"id":"brief-bot","name":"Map only","when":"Flow","description":"Flow","input_rule":"Flow","output_rule":"","map_file":"flow.json"}).to_string()).unwrap();
     let response = post_json_over_tcp(
         f.server.addr(),
         "/api/chief/delegations/preview",

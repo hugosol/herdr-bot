@@ -1,9 +1,10 @@
 {
   "group": "meta-bot",
   "id": "save-created-bot-guides",
-  "name": "创建流程三指南保存者",
+  "name": "创建流程四字段保存者",
   "when": "",
-  "plan_guide": "",
-  "node_guide": "",
+  "description": "",
+  "input_rule": "",
+  "output_rule": "",
   "script": "save-bot-guides.ts"
 }

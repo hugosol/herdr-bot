@@ -55,7 +55,7 @@ async function setup(page: Page, a = false, b = true) {
   }
   const botRoot = path.join(server.cwd, 'meta-data/bots')
   fs.mkdirSync(botRoot, { recursive: true })
-  fs.writeFileSync(path.join(botRoot, 'worker.json'), JSON.stringify({ id: 'worker', name: 'worker', when: '', plan_guide: '', node_guide: '', task_id: ids.normal }))
+  fs.writeFileSync(path.join(botRoot, 'worker.json'), JSON.stringify({ id: 'worker', name: 'worker', when: '', description: '', input_rule: '', output_rule: '', task_id: ids.normal }))
   const mapRoot = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(mapRoot, { recursive: true })
   const node = { title: 'Worker', bot_id: 'worker', input: 'NODE-LIFECYCLE-INPUT', output_rule: [], zone: 'test/zone', blocked_by: [] }

@@ -2,8 +2,9 @@
   "group": "meta-bot",
   "id": "create-bot-wrapper",
   "name": "为既有目标包装完整 Bot",
-  "when": "为已经存在的 normal Task 或 Map 新建并绑定完整 Bot 时使用，交付经确认和表达优化的三指南及完整保存读回对象。目标由本能力自行核实；不创建、修改或执行目标，也不用于修订已有 Bot。配置交付不等于业务能力验证。",
-  "plan_guide": "目标必须已经存在，且业务需求与实际能力相符；不要求用户抄完整配置。安排三指南成果确认所需的用户参与，业务材料只记录执行必需数据，不生产下游许可、全文批准或最终保存授权凭据。选用或嵌套本能力时，读取 ${herdr-bot-path}/meta-data/workflow-maps/create-bot-wrapper.json 的 input_requirements，以该字段为唯一输入要求来源；通过管理者对话澄清、准备并确认输入，再按 ${herdr-bot-path}/docs/create-bot-wrapper.md「调用接口」核实本次真实 manager 与 zone，并安排 saved／handoff 的父子交接；配置交付不包含新能力试运行。",
-  "node_guide": "按 ${herdr-bot-path}/meta-data/workflow-maps/create-bot-wrapper.json 的 input_requirements 准备本次委托和命名材料，不重复维护另一份要求。允许先在管理者对话中澄清，由管理者绑定并确认就绪后再派发业务节点；本次业务 input 说明委托差异、用途与执行约束，不索要人类批准凭据，不包含目标变更或业务执行。",
+  "when": "已存在 normal Task 或 Map，需要将其包装为能力 Bot 时选用。",
+  "description": "## 能力职责\n创建空白基线、编审四字段正文并一次保存完整 Bot。\n\n## 能力边界\n不修订已有 Bot，不创建、修改或运行目标。\n\n## 特殊前提\n需要可用管理者配置；正文审阅与成果批准独立于 V1 业务材料。",
+  "input_rule": "已存在且符合需求的真实目标、创建 V1 request 及可选材料。",
+  "output_rule": "完整已保存且读回一致的 Bot、绑定与 revision，及 saved／handoff；配置交付不是业务验证。",
   "map_file": "create-bot-wrapper.json"
 }

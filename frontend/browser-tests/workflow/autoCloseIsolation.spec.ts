@@ -28,7 +28,7 @@ async function scenario(page: Page) {
   const bots = path.join(host.cwd, 'meta-data/bots')
   const maps = path.join(host.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(bots, { recursive: true }); fs.mkdirSync(maps, { recursive: true })
-  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: 'Worker', when: '', plan_guide: '', node_guide: '', task_id: tasks.normal }))
+  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: 'Worker', when: '', description: '', input_rule: '', output_rule: '', task_id: tasks.normal }))
   fs.writeFileSync(path.join(maps, 'isolation.json'), JSON.stringify({ title: '关闭隔离验收', description: '', nodes: {
     A: { title: '交接工作', bot_id: 'worker', zone: 'test/zone', input: '', output_rule: [], blocked_by: [], auto_close: true },
     B: { title: '后续工作', bot_id: 'worker', zone: 'test/zone', input: '', blocked_by: ['A'] },
