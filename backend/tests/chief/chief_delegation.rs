@@ -11,6 +11,8 @@ mod map;
 mod reports;
 #[path = "chief_delegation/receipts.rs"]
 mod receipts;
+#[path = "chief_delegation/cutover_cleanup.rs"]
+mod cutover_cleanup;
 #[path = "chief_delegation/role_recovery.rs"]
 mod role_recovery;
 use process::TestServer;

@@ -63,6 +63,8 @@ mod auto_close;
 mod named_inputs;
 #[path = "presets/plan_workflow.rs"]
 mod plan_workflow;
+#[path = "presets/selected_flow.rs"]
+mod selected_flow;
 #[path = "../scheduler/bots/shared_business.rs"]
 mod shared_business;
 #[path = "presets/create_bot_wrapper.rs"]

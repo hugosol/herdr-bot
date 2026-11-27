@@ -204,9 +204,15 @@ async fn migrated_workflow(fault: Option<&str>) {
                     if path.ends_with("plan_workflow.json") {
                         node["auto_close"] = json!(true);
                         node["end_node"] = json!(false);
+                        // The selected-flow release owns the new phase instructions;
+                        // preserve every other field in this unrelated history comparison.
+                        node.as_object_mut().unwrap().remove("input");
                     }
                 }
                 if path.ends_with("plan_workflow.json") { map.as_object_mut().unwrap().remove("description"); }
+            }
+            if path.ends_with("plan_workflow.json") {
+                expected.as_object_mut().unwrap().remove("input_requirements");
             }
         }
         if path.starts_with("meta-data/bots/") && current.get("output_rule").is_some() {
@@ -223,10 +229,6 @@ async fn migrated_workflow(fault: Option<&str>) {
                 };
                 expected["name"] = json!(display);
             }
-        }
-        if path.ends_with("bot-1793304246857557100-58200-0.json") && current.get("node_guide").is_some() {
-            expected.as_object_mut().unwrap().remove("node_guide");
-            current.as_object_mut().unwrap().remove("node_guide");
         }
         if path.ends_with("bot-1793343165820110000-25960-0.json") {
             for bot in [&mut expected, &mut current] { for field in ["when", "plan_guide", "node_guide"] { bot.as_object_mut().unwrap().remove(field); } }
