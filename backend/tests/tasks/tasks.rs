@@ -85,7 +85,7 @@ async fn scheduler_groups_persist_catalog_clear_and_preserve_editor_revisions() 
     let map_path = config.scheduler.map_directory.join("work.json");
     std::fs::write(&map_path, json!({"title":"Work", "description":"Keep description", "nodes":{}}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
-    let bot_content = json!({"name":"Worker", "when":"Keep when", "plan_guide":"Keep plan", "node_guide":"Keep node", "task_id":"stable-task"});
+    let bot_content = json!({"name":"Worker", "when":"Keep when", "description":"Keep plan","input_rule":"Keep node","output_rule":"", "task_id":"stable-task"});
     let saved = post_json_over_tcp(server.addr(), "/api/scheduler/bots/save", &json!({"id":"worker", "content":bot_content.to_string(), "revision":null}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     assert!(serde_json::from_str::<Value>(&saved.body).unwrap().get("group").is_none());

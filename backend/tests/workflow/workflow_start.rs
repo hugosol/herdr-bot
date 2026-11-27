@@ -106,7 +106,7 @@ async fn fixture_with_host(agent: &str, app: bool) -> (TempDir, HerdrFixture, he
                 .to_owned(),
         );
     }
-    fs::write(config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"","plan_guide":"","node_guide":"","task_id":ids[1]}).to_string()).unwrap();
+    fs::write(config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"","description":"","input_rule":"","output_rule":"","task_id":ids[1]}).to_string()).unwrap();
     fs::write(config.scheduler.map_directory.join("work.json"), json!({"title":"map","description":"MAP-BODY-NOT-INJECTED","nodes":{"A":{"title":"A","bot_id":"worker","input":"NODE-INPUT-NOT-INJECTED","zone":zone,"blocked_by":[]}}}).to_string()).unwrap();
     (data, herdr, config, server, zone, ids)
 }
@@ -289,7 +289,7 @@ async fn app_nested_manager_and_end_chat_keep_separate_run_roles() {
     let (data, herdr, config, server, zone, ids) = fixture_with_host("pi", true).await;
     let cwd = data.path().join("alpha");
     fs::write(config.scheduler.bot_directory.join("nested.json"), json!({
-        "id":"nested","name":"Nested","when":"","plan_guide":"","node_guide":"","map_file":"inner.json"
+        "id":"nested","name":"Nested","when":"","description":"","input_rule":"","output_rule":"","map_file":"inner.json"
     }).to_string()).unwrap();
     fs::write(config.scheduler.map_directory.join("work.json"), json!({"title":"Root","description":"","nodes":{
         "N":{"title":"Nested","bot_id":"nested","manager_task_id":ids[0],"input":"Nested business input","zone":zone,"blocked_by":[]}
@@ -394,7 +394,7 @@ async fn app_delegated_map_binds_manager_before_approved_input() {
         }
     }).await.unwrap();
     fs::write(config.scheduler.bot_directory.join("flow.json"), json!({
-        "id":"flow","name":"Delegated workflow","when":"Use the workflow","plan_guide":"Explicit input","node_guide":"Explicit client",
+        "id":"flow","name":"Delegated workflow","when":"Use the workflow","description":"Explicit input","input_rule":"Explicit client","output_rule":"",
         "map_file":"work.json"
     }).to_string()).unwrap();
     let preview = run_reply(post_json_over_tcp(addr, "/api/chief/delegations/preview", &json!({
@@ -834,7 +834,7 @@ async fn manager_trigger_and_status_follow_committed_identity() {
     // P16 uses distinct nonempty document markers, unlike P2's empty documents.
     fs::write(config.scheduler.bot_directory.join("worker.json"), json!({
         "id":"worker", "name":"worker", "when":"BOT-WHEN-NOT-INJECTED",
-        "plan_guide":"BOT-PLAN-NOT-INJECTED", "node_guide":"BOT-NODE-NOT-INJECTED", "task_id":ids[1]
+        "description":"BOT-PLAN-NOT-INJECTED","input_rule":"BOT-NODE-NOT-INJECTED","output_rule":"", "task_id":ids[1]
     }).to_string()).unwrap();
     let task = json!({"name":"manager","taskType":"manager","agent":"omp","chatName":"{chat.id}","model":"gpt-6.1-sol","thinking":"high","skill":"teach","prompt":"FIXED-ROLE-MARKER"});
     let update = common::request_json_over_tcp(

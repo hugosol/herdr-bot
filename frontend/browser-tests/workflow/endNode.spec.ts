@@ -34,7 +34,7 @@ test('end-node edits round-trip and dispatch hands an open Chat to the user with
     const result = await post(page, '/api/tasks', { name: taskType, taskType, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', prompt: 'ISOLATED END NODE ACCEPTANCE' })
     tasks[taskType] = result.tasks.find((task: { name: string }) => task.name === taskType).id
   }
-  await post(page, '/api/scheduler/bots/save', { id: 'end-worker', revision: null, content: JSON.stringify({ name: 'End worker', when: '', plan_guide: '', node_guide: '', task_id: tasks.normal }) })
+  await post(page, '/api/scheduler/bots/save', { id: 'end-worker', revision: null, content: JSON.stringify({ name: 'End worker', when: '', description: '', input_rule: '', output_rule: '', task_id: tasks.normal }) })
   const maps = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
   const common = { output_rule: [], bot_id: 'end-worker', input: 'Preserve business input', zone: 'end/zone', blocked_by: [] }

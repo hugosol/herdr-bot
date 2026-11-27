@@ -857,6 +857,53 @@ fn assert_no_definition_markers(root: &Path) {
     }
 }
 
+// P53 (S1 + S4): seed offline files *before* starting the real process.
+// Recursive collection, automatic import or a read fallback would disclose
+// an archived identity or satisfy an otherwise missing execution reference.
+#[tokio::test]
+async fn bot_and_map_backup_stays_offline_after_real_startup() {
+    let root = TempDir::new("definition backup segregation");
+    let herdr = HerdrFixture::new("definition backup calls");
+    let root = root.path();
+    configure(root, &herdr, None);
+    let bots = root.join("meta-data/bots");
+    let maps = root.join("meta-data/workflow-maps");
+    let archive = root.join("offline backup");
+    for path in [&bots, &maps, &archive.join("bots"), &archive.join("maps")] { fs::create_dir_all(path).unwrap(); }
+    let live = json!({"id":"online","name":"Online draft","group":"published","when":"","description":"Just a draft","input_rule":"","output_rule":""});
+    fs::write(bots.join("online.json"), live.to_string()).unwrap();
+    fs::write(maps.join("online.json"), r#"{"title":"Online caller","description":"","nodes":{"check":{"title":"Check","bot_id":"worker","input":"","zone":"node","blocked_by":[]}}}"#).unwrap();
+    let worker = br#"{"id":"worker","name":"Archived worker","when":"","description":"","input_rule":"","output_rule":"","script":"archive-only.ts"}"#;
+    let old_bot = br#"{"id":"old-only","name":"Archived legacy","when":"","plan_guide":"old","node_guide":"old"}"#;
+    let old_map = br#"{"title":"Archived definition","description":"","nodes":{}}"#;
+    fs::write(archive.join("bots/worker.json"), worker).unwrap();
+    fs::write(archive.join("bots/old-only.json"), old_bot).unwrap();
+    fs::write(archive.join("maps/archived.json"), old_map).unwrap();
+    let before = native_snapshot(&archive);
+    let panel = Panel::start(root, &herdr);
+    assert_eq!(body(get_over_tcp(panel.addr, "/api/scheduler/bots").await), json!({"bots":[live]}));
+    assert_eq!(body(get_over_tcp(panel.addr, "/api/scheduler/maps").await)["files"], json!(["online.json"]));
+    for id in ["worker", "old-only"] {
+        let read = post_json_over_tcp(panel.addr, "/api/scheduler/bots/edit", &json!({"id":id}).to_string()).await;
+        assert_eq!(read.status, 409, "{}", read.body);
+    }
+    let read = get_over_tcp(panel.addr, "/api/scheduler/maps/archived.json").await;
+    assert!(read.status >= 400, "{}", read.body);
+    let zone = json!({"id":"node","path":root});
+    body(post_json_over_tcp(panel.addr, "/api/zones", &zone.to_string()).await);
+    let task = json!({"name":"Manager","taskType":"manager","agent":"omp","model":"default","thinking":"default","skill":null,"prompt":"","chatName":"{chat.id}"});
+    let task = body(post_json_over_tcp(panel.addr, "/api/tasks", &task.to_string()).await);
+    let start = json!({"managerTaskId":task["tasks"][0]["id"],"zone":"node","userInput":"Do not launch"});
+    let preflight = post_json_over_tcp(panel.addr, "/api/scheduler/maps/online.json/preflight", &start.to_string()).await;
+    assert_eq!(preflight.status, 400, "{}", preflight.body);
+    let problem: Value = serde_json::from_str(&preflight.body).unwrap();
+    assert!(problem["issues"].as_array().unwrap().iter().any(|issue| issue["code"] == "bot-missing" && issue["botId"] == "worker"), "{problem}");
+    assert!(herdr.calls().is_empty());
+    assert_eq!(native_snapshot(&archive), before);
+    assert_eq!(fs::read_dir(bots).unwrap().count(), 1);
+    assert_eq!(fs::read_dir(maps).unwrap().count(), 1);
+}
+
 #[tokio::test]
 async fn definition_migration_preserves_bytes_and_never_reimports_retained_backups() {
     let root = TempDir::new("definition cutover bytes and restart");

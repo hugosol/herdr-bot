@@ -36,7 +36,7 @@ async function currentFixture() {
   const taskResponse = await fetch(`${server.baseURL}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '当前执行 Task', taskType: 'normal', agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: '' }) })
   expect(taskResponse.status).toBe(200)
   const taskId = (await taskResponse.json()).tasks[0].id
-  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '当前共享 Bot', when: '', plan_guide: '', node_guide: '', task_id: taskId }))
+  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '当前共享 Bot', when: '', description: '', input_rule: '', output_rule: '', task_id: taskId }))
   const definition = { title: '当前 Beta Map', description: '', nodes: {
     A: { title: '交接工作', bot_id: 'worker', zone: 'test/definition-zone', input: '当前定义输入 A', blocked_by: [], output_rule: [{ id: 'material' }] },
     B: { title: '失败工作', bot_id: 'worker', zone: 'test/definition-zone', input: '当前定义输入 B', blocked_by: ['A'] },

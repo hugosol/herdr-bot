@@ -42,7 +42,7 @@ async function launchFixture() {
   }
   const node = { title: '工作', bot_id: 'worker', input: '', zone, blocked_by: [] as string[] }
   const map = { title: '预检图', description: '', nodes: { A: node, B: { ...node, blocked_by: ['A'] } } }
-  const bot: Bot = { id: 'worker', name: '', when: '', plan_guide: '', node_guide: '', task_id: ids.normal }
+  const bot: Bot = { id: 'worker', name: '', when: '', description: '', input_rule: '', output_rule: '', task_id: ids.normal }
   const mapFile = path.join(maps, 'preflight.json')
   const botFile = path.join(bots, 'worker.json')
   fs.writeFileSync(mapFile, JSON.stringify(map)); fs.writeFileSync(botFile, JSON.stringify(bot))
@@ -276,7 +276,7 @@ test('P9.01 missing Task reference returns to the original Bot binding', async (
   await correction.click()
   const editor = page.getByRole('form', { name: 'Bot 编辑', exact: true })
   await expect(editor.getByLabel('Bot ID', { exact: true })).toHaveValue('worker')
-  expect(JSON.parse(await editor.getByLabel('Bot 内容 JSON', { exact: true }).inputValue())).toEqual({ name: '', when: '', plan_guide: '', node_guide: '', task_id: 'missing-task' })
+  expect(JSON.parse(await editor.getByLabel('Bot 内容 JSON', { exact: true }).inputValue())).toEqual({ name: '', when: '', description: '', input_rule: '', output_rule: '', task_id: 'missing-task' })
   expect(server!.herdrCalls()).toEqual([])
 })
 

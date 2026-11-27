@@ -18,7 +18,7 @@ async function prepare() {
     C: { title: '汇合', bot_id: 'shared', input: JSON.stringify({ result: '核对两项准备' }), zone: 'unregistered-zone', blocked_by: ['A', 'B'] },
     D: { title: '独立工作', bot_id: 'shared', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
   } }))
-  fs.writeFileSync(path.join(bots, 'shared.json'), JSON.stringify({ id: 'shared', name: '共享核对能力', when: '需要核对城市时。', plan_guide: '只读能力说明。', node_guide: JSON.stringify({ inputs: { city: '目标城市。' }, outputs: { summary: '核对摘要。' } }) }))
+  fs.writeFileSync(path.join(bots, 'shared.json'), JSON.stringify({ id: 'shared', name: '共享核对能力', when: '需要核对城市时。', description: '只读能力说明。', input_rule: JSON.stringify({ inputs: { city: '目标城市。' }, outputs: { summary: '核对摘要。' } }), output_rule: '' }))
   return server
 }
 
@@ -110,10 +110,10 @@ test('P4 P30 narrow screen keyboard reaches node list and bot details and return
   await page.keyboard.press('Enter')
   const bot = page.getByRole('region', { name: 'Bot 预览', exact: true })
   await expect(bot.getByText('共享核对能力', { exact: true })).toBeVisible()
-  await tabTo(bot.getByRole('button', { name: 'node_guide', exact: true }))
+  await tabTo(bot.getByRole('button', { name: 'input_rule', exact: true }))
   await page.keyboard.press('Enter')
-  await bot.getByRole('region', { name: 'node_guide', exact: true }).scrollIntoViewIfNeeded()
-  await expect(bot.getByRole('region', { name: 'node_guide', exact: true })).toBeInViewport()
+  await bot.getByRole('region', { name: 'input_rule', exact: true }).scrollIntoViewIfNeeded()
+  await expect(bot.getByRole('region', { name: 'input_rule', exact: true })).toBeInViewport()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('narrow-bot-details.png'), fullPage: true })
   await tabTo(page.getByTestId('tab-scheduler'))

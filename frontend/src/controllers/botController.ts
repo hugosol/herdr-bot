@@ -3,8 +3,9 @@ export type Bot = {
   id: string
   name: string
   when: string
-  plan_guide: string
-  node_guide: string
+  description: string
+  input_rule: string
+  output_rule: string
   task_id?: string
   map_file?: string
   script?: string
@@ -15,7 +16,7 @@ export type BotCatalog = { bots: Bot[]; problems?: BotProblem[] }
 
 function isBotCatalog(value: unknown): value is BotCatalog {
   if (typeof value !== 'object' || value === null || !('bots' in value) || !Array.isArray(value.bots)) return false
-  if (!value.bots.every(bot => bot && (bot.group == null || (typeof bot.group === 'string' && bot.group.length > 0 && bot.group.trim() === bot.group)) && ['id', 'name', 'when', 'plan_guide', 'node_guide'].every(key => typeof bot[key] === 'string'))) return false
+  if (!value.bots.every(bot => bot && (bot.group == null || (typeof bot.group === 'string' && bot.group.length > 0 && bot.group.trim() === bot.group)) && ['id', 'name', 'when', 'description', 'input_rule', 'output_rule'].every(key => typeof bot[key] === 'string'))) return false
   return !('problems' in value) || (Array.isArray(value.problems) && value.problems.every(problem => problem && typeof problem.code === 'string' && typeof problem.message === 'string' && Array.isArray(problem.files)))
 }
 
@@ -60,7 +61,7 @@ async function writeDefinition(url: string, payload: unknown, valid: (value: unk
 export async function saveBot(draft: { id: string; content: string; revision: BotRevision | null }): Promise<Bot> {
   return await writeDefinition('/api/scheduler/bots/save', draft, value => {
     if (typeof value !== 'object' || value === null) return false
-    return ['id', 'name', 'when', 'plan_guide', 'node_guide'].every(key => typeof (value as Record<string, unknown>)[key] === 'string')
+    return ['id', 'name', 'when', 'description', 'input_rule', 'output_rule'].every(key => typeof (value as Record<string, unknown>)[key] === 'string')
   }, 'Bot 保存') as Bot
 }
 

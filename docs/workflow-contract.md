@@ -14,7 +14,7 @@
 | 参与者／对象 | 责任与边界 |
 | --- | --- |
 | 规划者、Map、node | Map 是服务级静态定义；node 给出 Bot 引用、input 原文、zone ID 与同图依赖。边不传材料、不自动启动。运行期间保持定义与 Task 不变。 |
-| Bot | 跨 Map 共享的业务能力文档；when、plan_guide、node_guide 分别供选用、规划与工作理解，可独立为空；不是执行实例、运行门禁或自动注入。 |
+| Bot | 跨 Map 共享的业务能力索引；when、description、input_rule、output_rule 分别说明适用性、能力、输入及成果，允许空字符串；不作为执行指令、运行规则或执行实例。 |
 | Task、Chat | Task 是可复用发起预设，Chat 是实际原生对话。Run 的管理者用 `manager` Task，Task 型节点用 `normal` Task，两者都支持 omp 和 pi。`normal` Task 也可独立发起。平台另有 `chief` Task，可委派工作，但不是 Run 管理者或普通节点执行目标。 |
 | 人类 | 选择 manager Task、zone 与本次要求；核实、修复实际环境和产物，通过管理者 Chat 表达明确意图，不填身份参数、不编辑运行记录。 |
 | 管理者 Chat | 独占状态操作，先按 Map 输入要求读取与语义核实材料，在对话中澄清并确认 Run 输入就绪，再读取记录与材料判断交接，显式派发、完成、恢复或结束；不把报告、停轮、退出当完成，不强制持续续轮。不是业务 node。 |

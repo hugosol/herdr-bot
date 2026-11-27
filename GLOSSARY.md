@@ -181,7 +181,7 @@ Map 中不预设 zone ID 的执行位置约定，由管理者为本次 execution
 _Avoid_: 默认 zone, 自动创建 zone, 目录路径, Map 配置覆盖
 
 **Bot**:
-面向人类或 Agent 规划者、跨 Map 共享的业务能力单元定义，分别提供选用说明（when）、规划指引（plan_guide）与节点指引（node_guide）；执行目标为普通 Task、Map 或用户维护的 TypeScript 脚本，三者互斥，node 是具体流程中对该能力的工作安排。关联 Map 的 Bot 使流程可作为另一流程的节点复用，每次执行产生独立 Run；Bot 不是 Task、运行中的 agent 或 Chat，能力文档不是运行校验规则，也不是已实现执行能力的证明。
+跨 Map 共享、面向规划者和调用者的能力索引，以适用性（when）、能力描述（description）、输入摘要（input_rule）及成果摘要（output_rule）帮助发现、选用和组合。可引用普通 Task、用户维护的 TypeScript 脚本或 Map，三者互斥；未绑定是不可运行的草稿。摘要不是实际委托、机器校验规则、执行指令或能力已验证的证明。
 _Avoid_: node_template, NodeTemplate, bot_template, 共享节点模板, Task, 通用发起 Chat 动作, Map 内 Bot 副本
 
 **脚本型 Bot**:

@@ -20,7 +20,7 @@ fn records(s: &Scenario, id: &Value) -> [Vec<u8>; 3] {
 }
 async fn setup(s: &Scenario) {
     fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner","description":"","nodes":{"A":{"title":"Same node ID, child scope","bot_id":"worker","input":"INNER","zone":"node","blocked_by":[],"output_rule":[{"id":"result"},{"id":"missing"}]}}}).to_string()).unwrap();
-    request(s, "/api/scheduler/bots/save", json!({"id":"nested","content":json!({"name":"Nested","when":"","plan_guide":"","node_guide":"","map_file":"inner.json"}).to_string(),"revision":null}), 200).await;
+    request(s, "/api/scheduler/bots/save", json!({"id":"nested","content":json!({"name":"Nested","when":"","description":"","input_rule":"","output_rule":"","map_file":"inner.json"}).to_string(),"revision":null}), 200).await;
     fs::write(s.config.scheduler.map_directory.join("work.json"), json!({"title":"Outer","description":"","nodes":{
         "A":{"title":"Call","bot_id":"nested","manager_task_id":s.manager_task,"input":"CALL","zone":"node","blocked_by":[],"output_rule":[{"id":"result"},{"id":"missing"}]},
         "consumer":{"title":"Consumer","bot_id":"worker","input":"CONSUME","zone":"node","blocked_by":["A"],"input_rule":[{"id":"material","type":"node","node_id":"A","output_id":"result"}]},

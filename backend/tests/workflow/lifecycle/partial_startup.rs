@@ -5,7 +5,7 @@ use super::*;
 
 async fn setup(session: &str) -> (Scenario, Value) {
     let s = Scenario::new().await;
-    fs::write(s.config.scheduler.bot_directory.join("nested.json"), json!({"id":"nested","name":"Nested","when":"","plan_guide":"","node_guide":"","map_file":"inner.json"}).to_string()).unwrap();
+    fs::write(s.config.scheduler.bot_directory.join("nested.json"), json!({"id":"nested","name":"Nested","when":"","description":"","input_rule":"","output_rule":"","map_file":"inner.json"}).to_string()).unwrap();
     fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner","description":"","nodes":{"A":{"title":"Work","bot_id":"worker","input":"WORK","zone":"manager","blocked_by":[]}}}).to_string()).unwrap();
     fs::write(s.config.scheduler.map_directory.join("work.json"), json!({"title":"Outer","description":"","nodes":{"A":{"title":"Call","bot_id":"nested","manager_task_id":s.manager_task,"input":"CHILD-INPUT-731","zone":"node","blocked_by":[]}}}).to_string()).unwrap();
     let root = s.start(session).await;

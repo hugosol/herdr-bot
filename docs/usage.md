@@ -18,8 +18,8 @@
 
 服务 TOML 的 `prompts_file` 默认 `prompts.local.toml`，相对服务配置目录。将 [`prompts.example.toml`](../prompts.example.toml) 复制为本机文件并填写实际路径和 API URL，不覆盖已有配置。词典只为提示词提供参考信息，不解析程序路径、不设置执行目录，也不修改 Toolkit 扩展的实际连接配置。不要写入不应暴露给 agent 的密钥。
 
-- Task 固定 prompt、Bot 的 `when`、`plan_guide`、`node_guide`、Map 的 `description` 和 node 的 `input` 保存 `${key}` 原文。系统发送这些字段前读取最新词典，仅替换一次，不递归解释词典值。`$${key}` 输出字面量 `${key}`；临时输入、Run 本次要求、报告和 agent 产物不替换。改词典不用重启。
-- agent 直接读定义仍会看到标签。只有替换前的 Task 固定 prompt 含未转义、完整闭合的 `${key}` 时，系统发起的 Chat（含流程派发）才收到词典绝对路径和读取说明。其他消息段、替换值、转义或未闭合标签不触发说明。系统不会改写原定义或自动注入 Bot 指南正文。
+- Task 固定 prompt、Bot 的 `when`、`description`、`input_rule`、`output_rule`、Map 的 `description` 和 node 的 `input` 保存 `${key}` 原文。系统按需使用这些定义字段时读取最新词典，仅替换一次，不递归解释词典值。`$${key}` 输出字面量 `${key}`；临时输入、Run 本次要求、报告和 agent 产物不替换。改词典不用重启。
+- agent 直接读定义仍会看到标签。只有替换前的 Task 固定 prompt 含未转义、完整闭合的 `${key}` 时，系统发起的 Chat（含流程派发）才收到词典绝对路径和读取说明。其他消息段、替换值、转义或未闭合标签不触发说明。系统不会改写原定义或自动注入 Bot 能力摘要。
 - 词典不完整时允许保存定义。发送时遇到未知标签会报告字段和标签并停止发送。缺失文件视为空词典；非法 TOML 或不可读文件报错，不猜值。
 
 ## 定义数据与运行数据
@@ -38,6 +38,10 @@ run_directory = '.data/workflow-runs'
 ```
 
 Run、Chat 历史和 zone 登记是本机运行数据，默认在 `.data`。Map 保存[稳定 zone ID 与直接文件引用](#跨-server-使用-zone-与定义)，由执行 server 的本机登记解析。程序根、zone 绑定和提示词词典各自独立；共享定义不意味着同步文件或迁移历史。
+
+### 四字段 Bot 定义切换
+
+先停服并按实际服务配置定位在线 Bot／Map 根，以及启动时可能检查的历史布局导入源根（下节只说明默认布局的相对位置）。把尚未迁入的定义放在所有这些范围之外的离线 backup；不要把备份放到在线路径或提供给任何启动导入。历史布局升级不是新格式切换入口，也不能代替受控移动与逐项迁入。服务不搜索离线 backup，不把旧字段解释成新格式，也不自动迁入未选择业务。逐项保留 Bot ID、分组、目标及 Map 文件名；先在实际实现、公共协议及能力摘要之间归好旧知识，再迁入需要的定义。若需隔离使用创建／修订能力，应仅安装所需的新格式定义，不将旧目录问题当作空目录或忽略唯一绑定冲突。实际移动、停服及保留范围另行核实和授权。
 
 ### 从旧定义布局升级
 
@@ -78,11 +82,11 @@ context 提供 runId、executionId、zone（节点工作目录）、input（node
 
 ## 脚本空白 Bot 创建
 
-发布的 `create-blank-bot` 保留 Bot ID 与 Map 引用，绑定 `meta-data/scripts/create-blank-bot.ts`。旧空白创建来源 Task 已移除，历史 Chat 不改写，不承诺按已移除 Task 恢复环境。包装图的 `save_bot` 使用 `save-created-bot-guides`，绑定 `save-bot-guides.ts`；通用 `replace-text` 保留给修订和独立调用。保存只接收[创建 V1 的四项命名输入](business-materials.md#三路-text可选业务说明与-saved)，不消费指南 handoff 或批准凭据。
+发布的 `create-blank-bot` 保留 Bot ID 与 Map 引用，绑定 `meta-data/scripts/create-blank-bot.ts`。旧空白创建来源 Task 已移除，历史 Chat 不改写，不承诺按已移除 Task 恢复环境。包装图的 `save_bot` 使用 `save-created-bot-guides`，绑定 `save-bot-guides.ts`；通用 `replace-text` 保留给修订和独立调用。保存只接收[创建 V1 的五项命名输入](business-materials.md#四字段正文可选业务说明与-saved)，不消费字段 handoff 或批准凭据。
 
 自定义旧部署须手工将 `rust_script: "create_blank_bot"` 改为 `script: "create-blank-bot.ts"`、`rust_script: "save_bot_guides"` 改为 `script: "save-bot-guides.ts"`，并部署 `scripts` 目录与当前 Map 材料绑定。没有旧能力回退，历史 Run 不自动改写或重跑。
 
-在真实 Map 的 node 中引用它，声明命名 `request` 输入及 `baseline`、`handoff` 输出；`node.input` 可为空，不是业务参数，成果批准模式 `auto_approved` 只能 true，自动关闭只能 false。request 的严格 JSON、普通 Task／Map 目标范围和执行数据约束见[业务材料](business-materials.md#request-与共同-baseline)。从现有 manager 发起 Run、准备输入并 dispatch 后，后台真实创建唯一绑定的三指南空字符串 Bot，保存真实 revision 与完整配置材料，再按原报告／collect 流程交接。manager 显式 complete 前下游仍不准入，报告或执行结束都不自动派发。
+在真实 Map 的 node 中引用它，声明命名 `request` 输入及 `baseline`、`handoff` 输出；`node.input` 可为空，不是业务参数，成果批准模式 `auto_approved` 只能 true，自动关闭只能 false。request 的严格 JSON、普通 Task／Map 目标范围和执行数据约束见[业务材料](business-materials.md#request-与共同-baseline)。从现有 manager 发起 Run、准备输入并 dispatch 后，后台真实创建唯一绑定的四字段均为空字符串的 Bot，保存真实 revision 与完整配置材料，再按原报告／collect 流程交接。manager 显式 complete 前下游仍不准入，报告或执行结束都不自动派发。
 
 真实 Task／Map 的成功与拒绝实例、在途 HTTP 返回和实际文件消费者证据可用[后端隔离回归](agents/testing.md#typescript-空白创建公开-http文件回归)重现。记录型外部宿主只证明协议；不等于真实 manager 会话或页面验收。
 
@@ -551,9 +555,9 @@ chief Task 经既有 `POST /api/chats` 发起，也经既有 `POST /api/chats/re
 
 ### 共享 Bot 指南业务
 
-空白 Bot 创建、三份指南编写、通用提示词优化和通用文本替换共用[共同业务材料契约](business-materials.md)。目标可为真实 normal Task 或 Map；共同基线由执行者自行通过公开接口核实，用户只需明确目标、业务要求、授权和可选材料。baseline 单份直接交给每个必要消费者，text 是唯一完整正文，handoff 仅记录确认、来源、语义限制和未验证项。独立 Chat 不加载 node 角色也负责授权、配置冲突、真实 revision、运行禁写、非目标保持、安全落盘与完整读回。旧独立 create-bot／create-bot-task 不改变职责；源码交付不自动覆盖用户部署。
+空白 Bot 创建、四字段正文编写、通用提示词优化和通用文本替换共用[共同业务材料契约](business-materials.md)。目标可为真实 normal Task 或 Map；共同基线由执行者自行通过公开接口核实，用户只需明确目标、业务要求、授权和可选材料。baseline 单份直接交给每个必要消费者，text 是唯一完整正文，handoff 仅记录确认、来源、语义限制和未验证项。独立 Chat 不加载 node 角色也负责授权、配置冲突、真实 revision、运行禁写、非目标保持、安全落盘与完整读回。旧独立 create-bot／create-bot-task 不改变职责；源码交付不自动覆盖用户部署。
 
-既有 Task 型或 Map 型 Bot 可直接使用 `revise-bot-guides`，不必先优化 Task.prompt：只读核实共同基线，三路独立修订并确认，在同一 Chat 整理表达，最终汇合一次合法保存和完整读回。请求文件、可选材料、子管理者及 saved／handoff 交接见[独立修订指南](revise-bot-guides.md)。该能力原位替换原 enhance-existing-bot Map 的强制 Task 优化前置，不修改旧独立入口、真实目标或无关 Map；配置交付不是目标能力已验证。
+既有 Task 型或 Map 型 Bot 可直接使用 `revise-bot-guides`，不必先优化 Task.prompt：只读核实共同基线，四路独立修订并确认，在同一 Chat 整理表达，最终汇合一次合法保存和完整读回。请求文件、可选材料、子管理者及 saved／handoff 交接见[独立修订指南](revise-bot-guides.md)。该能力原位替换原 enhance-existing-bot Map 的强制 Task 优化前置，不修改旧独立入口、真实目标或无关 Map；配置交付不是目标能力已验证。
 
 ### 数据格式要求
 
@@ -632,6 +636,6 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-rust-script-bots `
 自动化不代签人工验收。使用明确授权的真实 Herdr、管理者会话和模型、当前生产后端和完整发布图，另备隔离定义、文件根、会话存储和数值回环服务。只授权创建和修改本例的 Bot，不运行目标业务，不使用受控 provider 或 fixture 冒充真宿主。
 
 - **H1 正常交接。** 分别派发 `create_blank` 与 `save_bot`，核对派发回执、当前 execution、真实通知、`collect` 和管理者原生读取的 `baseline`／`handoff`、`saved`／`handoff`。通知与读回分别取证，不以 `collect` 冒充收到消息。两脚本均无 Chat 或 Tab；成功报告不自动完成，仍须管理者显式 `complete`。完整读回 Bot、真实 revision、未变目标和完成记录。由用户判断管理者是否准确解释派发、报告和交接。
-- **H2 部分保存与重跑。** 在另一个独占 Run 用本例拥有的 `handoff.json` 碰撞造成保存后的材料失败。核对真实 `canComplete:false`、可读的 `saved`、已变 revision、`write`／`readBack` 成功与 `complete` 拒绝；不得自动失败、重跑、回滚或刷新 baseline。只解除本例碰撞，经管理者显式 `fail` 和用户确认 `retry`。新 execution 使用原 baseline 时须报 `revision-conflict`，即使三段正文相同；旧报告和输出不授予新执行完成资格。确需继续时另取授权建立有效基线，保留原错误、新旧 execution 和原始文件。由用户判断管理者是否正确解释部分效果及重跑边界。
+- **H2 部分保存与重跑。** 在另一个独占 Run 用本例拥有的 `handoff.json` 碰撞造成保存后的材料失败。核对真实 `canComplete:false`、可读的 `saved`、已变 revision、`write`／`readBack` 成功与 `complete` 拒绝；不得自动失败、重跑、回滚或刷新 baseline。只解除本例碰撞，经管理者显式 `fail` 和用户确认 `retry`。新 execution 使用原 baseline 时须报 `revision-conflict`，即使四段正文相同；旧报告和输出不授予新执行完成资格。确需继续时另取授权建立有效基线，保留原错误、新旧 execution 和原始文件。由用户判断管理者是否正确解释部分效果及重跑边界。
 
 保留实际身份、授权、原生工具结果和通知、公开完整配置与 revision、原始材料字节和真实绑定、当前与旧执行事实、拒绝和完成记录。记录实际观察窗口，区分业务失败与清理错误；缺真实授权或证据保持未验证。

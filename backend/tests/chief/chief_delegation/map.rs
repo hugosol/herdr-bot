@@ -120,7 +120,7 @@ pub(super) async fn map_fixture() -> (Fixture, Value, Value) {
     post(&f.server, "/api/zones", json!({"id":"review-zone","path":f.root.path().join("materials")})).await;
     fs::create_dir(f.root.path().join("maps")).unwrap();
     fs::write(f.root.path().join("maps/flow.json"), json!({"title":"Review flow","description":"Independent flow","input_files":[{"id":"brief","required":true}],"nodes":{"review":{"title":"Review","bot_id":"brief-bot","input":"Review the named brief without publishing","zone":"review-zone","input_rule":[{"type":"run","id":"source","input_id":"brief"}],"blocked_by":[]}}}).to_string()).unwrap();
-    fs::write(f.root.path().join("bots/flow.json"), json!({"id":"flow-bot","name":"Review flow","when":"Review a brief","plan_guide":"Supply brief","node_guide":"Review","map_file":"flow.json"}).to_string()).unwrap();
+    fs::write(f.root.path().join("bots/flow.json"), json!({"id":"flow-bot","name":"Review flow","when":"Review a brief","description":"Supply brief","input_rule":"Review","output_rule":"","map_file":"flow.json"}).to_string()).unwrap();
     let mut request = f.request();
     request["botId"] = json!("flow-bot");
     request["managerTaskId"] = manager["id"].clone();
@@ -180,7 +180,7 @@ async fn map_confirmation_rejects_changed_map_manager_node_binding_and_material_
             let path = f.root.path().join("maps/flow.json");
             let mut map: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
             fs::write(f.root.path().join("maps/child.json"), map.to_string()).unwrap();
-            fs::write(f.root.path().join("bots/nested.json"), json!({"id":"nested-bot","name":"Nested review","when":"Nested work","plan_guide":"Review","node_guide":"Review","map_file":"child.json"}).to_string()).unwrap();
+            fs::write(f.root.path().join("bots/nested.json"), json!({"id":"nested-bot","name":"Nested review","when":"Nested work","description":"Review","input_rule":"Review","output_rule":"","map_file":"child.json"}).to_string()).unwrap();
             map["nodes"]["review"]["bot_id"] = json!("nested-bot");
             map["nodes"]["review"]["manager_task_id"] = manager["id"].clone();
             map["nodes"]["review"]["input_rule"][0]["id"] = json!("brief");
@@ -205,7 +205,7 @@ async fn map_confirmation_rejects_changed_map_manager_node_binding_and_material_
             "bot" => {
                 let path = f.root.path().join("bots/flow.json");
                 let mut bot: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-                bot["plan_guide"] = json!("DIFFERENT PLANNING REQUIREMENTS");
+                bot["description"] = json!("DIFFERENT PLANNING REQUIREMENTS");
                 fs::write(path, bot.to_string()).unwrap();
             }
             "direct-material" => fs::write(f.root.path().join("materials/internal-reference.txt"), "UNAPPROVED REFERENCE").unwrap(),

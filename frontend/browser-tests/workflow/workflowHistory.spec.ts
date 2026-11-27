@@ -135,7 +135,7 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   const maps = path.join(host.cwd, 'meta-data/workflow-maps'), bots = path.join(host.cwd, 'meta-data/bots')
   fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
   fs.writeFileSync(path.join(maps, 'resume.json'), JSON.stringify({ title: 'Resume Map', description: '', nodes: { A: { title: 'Actual dispatch', bot_id: 'worker', input: 'NODE INPUT ONLY', zone, blocked_by: [] } } }))
-  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '', when: '', plan_guide: '', node_guide: '', task_id: nodeTask.id }))
+  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '', when: '', description: '', input_rule: '', output_rule: '', task_id: nodeTask.id }))
   const native = (id: string) => {
     const file = path.join(host.cwd, `${id}.jsonl`)
     fs.writeFileSync(file, JSON.stringify({ type: 'session', version: 3, id, cwd: host.cwd }) + '\n')

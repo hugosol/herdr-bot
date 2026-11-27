@@ -7,7 +7,7 @@ import { configureScheduler, startServer, type E2EServer } from '../../support/s
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 
-const weather = { id: 'weather', name: '目的地天气摘要', when: '出行前需要了解目的地天气时。', plan_guide: '整理天气及穿衣建议；不预订行程。', node_guide: JSON.stringify({ inputs: { city: '需要查询的城市名称。', date: '计划出行日期。' }, outputs: { forecast: '温度、降水和穿衣建议的文本摘要。' } }) }
+const weather = { id: 'weather', name: '目的地天气摘要', when: '出行前需要了解目的地天气时。', description: '整理天气及穿衣建议；不预订行程。', input_rule: JSON.stringify({ inputs: { city: '需要查询的城市名称。', date: '计划出行日期。' }, outputs: { forecast: '温度、降水和穿衣建议的文本摘要。' } }), output_rule: '' }
 
 // Approved S1 P2/P3: literal capability fields distinguish a readable preview
 // from an editor, a stale/wrong identity, or node parameters. Both the list and
@@ -20,7 +20,7 @@ test('P2 P3 catalog previews match exact shared identities referenced by nodes',
   fs.mkdirSync(bots, { recursive: true })
   const weatherBytes = `${JSON.stringify(weather)}\n`
   fs.writeFileSync(path.join(bots, 'different-filename.json'), weatherBytes)
-  const quotaBytes = JSON.stringify({ id: 'quota', name: '额度恢复时间', when: '<img src=x onerror="window.templateExecuted=true">', plan_guide: '<script>window.templateExecuted=true</script>', node_guide: JSON.stringify({ inputs: { account: '仅作说明的账户名称。' }, outputs: { reset: '预计恢复时间；不是实际结果。' } }) })
+  const quotaBytes = JSON.stringify({ id: 'quota', name: '额度恢复时间', when: '<img src=x onerror="window.templateExecuted=true">', description: '<script>window.templateExecuted=true</script>', input_rule: JSON.stringify({ inputs: { account: '仅作说明的账户名称。' }, outputs: { reset: '预计恢复时间；不是实际结果。' } }), output_rule: '' })
   fs.writeFileSync(path.join(bots, 'quota-description.json'), quotaBytes)
   const mapBytes = JSON.stringify({ title: '业务核对', description: '只读定义', nodes: {
     A: { title: '查询上海', bot_id: 'weather', input: JSON.stringify({ city: '上海' }), zone: 'unregistered-zone', blocked_by: [] },
@@ -38,11 +38,11 @@ test('P2 P3 catalog previews match exact shared identities referenced by nodes',
     for (const text of ['weather', '目的地天气摘要', '出行前需要了解目的地天气时。']) {
       await expect(capability.getByText(text, { exact: true })).toBeVisible()
     }
-    await capability.getByRole('button', { name: 'plan_guide', exact: true }).click()
-    await expect(capability.getByRole('region', { name: 'plan_guide', exact: true })).toHaveText('整理天气及穿衣建议；不预订行程。')
-    await capability.getByRole('button', { name: 'node_guide', exact: true }).click()
+    await capability.getByRole('button', { name: 'description', exact: true }).click()
+    await expect(capability.getByRole('region', { name: 'description', exact: true })).toHaveText('整理天气及穿衣建议；不预订行程。')
+    await capability.getByRole('button', { name: 'input_rule', exact: true }).click()
     for (const text of ['city', '需要查询的城市名称。', 'date', '计划出行日期。', 'forecast', '温度、降水和穿衣建议的文本摘要。']) {
-      await expect(capability.getByRole('region', { name: 'node_guide', exact: true })).toContainText(text)
+      await expect(capability.getByRole('region', { name: 'input_rule', exact: true })).toContainText(text)
     }
     await expect(capability.locator('textarea, input, [contenteditable="true"]')).toHaveCount(0)
     await expect(page.getByRole('region', { name: 'Bot 明细', exact: true })).toHaveCount(0)
@@ -71,12 +71,12 @@ test('P2 P3 catalog previews match exact shared identities referenced by nodes',
   for (const text of ['额度恢复时间', '<img src=x onerror="window.templateExecuted=true">']) {
     await expect(capability.getByText(text, { exact: true })).toBeVisible()
   }
-  await capability.getByRole('button', { name: 'plan_guide', exact: true }).click()
-  await expect(capability.getByRole('region', { name: 'plan_guide', exact: true })).toHaveText('<script>window.templateExecuted=true</script>')
+  await capability.getByRole('button', { name: 'description', exact: true }).click()
+  await expect(capability.getByRole('region', { name: 'description', exact: true })).toHaveText('<script>window.templateExecuted=true</script>')
   await expect(capability.locator('img, script')).toHaveCount(0)
-  await capability.getByRole('button', { name: 'node_guide', exact: true }).click()
+  await capability.getByRole('button', { name: 'input_rule', exact: true }).click()
   for (const text of ['account', '仅作说明的账户名称。', 'reset', '预计恢复时间；不是实际结果。']) {
-    await expect(capability.getByRole('region', { name: 'node_guide', exact: true })).toContainText(text)
+    await expect(capability.getByRole('region', { name: 'input_rule', exact: true })).toContainText(text)
   }
   await expect(capability.getByText('目的地天气摘要', { exact: true })).toHaveCount(0)
   expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).templateExecuted)).toBeUndefined()

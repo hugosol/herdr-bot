@@ -10,7 +10,7 @@ declare global {
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 
-const bot = { id: 'safe', name: 'Inside capability', when: 'Preview only', plan_guide: 'Do not execute', node_guide: JSON.stringify({ inputs: { target: 'Description only' }, outputs: { result: 'Not a result' } }) }
+const bot = { id: 'safe', name: 'Inside capability', when: 'Preview only', description: 'Do not execute', input_rule: JSON.stringify({ inputs: { target: 'Description only' }, outputs: { result: 'Not a result' } }), output_rule: '' }
 const map = { title: 'Inside plan', description: 'Preview only', nodes: {
   A: { title: 'Inside node', bot_id: 'safe', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: [] },
 } }
@@ -57,7 +57,7 @@ test('P18 P27 P28 business text and path parameters stay inert through preview e
     A: { ...map.nodes.A, title: style, input: [outside, instruction, html, script, 'null false 7'].join('\n') },
     B: { ...map.nodes.A, title: 'Broken capability', bot_id: 'broken' },
   } }
-  const capability = { ...bot, name: script, when: html, plan_guide: instruction, node_guide: style + '\n' + html + '\n' + script }
+  const capability = { ...bot, name: script, when: html, description: instruction, input_rule: style + '\n' + html + '\n' + script }
   const originals = new Map([
     [path.join(maps, 'safe.json'), `${JSON.stringify(plan, null, 2)}\n`],
     [path.join(maps, 'broken.json'), '{ not valid JSON; never repair this file\n'],
@@ -94,7 +94,7 @@ test('P18 P27 P28 business text and path parameters stay inert through preview e
     await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: `${script} · safe`, exact: true }).click()
     const details = page.getByRole('region', { name: 'Bot 预览', exact: true })
     await expect(details.getByRole('heading', { name: script, exact: true })).toBeVisible()
-    for (const [title, value] of [['when', html], ['plan_guide', instruction], ['node_guide', style + '\n' + html + '\n' + script]]) {
+    for (const [title, value] of [['when', html], ['description', instruction], ['input_rule', style + '\n' + html + '\n' + script]]) {
       await details.getByRole('button', { name: title, exact: true }).click()
       await expect(details.getByRole('region', { name: title, exact: true })).toHaveText(value)
     }

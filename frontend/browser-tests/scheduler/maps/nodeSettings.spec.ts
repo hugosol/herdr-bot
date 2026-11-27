@@ -182,7 +182,7 @@ test('P3 P36 current definition frozen mode and retry approval facts remain dist
     const result = await post('/api/tasks', { name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'APPROVAL PAGE FIXTURE' })
     tasks[role] = result.tasks.find((task: { name: string }) => task.name === role).id
   }
-  fs.writeFileSync(path.join(server!.cwd, 'meta-data/bots/shared.json'), JSON.stringify({ id: 'shared', name: '共享', when: '', plan_guide: '', node_guide: '', task_id: tasks.normal }))
+  fs.writeFileSync(path.join(server!.cwd, 'meta-data/bots/shared.json'), JSON.stringify({ id: 'shared', name: '共享', when: '', description: '', input_rule: '', output_rule: '', task_id: tasks.normal }))
   for (const [id, title, mode] of [['A', '旧节点', 'manual'], ['B', '另一个节点', 'auto'], ['C', '无关节点', 'auto']] as const) {
     await edit(page, id, title)
     await (await openNodeJson(page)).fill(JSON.stringify({ title, bot_id: 'shared', input: 'APPROVAL BUSINESS', blocked_by: id === 'B' ? ['A'] : [], input_rule: [], output_rule: [] }))

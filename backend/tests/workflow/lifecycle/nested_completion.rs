@@ -23,7 +23,7 @@ async fn read_run(s: &Scenario, id: &Value) -> Value {
 async fn setup(s: &Scenario) {
     // Maps are files; Bot creation and node editing use their public API.
     fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner","description":"","nodes":{"inside":{"title":"Internal work","bot_id":"worker","input":"INTERNAL","zone":"node","blocked_by":[],"output_rule":[]}}}).to_string()).unwrap();
-    request(s, "/api/scheduler/bots/save", json!({"id":"nested","content":json!({"name":"Nested","when":"","plan_guide":"","node_guide":"","map_file":"inner.json"}).to_string(),"revision":null}), 200).await;
+    request(s, "/api/scheduler/bots/save", json!({"id":"nested","content":json!({"name":"Nested","when":"","description":"","input_rule":"","output_rule":"","map_file":"inner.json"}).to_string(),"revision":null}), 200).await;
     fs::write(s.config.scheduler.map_directory.join("work.json"), json!({"title":"Outer","description":"","nodes":{}}).to_string()).unwrap();
     for (id, content) in [
         ("call", json!({"title":"Call","bot_id":"nested","manager_task_id":s.manager_task,"input":"CALL","zone":"node","blocked_by":[],"input_rule":[],"output_rule":[{"id":"result"},{"id":"missing"}],"auto_close":true})),
@@ -177,7 +177,7 @@ async fn nested_outputs_use_frozen_parent_rules_and_feed_both_downstream_kinds()
     let s = Scenario::new().await;
     setup(&s).await;
     fs::write(s.config.scheduler.map_directory.join("sink.json"), json!({"title":"Sink","description":"","input_files":[{"id":"renamed","required":true}],"nodes":{"sink-work":{"title":"Sink work","bot_id":"worker","input":"Sink","zone":"node","blocked_by":[]}}}).to_string()).unwrap();
-    request(&s, "/api/scheduler/bots/save", json!({"id":"sink","content":json!({"name":"Sink","when":"","plan_guide":"","node_guide":"","map_file":"sink.json"}).to_string(),"revision":null}), 200).await;
+    request(&s, "/api/scheduler/bots/save", json!({"id":"sink","content":json!({"name":"Sink","when":"","description":"","input_rule":"","output_rule":"","map_file":"sink.json"}).to_string(),"revision":null}), 200).await;
     add_node(&s, "map-consumer", json!({"title":"Map consumer","bot_id":"sink","manager_task_id":s.manager_task,"input":"MAP-CONSUME","zone":"node","blocked_by":["call"],"input_rule":[{"type":"node","id":"renamed","node_id":"call","output_id":"result"}]})).await;
     add_node(&s, "retained-consumer", json!({"title":"Retained consumer","bot_id":"worker","input":"Retained","zone":"node","blocked_by":["call"],"input_rule":[{"type":"node","id":"retained","node_id":"call","output_id":"missing"}]})).await;
     let root = s.start("output-root").await;

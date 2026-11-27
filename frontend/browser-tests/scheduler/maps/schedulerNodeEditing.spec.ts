@@ -145,7 +145,7 @@ test('editing a real node keeps identity, open parameters and all non-target def
 test('registered Bot Markdown guidance does not constrain, complete or validate node input', async ({ page }) => {
   const root = await setup(page), before = inventory(root)
   const bots = path.join(server!.cwd, 'meta-data/bots')
-  fs.writeFileSync(path.join(bots, 'known.json'), JSON.stringify({ id: 'declared-inputs', name: '已登记能力', when: '', plan_guide: '说明不是校验规则', node_guide: '# 必须填写城市\n这是工作指引，不是必填规则。' }))
+  fs.writeFileSync(path.join(bots, 'known.json'), JSON.stringify({ id: 'declared-inputs', name: '已登记能力', when: '', description: '说明不是校验规则', input_rule: '# 必须填写城市\n这是工作指引，不是必填规则。', output_rule: '' }))
   const botsBefore = inventory(bots)
   await page.getByRole('button', { name: '刷新全部', exact: true }).click()
   await page.getByRole('button', { name: '新增 node', exact: true }).click()

@@ -4,7 +4,7 @@ use super::*;
 pub(super) use common::file_gate;
 
 fn nested(s: &Scenario) {
-    fs::write(s.config.scheduler.bot_directory.join("nested.json"), json!({"id":"nested","name":"Misleading task name","when":"","plan_guide":"","node_guide":"","map_file":"inner.json"}).to_string()).unwrap();
+    fs::write(s.config.scheduler.bot_directory.join("nested.json"), json!({"id":"nested","name":"Misleading task name","when":"","description":"","input_rule":"","output_rule":"","map_file":"inner.json"}).to_string()).unwrap();
     fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Same display name","description":"","nodes":{"A":{"title":"A","bot_id":"worker","input":"INNER","zone":"manager","blocked_by":[]}}}).to_string()).unwrap();
     fs::write(s.config.scheduler.map_directory.join("work.json"), json!({"title":"Same display name","description":"","nodes":{"A":{"title":"A","bot_id":"nested","manager_task_id":s.manager_task,"input":"CHILD","zone":"node","blocked_by":[]}}}).to_string()).unwrap();
 }

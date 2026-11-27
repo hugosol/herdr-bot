@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 export interface Target { type: "task" | "map"; task_id?: string; map_file?: string }
 export interface Bot {
-  id: string; name: string; when: string; plan_guide: string; node_guide: string;
+  id: string; name: string; when: string; description: string; input_rule: string; output_rule: string;
   group?: string; task_id?: string; map_file?: string; script?: string;
 }
 export interface Revision { file: string; original: string }
@@ -78,7 +78,7 @@ export function request(input: unknown): Request {
   return value as unknown as Request;
 }
 export function bot(input: unknown): Bot {
-  const value = object(input, ["id", "name", "when", "plan_guide", "node_guide"], ["group", "task_id", "map_file", "script"]);
+  const value = object(input, ["id", "name", "when", "description", "input_rule", "output_rule"], ["group", "task_id", "map_file", "script"]);
   Object.values(value).forEach(string);
   return value as unknown as Bot;
 }

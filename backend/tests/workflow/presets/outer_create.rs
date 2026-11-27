@@ -37,7 +37,7 @@ async fn outer_create_publishes_task_then_wrapper_without_changing_legacy_entrie
         node["zone"] = json!("node");
     }
     fs::write(s.config.scheduler.map_directory.join("create-bot-wrapper.json"), child.to_string()).unwrap();
-    let bot = json!({"name":"Wrapper","when":"Existing targets only","plan_guide":"","node_guide":"","map_file":"create-bot-wrapper.json"});
+    let bot = json!({"name":"Wrapper","when":"Existing targets only","description":"","input_rule":"","output_rule":"","map_file":"create-bot-wrapper.json"});
     let saved = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/save", &json!({"id":"create-bot-wrapper","content":bot.to_string(),"revision":null}).to_string()).await;
     assert_eq!(saved.status,200,"{}",saved.body);
     fs::write(s.config.scheduler.map_directory.join(file), r#"{"title":"Outer","description":"","nodes":{}}"#).unwrap();

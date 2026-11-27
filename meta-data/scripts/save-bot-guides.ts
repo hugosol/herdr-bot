@@ -3,8 +3,9 @@ import { Work, bot, fail, inputs, locator, object, request, rules, saveCode, str
 
 const fields = [
   ["when", "when_text"],
-  ["plan_guide", "plan_guide_text"],
-  ["node_guide", "node_guide_text"],
+  ["description", "description_text"],
+  ["input_rule", "input_rule_text"],
+  ["output_rule", "output_rule_text"],
 ] as const;
 
 export default async function script(context: Context) {
@@ -14,10 +15,10 @@ export default async function script(context: Context) {
     const required = ["baseline", ...fields.map(([, text]) => text)];
     const ids = new Set<string>();
     for (const file of files) {
-      if (!required.includes(file.id) || ids.has(file.id)) fail("validate", "ambiguous-request", "保存只消费唯一 baseline 和三份明确绑定的 text。");
+      if (!required.includes(file.id) || ids.has(file.id)) fail("validate", "ambiguous-request", "保存只消费唯一 baseline 和四份明确绑定的 text。");
       ids.add(file.id);
     }
-    if (required.some(id => !ids.has(id))) fail("validate", "missing-field", "缺少 baseline 或三份明确绑定的 text。");
+    if (required.some(id => !ids.has(id))) fail("validate", "missing-field", "缺少 baseline 或四份明确绑定的 text。");
     rules(context, ["saved", "handoff"]);
     const baseline = object(await work.document("baseline"), ["schema_version", "kind", "bot", "revision", "target", "request"]);
     version(baseline.schema_version); string(baseline.kind);
@@ -29,7 +30,7 @@ export default async function script(context: Context) {
     const snapshot = object(baseline.target, ["type", "configuration"], ["task_id", "map_file"]);
     const { configuration, ...rawTarget } = snapshot;
     const target = locator(rawTarget);
-    if (baseline.schema_version !== 1 || baseline.kind !== "baseline" || !revision.file || !revision.original || originalBot.when || originalBot.plan_guide || originalBot.node_guide) fail("validate", "invalid-format", "创建 baseline 必须是三空指南的完整 v1 对象和真实 revision。");
+    if (baseline.schema_version !== 1 || baseline.kind !== "baseline" || !revision.file || !revision.original || fields.some(([field]) => originalBot[field] !== "")) fail("validate", "invalid-format", "创建 baseline 必须包含四字段均为空的完整 Bot v1 材料和真实 revision。");
     const original = await work.call("parse_json", { text: revision.original }, "validate", "invalid-format");
     if (original === null || typeof original !== "object" || !("id" in original) || original.id !== originalBot.id || (specification.bot?.id !== undefined && specification.bot.id !== originalBot.id)) fail("validate", "identity-conflict", "baseline Bot、request 与 revision 身份不一致。");
     if (!isDeepStrictEqual(original, originalBot)) fail("validate", "revision-conflict", "baseline 完整 Bot 与 revision.original 不一致。");
@@ -51,7 +52,7 @@ export default async function script(context: Context) {
     work.write = "succeeded";
     work.readBack = "failed";
     const read = await work.call("bot_read", { id }, "read_back", "read-back-failed");
-    if (!isDeepStrictEqual(read.bot, candidate)) fail("read_back", "read-back-failed", "写后完整 Bot 与三字段候选不一致。");
+    if (!isDeepStrictEqual(read.bot, candidate)) fail("read_back", "read-back-failed", "写后完整 Bot 与四字段候选不一致。");
     const after = await work.call("target", target, "read_back", "read-back-failed");
     if (!isDeepStrictEqual(after.configuration, before.configuration)) fail("read_back", "target-conflict", "保存期间目标变化；保留实际效果，不回滚。");
     work.readBack = "succeeded";

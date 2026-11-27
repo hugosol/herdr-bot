@@ -176,8 +176,9 @@ pub(crate) fn delegation_map_definition(
                 let mut meanings = BTreeMap::new();
                 for (key, field, source) in [
                     ("when", crate::prompts::Field::BotWhen, &bot.when),
-                    ("plan_guide", crate::prompts::Field::BotPlanGuide, &bot.plan_guide),
-                    ("node_guide", crate::prompts::Field::BotNodeGuide, &bot.node_guide),
+                    ("description", crate::prompts::Field::BotDescription, &bot.description),
+                    ("input_rule", crate::prompts::Field::BotInputRule, &bot.input_rule),
+                    ("output_rule", crate::prompts::Field::BotOutputRule, &bot.output_rule),
                 ] {
                     meanings.insert(key, prompts.render(field, source).map_err(|error| edit_error("prompt-dictionary-invalid", error.to_string()))?);
                 }

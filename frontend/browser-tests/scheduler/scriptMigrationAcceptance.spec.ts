@@ -7,7 +7,7 @@ import { startServer, type E2EServer } from '../support/support'
 test.use({ launchOptions: process.env.RUST_SCRIPT_CHROME ? { executablePath: process.env.RUST_SCRIPT_CHROME } : {} })
 
 // Approved P23 page partition: delivered page + public complete definitions.
-// Oracle: shipped creator keeps its identity/guides, dedicated saver has three
+// Oracle: shipped creator keeps its identity, dedicated saver has four
 // empty strings; create and revise Maps must reference different save abilities.
 // A page showing a stale Task target or a globally migrated replace-text fails.
 test('P23 migrated creator and dedicated saver match complete public definitions and create/revise references', async ({ page, browser }, info) => {
@@ -31,7 +31,7 @@ test('P23 migrated creator and dedicated saver match complete public definitions
       expect(shipped.script).toBe(capability)
       expect(shipped.task_id).toBeUndefined()
       expect(shipped.map_file).toBeUndefined()
-      if (id === 'save-created-bot-guides') for (const field of ['when', 'plan_guide', 'node_guide']) expect(shipped[field]).toBe('')
+      if (id === 'save-created-bot-guides') for (const field of ['when', 'description', 'input_rule', 'output_rule']) expect(shipped[field]).toBe('')
       const response = await page.request.post(`${server.baseURL}/api/scheduler/bots/edit`, { data: { id } })
       expect(response.status()).toBe(200)
       const actual = await response.json()
@@ -44,7 +44,7 @@ test('P23 migrated creator and dedicated saver match complete public definitions
       await page.getByRole('button', { name: `${shipped.name} · ${id}`, exact: true }).click()
       const preview = page.getByRole('region', { name: 'Bot 预览', exact: true })
       await expect(preview).toContainText(capability)
-      for (const field of ['when', 'plan_guide', 'node_guide']) {
+      for (const field of ['when', 'description', 'input_rule', 'output_rule']) {
         await preview.getByRole('button', { name: field, exact: true }).click()
         await expect(preview.getByRole('region', { name: field, exact: true })).toHaveText(shipped[field])
       }

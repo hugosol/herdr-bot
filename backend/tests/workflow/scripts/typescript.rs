@@ -234,7 +234,7 @@ async fn bind(s: &Scenario, source: &str, outputs: Value) {
     fs::create_dir_all(&directory).unwrap();
     fs::write(directory.join("helper.ts"), "export const suffix: string = ' / imported';\n").unwrap();
     fs::write(directory.join("custom.ts"), source).unwrap();
-    let saved = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/save", &json!({"id":"user-script","revision":null,"content":json!({"name":"User script","when":"","plan_guide":"","node_guide":"","script":"user/custom.ts"}).to_string()}).to_string()).await;
+    let saved = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/save", &json!({"id":"user-script","revision":null,"content":json!({"name":"User script","when":"","description":"","input_rule":"","output_rule":"","script":"user/custom.ts"}).to_string()}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     fs::write(s.config.scheduler.map_directory.join("work.json"), json!({"title":"User TS","description":"","nodes":{
         "custom":{"title":"Run user code","bot_id":"user-script","input":"literal input 第二行","zone":"node","blocked_by":[],"output_rule":outputs}
@@ -301,6 +301,7 @@ async fn typescript_user_file_imports_writes_and_hands_off_without_rebuilding_ba
 import { suffix } from './helper.ts';
 export default async function(context: {zone: string, input: string}) {
     if (process.cwd() !== resolve(context.zone)) throw new Error('wrong execution working directory');
+    if (JSON.stringify(context).includes('MANAGER-USER-SECRET') || ['userInput', 'mapInput', 'runInput'].some(key => Object.hasOwn(context, key))) throw new Error('Run background must not enter the script context');
     console.log('ordinary script log, not a result');
     process.stdout.write('another ordinary log\n');
     const path = join(context.zone, 'custom output.txt');

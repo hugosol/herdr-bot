@@ -88,7 +88,7 @@ impl Scenario {
             let body: Value = serde_json::from_str(&response.body).unwrap();
             ids.push(body["tasks"].as_array().unwrap().iter().find(|t| t["name"] == role).unwrap()["id"].as_str().unwrap().to_owned());
         }
-        fs::write(config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"BOT-WHEN-SECRET","plan_guide":"BOT-PLAN-SECRET","node_guide":"BOT-NODE-SECRET","task_id":ids[1]}).to_string()).unwrap();
+        fs::write(config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"BOT-WHEN-SECRET","description":"BOT-PLAN-SECRET","input_rule":"BOT-NODE-SECRET","output_rule":"BOT-OUTPUT-SECRET","task_id":ids[1]}).to_string()).unwrap();
         fs::write(config.scheduler.map_directory.join("work.json"), json!({"title":"map","description":"MAP-SECRET","nodes":{
             "A":{"title":"Worker A","bot_id":"worker","input":"NODE-INPUT\n第二行","zone":"node","blocked_by":[],"output_rule":[{"id":"A"},{"id":"B"},{"id":"otherVolume"},{"id":"result"},{"id":"brief"},{"id":"shared"}]},
             "B":{"title":"Worker B","bot_id":"worker","input":"B-INPUT","zone":"node","blocked_by":[],"output_rule":[{"id":"A"},{"id":"B"},{"id":"review"},{"id":"summary"}]},
