@@ -16,10 +16,10 @@ pub(crate) struct WorkflowMap {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) group: Option<String>,
     pub(super) description: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub(super) input_requirements: String,
-    #[serde(default, deserialize_with = "object_array", skip_serializing_if = "Vec::is_empty")]
-    pub(crate) input_files: Vec<MapFileInput>,
+    #[serde(default, deserialize_with = "present_object", skip_serializing_if = "Option::is_none")]
+    pub(crate) map_input_rule: Option<MapRule<MapFileInput>>,
+    #[serde(default, deserialize_with = "present_object", skip_serializing_if = "Option::is_none")]
+    pub(crate) map_output_rule: Option<MapRule<MapFileOutput>>,
     pub(crate) nodes: BTreeMap<String, JsonObject<MapNode>>,
 }
 
@@ -36,6 +36,26 @@ impl InputRule {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct OutputRule { pub id: String }
+impl WorkflowMap {
+    pub(crate) fn input_files(&self) -> &[MapFileInput] {
+        self.map_input_rule.as_ref().map_or(&[], |rule| rule.files.as_slice())
+    }
+}
+
+// Default applies to an omitted field only; a present rule is a named object.
+fn present_object<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(deserializer: D) -> Result<Option<T>, D::Error> {
+    JsonObject::<T>::deserialize(deserializer).map(|value| Some(value.0))
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields, bound(deserialize = "F: Deserialize<'de>"))]
+pub(crate) struct MapRule<F> {
+    #[serde(default)]
+    pub(crate) description: String,
+    #[serde(default, deserialize_with = "object_array")]
+    pub(crate) files: Vec<F>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapFileInput {
@@ -46,13 +66,20 @@ pub struct MapFileInput {
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct MapFileOutput {
+    pub(crate) id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) description: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ResolvedFile { pub id: String, pub path: String }
 
 #[derive(Deserialize, Serialize)]
 #[serde(untagged)]
 pub(crate) enum NodeZone {
     Fixed(String),
-    Dynamic(DynamicZone),
+    Dynamic(JsonObject<DynamicZone>),
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -157,10 +184,18 @@ fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
             return Err(map_error("end_node 不允许下游节点或输出引用。"));
         }
     }
-    let mut input_ids = std::collections::BTreeSet::new();
-    for input in &map.input_files {
-        if input.id.trim().is_empty() || !input_ids.insert(&input.id) {
-            return Err(map_error(format!("Map input_files ID 为空或重复：{}", input.id)));
+    let mut public_inputs = std::collections::BTreeSet::new();
+    for input in map.input_files() {
+        if input.id.trim().is_empty() || !public_inputs.insert(input.id.as_str()) {
+            return Err(map_error(format!("Map map_input_rule.files ID 为空或重复：{}", input.id)));
+        }
+    }
+    if let Some(rule) = &map.map_output_rule {
+        let mut public_outputs = std::collections::BTreeSet::new();
+        for output in &rule.files {
+            if output.id.trim().is_empty() || !public_outputs.insert(&output.id) {
+                return Err(map_error(format!("Map map_output_rule.files ID 为空或重复：{}", output.id)));
+            }
         }
     }
     // Reject invalid dependencies rather than dropping an edge or manufacturing
@@ -182,7 +217,7 @@ fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
                     return Err(map_error(format!("node {id} 的输入 {name} 必须使用 zone 内的相对文件地址（/ 分隔，不允许绝对路径或 ..）；旧格式不受支持，请显式提供 zone ID 和相对路径。")));
                 }
                 InputRule::Run { input_id, .. } => {
-                    if !map.input_files.iter().any(|input| input.id == *input_id) {
+                    if !public_inputs.contains(input_id.as_str()) {
                         return Err(map_error(format!("node {id} 的输入 {name} 引用了未声明 Run 输入：{input_id}")));
                     }
                 }
@@ -237,11 +272,15 @@ pub(crate) async fn get_map(state: crate::AppState, name: String) -> Result<Work
     }
 }
 
-pub(crate) async fn edit_map_inputs(state: crate::AppState, name: String) -> Result<serde_json::Value, DirectoryError> {
+pub(crate) async fn edit_map_rules(state: crate::AppState, name: String) -> Result<MapRulesEdit, DirectoryError> {
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-read-failed", |access| {
         let original = read_map_source(access, &state.map_directory, &name)?;
         let map = parse_map(&original)?;
-        Ok::<_, DirectoryError>(serde_json::json!({"input_files": map.input_files, "input_requirements": map.input_requirements, "revision": {"file": name, "original": original}}))
+        Ok::<_, DirectoryError>(MapRulesEdit {
+            map_input_rule: map.map_input_rule,
+            map_output_rule: map.map_output_rule,
+            revision: DefinitionRevision { file: name, original },
+        })
     })).await {
         Ok(Ok(value)) => Ok(value),
         Ok(Err(error)) => Err(error),
@@ -249,33 +288,34 @@ pub(crate) async fn edit_map_inputs(state: crate::AppState, name: String) -> Res
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct MapInputsSave {
-    input_requirements: String,
-    #[serde(deserialize_with = "object_array")]
-    input_files: Vec<MapFileInput>,
+pub struct MapRulesEdit {
+    #[serde(default, deserialize_with = "present_object", skip_serializing_if = "Option::is_none")]
+    map_input_rule: Option<MapRule<MapFileInput>>,
+    #[serde(default, deserialize_with = "present_object", skip_serializing_if = "Option::is_none")]
+    map_output_rule: Option<MapRule<MapFileOutput>>,
     revision: DefinitionRevision,
 }
 
-pub(crate) async fn save_map_inputs(state: crate::AppState, name: String, draft: MapInputsSave) -> Result<WorkflowMap, DirectoryError> {
+pub(crate) async fn save_map_rules(state: crate::AppState, name: String, draft: MapRulesEdit) -> Result<WorkflowMap, DirectoryError> {
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone()], "map-write-failed", |access| {
         let check = || -> Result<(), DirectoryError> {
             let current = read_map_source(access, &state.map_directory, &name)?;
             if draft.revision.file != name || draft.revision.original != current {
-                return Err(edit_error("map-conflict", "Map 文件已变化；请重新加载后再编辑输入声明。"));
+                return Err(edit_error("map-conflict", "Map 文件已变化；请重新加载后再编辑公开规则。"));
             }
             Ok(())
         };
         check()?;
         let mut map = parse_map(&draft.revision.original)?;
-        map.input_files = draft.input_files;
-        map.input_requirements = draft.input_requirements;
+        map.map_input_rule = draft.map_input_rule;
+        map.map_output_rule = draft.map_output_rule;
         validate_map(&map).map_err(|error| edit_error("map-input-invalid", error.message))?;
         let bytes = serde_json::to_vec_pretty(&map).map_err(|error| edit_error("map-write-failed", error.to_string()))?;
         let root = prepare_directory(access, &state.map_directory)?;
         access.publish_checked(&root.join(&name), &bytes, PublishMode::Replace,
-            |_| check(), |error| edit_error("map-write-failed", format!("Map 输入声明写入失败：{error}")))?;
+            |_| check(), |error| edit_error("map-write-failed", format!("Map 公开规则写入失败：{error}")))?;
         Ok(map)
     })).await {
         Ok(Ok(map)) => Ok(map),
@@ -434,6 +474,22 @@ pub(crate) async fn edit_node(state: crate::AppState, name: String, identity: No
     }
 }
 
+fn check_child_interface(child: &WorkflowMap, target: &str, node: &MapNode) -> Result<(), DirectoryError> {
+    for input in &node.input_rule {
+        let id = input.id();
+        if !child.input_files().iter().any(|file| file.id == id) {
+            return Err(edit_error("node-map-input-unknown", format!("子 Map {target} 未声明同名公开输入 ID：{id}")));
+        }
+    }
+    let outputs = child.map_output_rule.as_ref().map_or(&[][..], |rule| rule.files.as_slice());
+    for output in &node.output_rule {
+        if !outputs.iter().any(|file| file.id == output.id) {
+            return Err(edit_error("node-map-output-unknown", format!("子 Map {target} 未声明同名公开输出 ID：{}", output.id)));
+        }
+    }
+    Ok(())
+}
+
 pub(crate) async fn save_node(state: crate::AppState, name: String, draft: NodeSave) -> Result<WorkflowMap, DirectoryError> {
     if draft.id.is_empty() { return Err(edit_error("node-invalid", "node ID 不能为空。")); }
     let content: serde_json::Value = serde_json::from_str(&draft.content)
@@ -446,20 +502,6 @@ pub(crate) async fn save_node(state: crate::AppState, name: String, draft: NodeS
         state.tasks.list().await.map_err(|e| edit_error("end-node-target-invalid", e.message()))?
     } else { Vec::new() };
     match tokio::task::spawn_blocking(move || with_definitions(&[state.map_directory.clone(), state.bot_directory.clone()], "node-write-failed", |access| {
-        if node.0.end_node {
-            let bots = read_bots(access, &state.bot_directory)?;
-            let bot = bots.bots.iter().find(|bot| bot.id == node.0.bot_id).ok_or_else(|| edit_error("end-node-target-invalid", "end_node 的 Bot 缺失。"))?;
-            if bot.script.is_some() || bot.map_file.is_some() || node.0.manager_task_id.is_some()
-                || !tasks.iter().any(|task| bot.task_id.as_deref() == Some(task.id.as_str()) && task.task_type == crate::tasks::TaskType::Normal) {
-                return Err(edit_error("end-node-target-invalid", "end_node 仅允许普通 Task Bot。"));
-            }
-        }
-        if node.0.manager_task_id.is_some() || !node.0.auto_approved || node.0.auto_close {
-            let bots = read_bots(access, &state.bot_directory)?;
-            if bots.bots.iter().any(|bot| bot.id == node.0.bot_id && bot.script.is_some()) {
-                return Err(edit_error("script-policy-invalid", "脚本节点仅允许 auto_approved:true、auto_close:false，且无 manager_task_id。"));
-            }
-        }
         let check = || -> Result<(), DirectoryError> {
             let current = read_map_source(access, &state.map_directory, &name)
                 .map_err(|error| edit_error("node-conflict", format!("Map 文件已变化或移除：{}；请重新加载。", error.message)))?;
@@ -475,6 +517,28 @@ pub(crate) async fn save_node(state: crate::AppState, name: String, draft: NodeS
         }
         if !draft.create && !map.nodes.contains_key(&draft.id) {
             return Err(edit_error("node-conflict", "node 已移除；请重新加载。"));
+        }
+        let definition = &node.0;
+        let has_bindings = !definition.input_rule.is_empty() || !definition.output_rule.is_empty();
+        let checks_script_policy = definition.manager_task_id.is_some() || !definition.auto_approved || definition.auto_close;
+        if definition.end_node || has_bindings || checks_script_policy {
+            let bots = read_bots(access, &state.bot_directory)?;
+            let bot = bots.bots.iter().find(|bot| bot.id == definition.bot_id);
+            if definition.end_node {
+                let bot = bot.ok_or_else(|| edit_error("end-node-target-invalid", "end_node 的 Bot 缺失。"))?;
+                if bot.script.is_some() || bot.map_file.is_some() || definition.manager_task_id.is_some()
+                    || !tasks.iter().any(|task| bot.task_id.as_deref() == Some(task.id.as_str()) && task.task_type == crate::tasks::TaskType::Normal) {
+                    return Err(edit_error("end-node-target-invalid", "end_node 仅允许普通 Task Bot。"));
+                }
+            }
+            if checks_script_policy && bot.is_some_and(|bot| bot.script.is_some()) {
+                return Err(edit_error("script-policy-invalid", "脚本节点仅允许 auto_approved:true、auto_close:false，且无 manager_task_id。"));
+            }
+            if has_bindings && let Some(target) = bot.and_then(|bot| bot.map_file.as_deref()) {
+                let child = read_map(access, &state.map_directory, target)
+                    .map_err(|error| edit_error(error.code, format!("子 Map {target} 无法读取：{}", error.message)))?;
+                check_child_interface(&child, target, definition)?;
+            }
         }
         map.nodes.insert(draft.id, node);
         validate_map(&map)?;

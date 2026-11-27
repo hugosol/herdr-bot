@@ -1,6 +1,6 @@
 //! HTTP adapters for shared definitions; business operations remain in scheduler.
 use axum::{Json, response::{IntoResponse, Response}};
-use crate::{runs, scheduler::{self, maps::{NodeIdentity, MapInputsSave, MapTitleSave, NodeDelete, NodeSave}}};
+use crate::{runs, scheduler::{self, maps::{NodeIdentity, MapRulesEdit, MapTitleSave, NodeDelete, NodeSave}}};
 
 use super::{extractors::{CommandJson, catalog::{DeleteMap, MapList, MapRead, NewDraft, PreflightRun}}, responses::HttpError};
 
@@ -23,15 +23,18 @@ pub async fn edit_map_inputs(
     axum::extract::State(state): axum::extract::State<crate::AppState>,
     axum::extract::Path(name): axum::extract::Path<String>,
 ) -> Response {
-    result(scheduler::maps::edit_map_inputs(state, name).await)
+    result(scheduler::maps::edit_map_rules(state, name).await)
 }
 
 pub async fn save_map_inputs(
     axum::extract::State(state): axum::extract::State<crate::AppState>,
     axum::extract::Path(name): axum::extract::Path<String>,
-    Json(draft): Json<MapInputsSave>,
+    draft: Result<Json<scheduler::JsonObject<MapRulesEdit>>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
-    result(scheduler::maps::save_map_inputs(state, name, draft).await)
+    match draft {
+        Ok(Json(scheduler::JsonObject(draft))) => result(scheduler::maps::save_map_rules(state, name, draft).await),
+        Err(error) => (error.status(), Json(serde_json::json!({"code":"map-input-invalid", "message":error.body_text()}))).into_response(),
+    }
 }
 
 pub async fn edit_map_title(

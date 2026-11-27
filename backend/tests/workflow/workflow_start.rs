@@ -654,39 +654,37 @@ async fn named_input_declarations_are_local_and_duplicate_save_preserves_map() {
     let declarations = json!([{"id":"brief","required":true,"description":"Invoice **source** <plain text>\nKeep the original date."},{"id":"appendix","required":false}]);
     let mut submitted = declarations.clone();
     submitted[1]["description"] = json!("");
-    let saved = post_json_over_tcp(server.addr(), route, &json!({"input_files":submitted,"input_requirements":"Review the invoice date and obtain explicit scope approval.","revision":draft["revision"]}).to_string()).await;
+    let saved = post_json_over_tcp(server.addr(), route, &json!({"map_input_rule":{"files":submitted,"description":"Review the invoice date and obtain explicit scope approval."},"revision":draft["revision"]}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let read = get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await;
     assert_eq!(read.status, 200, "{}", read.body);
     let map: Value = serde_json::from_str(&read.body).unwrap();
     let mut expected = original;
-    expected["input_files"] = declarations.clone();
-    expected["input_requirements"] = json!("Review the invoice date and obtain explicit scope approval.");
+    expected["map_input_rule"] = json!({"files":declarations,"description":"Review the invoice date and obtain explicit scope approval."});
     assert_eq!(map, expected);
     assert_eq!(serde_json::from_str::<Value>(&saved.body).unwrap(), expected);
     assert_eq!(serde_json::from_slice::<Value>(&fs::read(config.scheduler.map_directory.join("work.json")).unwrap()).unwrap(), expected);
     let edited = get_over_tcp(server.addr(), route).await;
     assert_eq!(edited.status, 200, "{}", edited.body);
     let draft: Value = serde_json::from_str(&edited.body).unwrap();
-    assert_eq!(draft["input_files"], declarations);
-    assert_eq!(draft["input_requirements"], expected["input_requirements"]);
+    assert_eq!(draft["map_input_rule"], expected["map_input_rule"]);
     let persisted = fs::read(config.scheduler.map_directory.join("work.json")).unwrap();
     for description in [Value::Null, json!(42), json!(true), json!([]), json!({})] {
         let mut invalid = declarations.clone();
         invalid[0]["description"] = description.clone();
-        let rejected = post_json_over_tcp(server.addr(), route, &json!({"input_files":invalid,"input_requirements":"Must not replace general requirements.","revision":draft["revision"]}).to_string()).await;
+        let rejected = post_json_over_tcp(server.addr(), route, &json!({"map_input_rule":{"files":invalid,"description":"Must not replace general requirements."},"revision":draft["revision"]}).to_string()).await;
         assert_eq!(rejected.status, 422, "description {description}: {}", rejected.body);
         assert_eq!(fs::read(config.scheduler.map_directory.join("work.json")).unwrap(), persisted);
         assert_eq!(get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await.body, read.body);
     }
-    let rejected = post_json_over_tcp(server.addr(), route, &json!({"input_files":[{"id":"brief","required":true},{"id":"brief","required":false}],"input_requirements":"Review the invoice date and obtain explicit scope approval.","revision":draft["revision"]}).to_string()).await;
+    let rejected = post_json_over_tcp(server.addr(), route, &json!({"map_input_rule":{"files":[{"id":"brief","required":true},{"id":"brief","required":false}],"description":"Review the invoice date and obtain explicit scope approval."},"revision":draft["revision"]}).to_string()).await;
     assert_eq!(rejected.status, 400, "{}", rejected.body);
     assert!(rejected.body.contains("brief"));
     assert_eq!(get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await.body, read.body);
     fs::write(config.scheduler.map_directory.join("other.json"), serde_json::to_vec(&map).unwrap()).unwrap();
     let other = get_over_tcp(server.addr(), "/api/scheduler/maps/other.json").await;
     assert_eq!(other.status, 200, "{}", other.body);
-    assert_eq!(serde_json::from_str::<Value>(&other.body).unwrap()["input_files"], declarations);
+    assert_eq!(serde_json::from_str::<Value>(&other.body).unwrap()["map_input_rule"]["files"], declarations);
     assert!(herdr.calls().is_empty());
 }
 
@@ -698,7 +696,7 @@ async fn root_runs_preserve_named_bindings_separately_from_business_text() {
     let (data, herdr, config, server, zone, ids) = fixture().await;
     let map_path = config.scheduler.map_directory.join("work.json");
     let mut map: Value = serde_json::from_slice(&fs::read(&map_path).unwrap()).unwrap();
-    map["input_files"] = json!([{"id":"brief","required":true},{"id":"appendix","required":false}]);
+    map["map_input_rule"]["files"] = json!([{"id":"brief","required":true},{"id":"appendix","required":false}]);
     fs::write(&map_path, serde_json::to_vec(&map).unwrap()).unwrap();
     fs::write(config.scheduler.map_directory.join("other.json"), serde_json::to_vec(&map).unwrap()).unwrap();
     let mut expected_runs = Vec::new();
@@ -755,11 +753,11 @@ async fn handoff_order_requires_a_declared_map_input_before_manager_preparation(
     let draft = get_over_tcp(server.addr(), "/api/scheduler/maps/work.json/inputs").await;
     let draft: Value = serde_json::from_str(&draft.body).unwrap();
     let saved = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/inputs",
-        &json!({"input_files":declarations,"input_requirements":"Quantity and unit price must be known. Missing discount is the worker's discussion responsibility, not a prerequisite to start.","revision":draft["revision"]}).to_string()).await;
+        &json!({"map_input_rule":{"files":declarations,"description":"Quantity and unit price must be known. Missing discount is the worker's discussion responsibility, not a prerequisite to start."},"revision":draft["revision"]}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let published = get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await;
     let published: Value = serde_json::from_str(&published.body).unwrap();
-    assert_eq!(published["input_files"], declarations);
+    assert_eq!(published["map_input_rule"]["files"], declarations);
     herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"handoff-input-manager"},"native_cwd":data.path()}));
     let corrected = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/runs",
         &json!({"managerTaskId":ids[0],"zone":zone,"userInput":"Discuss this order; discount is still unknown.","fileInputs":bindings}).to_string()).await;
@@ -785,7 +783,7 @@ async fn invalid_root_input_ids_reject_preflight_and_start_without_host_effects(
     let (data, herdr, config, server, zone, ids) = fixture().await;
     let map_path = config.scheduler.map_directory.join("work.json");
     let mut map: Value = serde_json::from_slice(&fs::read(&map_path).unwrap()).unwrap();
-    map["input_files"] = json!([{"id":"brief","required":true}]);
+    map["map_input_rule"]["files"] = json!([{"id":"brief","required":true}]);
     fs::write(&map_path, serde_json::to_vec(&map).unwrap()).unwrap();
     let file = data.path().join("brief.txt");
     fs::write(&file, "material").unwrap();
@@ -813,7 +811,7 @@ async fn roots_without_files_and_omitted_optional_inputs_start_with_empty_bindin
         let (_data, _herdr, config, server, zone, ids) = fixture().await;
         let map_path = config.scheduler.map_directory.join("work.json");
         let mut map: Value = serde_json::from_slice(&fs::read(&map_path).unwrap()).unwrap();
-        if !declarations.is_null() { map["input_files"] = declarations; }
+        if !declarations.is_null() { map["map_input_rule"]["files"] = declarations; }
         fs::write(&map_path, serde_json::to_vec(&map).unwrap()).unwrap();
         let mut input = json!({"managerTaskId":ids[0],"zone":zone,"userInput":"optional: no file was supplied"});
         if let Some(bindings) = bindings { input["fileInputs"] = bindings; }

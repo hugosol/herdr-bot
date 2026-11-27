@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { loadMap, loadMapInputs, saveMapInputs, saveNode } from '../../src/controllers/schedulerController'
+import { loadMap, loadMapRules, saveMapRules, saveNode } from '../../src/controllers/schedulerController'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -12,30 +12,30 @@ function responseWith(fields: Record<string, unknown>) {
   } }))))
 }
 
-describe('Map input preparation contract', () => {
+describe('Map public rule response contract', () => {
   const revision = { file: 'map.json', original: '{"title":"Map"}' }
-  const input_requirements = '# 材料\n\n保留 **完整** Markdown 和尾随空白。  \n'
-  const input_files = [{ id: 'brief', required: true, description: '业务委托及约束。' }]
+  const map_input_rule = { description: '# 材料\n\n保留 **完整** Markdown 和尾随空白。  \n', files: [{ id: 'brief', required: true, description: '业务委托及约束。' }] }
+  const map_output_rule = { description: '只说明交接条件' }
 
-  it('loads and saves prose separately from file declarations without losing either', async () => {
-    const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ input_requirements, input_files, revision })))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ title: 'Map', description: '', nodes: {}, input_requirements, input_files })))
+  it('loads and saves the rule prose and files without inventing an output file', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ map_input_rule, map_output_rule, revision })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ title: 'Map', description: '', nodes: {}, map_input_rule, map_output_rule })))
     vi.stubGlobal('fetch', fetcher)
-    const loaded = await loadMapInputs('map.json')
-    expect(loaded).toEqual({ input_requirements, input_files, revision })
-    const saved = await saveMapInputs('map.json', loaded)
-    expect(saved.input_requirements).toBe(input_requirements)
-    expect(saved.input_files).toEqual(input_files)
+    const loaded = await loadMapRules('map.json')
+    expect(loaded).toEqual({ map_input_rule, map_output_rule, revision })
+    const saved = await saveMapRules('map.json', loaded)
+    expect(saved.map_input_rule).toEqual(map_input_rule)
+    expect(saved.map_output_rule).toEqual(map_output_rule)
     expect(fetcher.mock.calls[1]).toEqual(['/api/scheduler/maps/map.json/inputs', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(loaded),
     }])
   })
 
-  it.each([null, 7, [], {}])('rejects malformed requirements: %j', async input_requirements => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ title: 'Map', description: '', nodes: {}, input_requirements, input_files, revision }))))
-    await expect(loadMapInputs('map.json')).rejects.toThrow('响应无效')
+  it.each([null, 7, [], {}])('rejects malformed description: %j', async description => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ title: 'Map', description: '', nodes: {}, map_input_rule: { description }, revision }))))
+    await expect(loadMapRules('map.json')).rejects.toThrow('响应无效')
     await expect(loadMap('map.json')).rejects.toThrow('响应无效')
-    await expect(saveMapInputs('map.json', { input_requirements: '', input_files, revision })).rejects.toThrow('响应无效')
+    await expect(saveMapRules('map.json', { map_input_rule, revision })).rejects.toThrow('响应无效')
   })
 })
 
