@@ -216,7 +216,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
 
   return <section ref={schedulerRoot} className={`scheduler${!botView ? ' scheduler-workspace' : ''}`} aria-label="Map 目录" data-node-open={selectedId !== null || draft?.kind === 'node' ? 'true' : undefined} data-directory-open={directoryOpen || file === null ? 'true' : undefined}>
     {!botView && <header className="scheduler-workspace-heading"><div><h1><NierTitleText>Scheduler</NierTitleText></h1><p>Map 定义与节点编排</p></div><button type="button" className="scheduler-directory-toggle" aria-expanded={directoryOpen || file === null} aria-controls="scheduler-map-directory" onClick={() => setDirectoryOpen(value => !value)}>Map 目录</button></header>}
-    {busy && <p role="status">正在读取工作定义……</p>}
+    {(listing.kind === 'loading' || bots.kind === 'loading') && <p role="status">正在读取工作定义……</p>}
     <div className="scheduler-notices">
       {returnProblem && <p role="alert">{returnProblem}</p>}
       {bots.kind === 'loading' && <p>正在读取共享 Bot 目录……</p>}
@@ -315,7 +315,7 @@ export function SchedulerPanel({ active, view, onViewChange, navigationGuard, on
           onBot={(id) => { openBot(id); if (bots.kind === 'ready' && bots.bots.some(bot => bot.id === id)) void beginEdit(id, 'Bot') }}
           onTask={onTask} onZones={onZones} /></div>}
         {file === null && <div className="scheduler-placeholder"><h3>选择一个 Map</h3><p>从目录中选择文件，阅读节点定义与前置依赖。</p></div>}
-        {preview?.kind === 'loading' && <p className="scheduler-placeholder">正在读取 Map……</p>}
+        {preview?.kind === 'loading' && <p role="status" className="scheduler-placeholder">正在读取 Map……</p>}
         {preview?.kind === 'error' && <div className="scheduler-placeholder"><h3 className="scheduler-text">{file}</h3><p role="alert">{preview.message}</p><p>可选择其他 Map；修复文件后点击刷新全部。</p></div>}
         {map && <section aria-label="Map 预览" className="scheduler-map-workbench">
           <header className="scheduler-map-heading">

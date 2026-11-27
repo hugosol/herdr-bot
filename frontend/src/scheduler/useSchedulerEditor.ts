@@ -44,12 +44,13 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
     const removed = selected !== null && !Object.hasOwn(map.nodes, selected)
     update({ preview: { kind: 'ready', map }, ...(removed ? { selectedId: null, returnProblem: `来源 node ${selected} 已移除，原选择已失效。` } : {}) })
   }
-  async function refresh(includeListing = true, saved = false) {
+  async function refresh(includeListing = true, saved = false, reuseBots = false) {
     if (!enabled.current) return
     includeListing = includeListing || current.current.listing.kind === 'loading'
     const owner = beginRequest()
     const file = current.current.file
-    update({ returnProblem: null, ...(includeListing ? { listing: { kind: 'loading' } as Listing } : {}), ...(!saved ? { bots: { kind: 'loading' } as Bots } : {}), ...(file ? { preview: { kind: 'loading' } as Preview } : {}) })
+    const includeBots = !reuseBots || current.current.bots.kind !== 'ready'
+    update({ returnProblem: null, ...(includeListing ? { listing: { kind: 'loading' } as Listing } : {}), ...(includeBots && !saved ? { bots: { kind: 'loading' } as Bots } : {}), ...(file ? { preview: { kind: 'loading' } as Preview } : {}) })
     const jobs: Promise<void>[] = []
     if (includeListing) jobs.push(listMaps(owner.signal).then(catalog => {
       if (owner.valid()) update({ listing: { kind: 'ready', ...catalog } })
@@ -67,7 +68,7 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
         ...(saved ? { editError: `Bot 已保存，但 Map 刷新失败：${message(error)}。请显式刷新；不会再次保存。` } : {}),
       })
     }))
-    jobs.push(listBots(owner.signal).then(catalog => {
+    if (includeBots) jobs.push(listBots(owner.signal).then(catalog => {
       if (owner.valid()) update({ bots: { kind: 'ready', ...catalog } })
     }, error => {
       if (!owner.valid()) return
@@ -104,7 +105,7 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
   function selectFile(file: string) {
     if (file === current.current.file || !abandonDraft()) return false
     update({ file, selectedId: null, preview: { kind: 'loading' }, returnProblem: null })
-    void refresh(false)
+    void refresh(false, false, true)
     return true
   }
   function openBot(id: string | null) {
