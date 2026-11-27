@@ -142,6 +142,22 @@ pub struct Run {
     pub nodes: BTreeMap<String, NodeState>,
 }
 impl Run {
+    pub(crate) fn manager_context<'a>(&'a self, state: &'a AppState) -> crate::prompts::ManagerContext<'a> {
+        crate::prompts::ManagerContext {
+            id: &self.id,
+            map: state.map_directory.join(&self.map),
+            files: self.prompt_files(state),
+        }
+    }
+
+    fn prompt_files<'a>(&self, state: &'a AppState) -> crate::prompts::RunFiles<'a> {
+        crate::prompts::RunFiles {
+            instructions: &state.run_instructions,
+            records: Runs::paths(state, &self.id),
+            materials: startup::material_directory(&self.zone, &self.id),
+        }
+    }
+
     fn session_claimed_by_other_execution(&self, session_id: &str, execution_id: &str) -> bool {
         self.manager.as_ref().is_some_and(|chat| chat.session_id == session_id)
             || self.nodes.values().any(|node| node.executions().any(|other| {
@@ -766,8 +782,6 @@ pub(crate) fn root_run(
             .collect(),
     }
 }
-
-pub(crate) use startup::manager_prompt;
 
 pub(crate) async fn register_root(state: &AppState, run: &Run) {
     state.runs.registered_maps.lock().await.insert(run.id.clone(), run.map.clone());
