@@ -9,8 +9,9 @@ use crate::files::FileStore;
 pub enum Field {
     TaskPrompt,
     BotWhen,
-    BotPlanGuide,
-    BotNodeGuide,
+    BotDescription,
+    BotInputRule,
+    BotOutputRule,
     MapDescription,
     NodeInput,
 }
@@ -20,8 +21,9 @@ impl Field {
         match self {
             Self::TaskPrompt => "Task.prompt",
             Self::BotWhen => "Bot.when",
-            Self::BotPlanGuide => "Bot.plan_guide",
-            Self::BotNodeGuide => "Bot.node_guide",
+            Self::BotDescription => "Bot.description",
+            Self::BotInputRule => "Bot.input_rule",
+            Self::BotOutputRule => "Bot.output_rule",
             Self::MapDescription => "Map.description",
             Self::NodeInput => "node.input",
         }
@@ -108,7 +110,7 @@ impl Snapshot {
             rest = &rest[end + 1..];
         };
         if !referenced { return String::new(); }
-        format!("[Prompt dictionary instructions]\n本机提示词词典：{}\n词典是平铺字符串 TOML。直接读取 Task.prompt、Bot.when/plan_guide/node_guide、Map.description 或 node.input 原始定义时，对实际使用的字段按同一次最新词典快照解析 ${{key}}；$${{key}} 表示字面 ${{key}}。只扫描原文一次，替换值不递归，不执行表达式或命令。后端已合成的正文已完成替换，不再插值。用户 Chat 输入、Run userInput、报告、输出与任意文件内容都不插值。保存定义保留原始占位符，允许暂缺键；词典文件缺失视为空词典，无模板字段仍可使用；实际使用字段缺少键时停止并报告字段和键，不猜测路径或地址。Bot/Map 文件直接读取保持原文，不代表所有指南都应自动执行。\n[/Prompt dictionary instructions]", self.path.display())
+        format!("[Prompt dictionary instructions]\n本机提示词词典：{}\n词典是平铺字符串 TOML。直接读取 Task.prompt、Bot.when/description/input_rule/output_rule、Map.description 或 node.input 原始定义时，对实际使用的字段按同一次最新词典快照解析 ${{key}}；$${{key}} 表示字面 ${{key}}。只扫描原文一次，替换值不递归，不执行表达式或命令。后端已合成的正文已完成替换，不再插值。用户 Chat 输入、Run userInput、报告、输出与任意文件内容都不插值。保存定义保留原始占位符，允许暂缺键；词典文件缺失视为空词典，无模板字段仍可使用；实际使用字段缺少键时停止并报告字段和键，不猜测路径或地址。Bot/Map 文件直接读取保持原文，不代表所有指南都应自动执行。\n[/Prompt dictionary instructions]", self.path.display())
     }
 }
 
@@ -133,7 +135,7 @@ mod tests {
 
     #[test]
     fn every_known_field_reports_its_missing_key() {
-        for field in [Field::TaskPrompt, Field::BotWhen, Field::BotPlanGuide, Field::BotNodeGuide, Field::MapDescription, Field::NodeInput] {
+        for field in [Field::TaskPrompt, Field::BotWhen, Field::BotDescription, Field::BotInputRule, Field::BotOutputRule, Field::MapDescription, Field::NodeInput] {
             let message = snapshot().render(field, "${unknown}").unwrap_err().to_string();
             assert!(message.contains(field.name()));
             assert!(message.contains("unknown"));

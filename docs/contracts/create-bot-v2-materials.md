@@ -10,7 +10,7 @@
 
 ## 通用格式与目标定位
 
-保留原版 request／可选 materials 以及 saved／handoff 的接口名称与职责；不承诺旧创建 v1 Schema 兼容，不修改旧格式或消费者。以下是 V2 的业务材料协议，不给 Bot／Map 定义增加 schema_version。
+保留原版 request／可选 materials 以及 saved／handoff 的接口名称与职责；不与 V1 材料互相兼容；两者保存和读回使用同一 Bot 格式。以下是 V2 的业务材料协议，不给 Bot／Map 定义增加 schema_version。
 
 JSON 材料统一为无围栏 UTF-8 单对象；版本为 schema_version=2，拒绝重复键、未知字段、错类型、缺少必填字段或目标歧义，不把参考材料作为隐藏参数。自由说明使用字符串，明确没有条目时使用空数组。
 
@@ -23,7 +23,7 @@ JSON 材料统一为无围栏 UTF-8 单对象；版本为 schema_version=2，拒
 - target 为 target_ref；requirements 为非空字符串；三个约束字段为字符串数组。
 - bot 可选，包含可选 id／name／group；均遵循平台命名规则。未指定时由节点提出并确认；冲突不随机改名或覆盖。
 - authorization 为 write_materials、create_bot、optimize_task_prompt 三个 boolean。write_materials 必须 true 才能进入文件交付；其余 false 表示尚未授权，可在 W2 对具体候选取得。true 只表达本次委托范围，不能替代未生成正文的最终批准。非 Task 目标 optimize_task_prompt 必须 false。
-- confirmation 为 evidence 非空字符串和 scope=request。只记录当前委托来源与范围，不表示三指南全文批准。
+- confirmation 为 evidence 非空字符串和 scope=request。只记录当前委托来源与范围，不表示四字段摘要全文批准。
 - 不接受 `create_blank` 或 `scope=create_blank`。V2 不创建中间空白 Bot。
 
 **materials**：保持可选参考文件，不强制改成 JSON；调用者说明内容、格式、用途与读取授权。影响下游的必要参考原文由 W1 纳入 target_materials，不只给隐式地址。
@@ -38,7 +38,7 @@ JSON 材料统一为无围栏 UTF-8 单对象；版本为 schema_version=2，拒
 
 ## saved 与 handoff
 
-**saved** 顶层字段：schema_version、kind=saved、bot、revision、target。bot 为完整读回 Bot；revision 为服务真实 file／original；target 使用上述含 configuration 的目标表示，承载最终读回配置或重新核实的脚本原文。不得用候选、摘要或伪 revision 代替。
+**saved** 顶层字段：schema_version、kind=saved、bot、revision、target。bot 为按 [Bot 定义格式](../scheduler.md#定义职责与唯一格式)取得的完整读回对象，四字段均为字符串；revision 为服务真实 file／original；target 使用上述含 configuration 的目标表示，承载最终读回配置或重新核实的脚本原文。不得用候选、摘要或伪 revision 代替。
 
 **handoff** 顶层字段：schema_version、kind=handoff、stage=saved、bot_id、target、confirmation_evidence、sources、changes、checks、unverified。
 

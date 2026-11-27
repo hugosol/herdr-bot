@@ -43,7 +43,7 @@ test('bot list sorts by descending mtime, breaks ties by filename, and reorders 
   const newest = new Date('2020-01-02T00:00:00Z')
   for (const { file, ...identity } of definitions) {
     const filename = path.join(bots, file)
-    fs.writeFileSync(filename, JSON.stringify({ ...identity, when: '', plan_guide: '', node_guide: '' }))
+    fs.writeFileSync(filename, JSON.stringify({ ...identity, when: '', description: '', input_rule: '', output_rule: '' }))
     const modified = file === 'z.json' ? newest : tied
     fs.utimesSync(filename, modified, modified)
   }
@@ -73,7 +73,7 @@ test('P5 P35 selected preview diagnoses missing and damaged files then recovers 
   const bots = path.join(server.cwd, 'meta-data', 'bots')
   fs.mkdirSync(maps, { recursive: true })
   fs.mkdirSync(bots, { recursive: true })
-  const capability = { id: 'catalog-life', name: '人工核对能力', when: '需要只读核对时', plan_guide: '保留原始文本，不执行工作', node_guide: JSON.stringify({ inputs: { source: '原始说明' }, outputs: { note: '核对说明' } }) }
+  const capability = { id: 'catalog-life', name: '人工核对能力', when: '需要只读核对时', description: '保留原始文本，不执行工作', input_rule: JSON.stringify({ inputs: { source: '原始说明' }, outputs: { note: '核对说明' } }), output_rule: '' }
   const healthy = { ...capability, id: 'healthy', name: '其他健康能力' }
   const mapBytes = '{"title":"不改写的计划","description":"","nodes":{"A":{"title":"核对工作","bot_id":"catalog-life","input":"","zone":"unregistered-zone","blocked_by":[]}}}\n'
   const botBytes = `${JSON.stringify(capability, null, 2)}\n`
@@ -103,7 +103,7 @@ test('P5 P35 selected preview diagnoses missing and damaged files then recovers 
   await page.getByTestId('tab-bot').click()
   await page.getByRole('button', { name: '人工核对能力 · catalog-life', exact: true }).click()
   const preview = page.getByRole('region', { name: 'Bot 预览', exact: true })
-  await preview.getByRole('button', { name: 'plan_guide', exact: true }).click()
+  await preview.getByRole('button', { name: 'description', exact: true }).click()
   await expect(preview.getByText('保留原始文本，不执行工作', { exact: true })).toBeVisible()
   expect(await catalog()).toEqual({ bots: [healthy, capability] })
   const listing = page.getByRole('region', { name: '共享 Bot 列表', exact: true })
@@ -112,13 +112,13 @@ test('P5 P35 selected preview diagnoses missing and damaged files then recovers 
   await filter.fill('healthy')
   await expect(listing.getByRole('button', { name: '其他健康能力 · healthy', exact: true })).toBeVisible()
   await expect(listing.getByRole('button', { name: '人工核对能力 · catalog-life', exact: true })).toHaveCount(0)
-  await preview.getByRole('button', { name: 'plan_guide', exact: true }).click()
+  await preview.getByRole('button', { name: 'description', exact: true }).click()
   await expect(preview.getByText('保留原始文本，不执行工作', { exact: true })).toBeVisible()
   await filter.fill('no-matching-capability')
   await expect(listing.getByRole('listitem')).toHaveCount(0)
   await expect(listing.getByRole('status')).toHaveText('显示 0 / 2 个 Bot')
   await expect(listing.getByRole('button', { name: '清除筛选', exact: true })).toBeVisible()
-  await preview.getByRole('button', { name: 'plan_guide', exact: true }).click()
+  await preview.getByRole('button', { name: 'description', exact: true }).click()
   await expect(preview.getByText('保留原始文本，不执行工作', { exact: true })).toBeVisible()
   await filter.fill('')
   await expect(listing.getByRole('button', { name: '人工核对能力 · catalog-life', exact: true })).toHaveAttribute('aria-pressed', 'true')
@@ -147,7 +147,7 @@ test('P5 P35 selected preview diagnoses missing and damaged files then recovers 
   fs.writeFileSync(definition, botBytes)
   await page.getByRole('button', { name: 'refresh', exact: true }).click()
   await page.getByRole('button', { name: '人工核对能力 · catalog-life', exact: true }).click()
-  await preview.getByRole('button', { name: 'plan_guide', exact: true }).click()
+  await preview.getByRole('button', { name: 'description', exact: true }).click()
   await expect(preview.getByText('保留原始文本，不执行工作', { exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Bot 问题', exact: true })).toHaveCount(0)
   expect(await catalog()).toEqual({ bots: [healthy, capability] })

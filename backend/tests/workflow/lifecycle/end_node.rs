@@ -141,9 +141,9 @@ async fn end_node_definition_rejects_multiple_downstream_and_non_task_targets() 
         match variant {
             "multiple" => definition["nodes"]["work"]["end_node"] = json!(true),
             "downstream" => definition["nodes"]["work"]["blocked_by"] = json!(["end"]),
-            "script" => { fs::write(s.config.scheduler.bot_directory.join("invalid-end.json"), json!({"id":"invalid-end","name":"Script","when":"","plan_guide":"","node_guide":"","script":"rust-create"}).to_string()).unwrap(); definition["nodes"]["end"]["bot_id"] = json!("invalid-end"); },
-            "map" => { fs::write(s.config.scheduler.bot_directory.join("invalid-end.json"), json!({"id":"invalid-end","name":"Map","when":"","plan_guide":"","node_guide":"","map_file":"work.json"}).to_string()).unwrap(); definition["nodes"]["end"]["bot_id"] = json!("invalid-end"); definition["nodes"]["end"]["manager_task_id"] = json!(s.manager_task); },
-            _ => { fs::write(s.config.scheduler.bot_directory.join("invalid-end.json"), json!({"id":"invalid-end","name":"Manager task","when":"","plan_guide":"","node_guide":"","task_id":s.manager_task}).to_string()).unwrap(); definition["nodes"]["end"]["bot_id"] = json!("invalid-end"); },
+            "script" => { fs::write(s.config.scheduler.bot_directory.join("invalid-end.json"), json!({"id":"invalid-end","name":"Script","when":"","description":"","input_rule":"","output_rule":"","script":"rust-create"}).to_string()).unwrap(); definition["nodes"]["end"]["bot_id"] = json!("invalid-end"); },
+            "map" => { fs::write(s.config.scheduler.bot_directory.join("invalid-end.json"), json!({"id":"invalid-end","name":"Map","when":"","description":"","input_rule":"","output_rule":"","map_file":"work.json"}).to_string()).unwrap(); definition["nodes"]["end"]["bot_id"] = json!("invalid-end"); definition["nodes"]["end"]["manager_task_id"] = json!(s.manager_task); },
+            _ => { fs::write(s.config.scheduler.bot_directory.join("invalid-end.json"), json!({"id":"invalid-end","name":"Manager task","when":"","description":"","input_rule":"","output_rule":"","task_id":s.manager_task}).to_string()).unwrap(); definition["nodes"]["end"]["bot_id"] = json!("invalid-end"); },
         }
         fs::write(&path, definition.to_string()).unwrap();
         let before = s.herdr.calls();

@@ -14,8 +14,9 @@ pub(crate) struct Bot {
     group: Option<String>,
     name: String,
     pub(super) when: String,
-    pub(super) plan_guide: String,
-    pub(super) node_guide: String,
+    pub(super) description: String,
+    pub(super) input_rule: String,
+    pub(super) output_rule: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) task_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

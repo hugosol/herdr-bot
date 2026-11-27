@@ -6,7 +6,7 @@ async fn deleting_source_maps_preserves_both_sides_of_nested_history() {
     let s = Scenario::new().await;
     let maps = &s.config.scheduler.map_directory;
     let nested = s.config.scheduler.bot_directory.join("nested.json");
-    fs::write(&nested, json!({"id":"nested","name":"Nested","when":"","plan_guide":"","node_guide":"","map_file":"inner.json"}).to_string()).unwrap();
+    fs::write(&nested, json!({"id":"nested","name":"Nested","when":"","description":"","input_rule":"","output_rule":"","map_file":"inner.json"}).to_string()).unwrap();
     fs::write(maps.join("inner.json"), json!({"title":"Child","description":"","nodes":{"inside":{"title":"Child work","bot_id":"worker","input":"","zone":"manager","blocked_by":[]}}}).to_string()).unwrap();
     fs::write(maps.join("work.json"), json!({"title":"Parent","description":"","nodes":{"A":{"title":"Call child","bot_id":"nested","manager_task_id":s.manager_task,"input":"","zone":"node","blocked_by":[]}}}).to_string()).unwrap();
     let parent = s.start("retain-parent").await;

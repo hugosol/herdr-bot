@@ -20,13 +20,13 @@ Map 目录可按名称、文件名或组名搜索，并与分组筛选组合使�
 | --- | --- |
 | Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。可选 `map_input_rule` 与 `map_output_rule` 是整图公开输入输出约定（见下文）。`description` 只描述用途，不作为 Map 专属执行指令。不含运行状态、管理者配置或重试策略。 |
 | node | 必需 `title`、`bot_id`、`input` 字符串、`zone`（固定 ID 字符串或 `{"type":"dynamic"}`）及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`auto_approved` 为布尔值（缺省 `true`），`auto_close` 与 `end_node` 为布尔值（缺省 `false`）。`end_node: true` 标记唯一普通 Task 型结束节点（见下文）。批准模式与自动关闭只属于 node，不从 Bot 或 Task 继承。Map 型 Bot 的调用节点使用可选字符串 `manager_task_id` 指定 manager Task，执行前必需且必须为 manager 类型；普通 Task 型节点不得指定它。Bot 不接受此字段。 |
-| Bot | 必需 `id`、`name`、`when`、`plan_guide`、`node_guide` 字符串；可选 `task_id`（normal Task）、`map_file`（目录内确切 Map JSON 文件名）或 `script`（scripts 目录内的相对 .ts 路径），三者互斥，也可都未绑定。跨 Map 共享，只保存目标引用，不复制定义。 |
+| Bot | 必需 `id`、`name`、`when`、`description`、`input_rule`、`output_rule` 字符串；可选 `task_id`（normal Task）、`map_file`（目录内确切 Map JSON 文件名）或 `script`（scripts 目录内的相对 .ts 路径），三者互斥，也可都未绑定。跨 Map 共享，只保存目标引用，不复制定义。 |
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
 | Chat | 实际对话与原生会话身份，不写进静态定义。执行身份、报告、状态和历史不属于 Map 或 Bot。 |
 
 Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归属形成分组，不需要独立定义或 ID。省略或 `null` 表示未分组；非空名称不得带首尾空白，区分大小写。分组仅用于组织列表与选择控件，不影响引用、运行或校验资格，node 不拥有分组字段。界面归属编辑和自举归类范围见[定义分组](usage.md#taskbot-与-map-分组)。
 
-只接受这一种命名字段格式，没有 `schema_version` 或运行时旧格式兼容。旧 Map 的 `input_requirements`／`input_files`、旧 node 的 `parameters`、旧 Bot 的 `use_when`、`description`、`inputs`、`outputs`、`implementation` 都是未知字段，连同版本 1 也明确拒绝。上线前停止服务、备份旧文件，再由规划者改写为新格式：把业务参数整理成 `input` 原文，明确选择 `zone` ID；将旧能力说明整理成三份文档。不能从旧业务参数猜测 Task／zone 绑定。未转换的旧 Map 保留在配置定义目录之外；新版不会以旧字段或离线副本作为读取回退。不改写旧 Run 或 Chat 记录。
+只接受这一种命名字段格式，没有 `schema_version` 或运行时旧格式兼容。旧 Map 的 `input_requirements`／`input_files`、旧 node 的 `parameters`、旧 Bot 的 `use_when`、`plan_guide`、`node_guide`、`inputs`、`outputs`、`implementation` 都是未知字段，连同版本 1 也明确拒绝。上线前停止服务、备份旧文件，再由规划者改写为新格式：把业务参数整理成 `input` 原文，明确选择 `zone` ID；逐项把旧能力知识归还实际实现、公共协议或四字段摘要。不能从旧业务参数猜测 Task／zone 绑定。未转换的旧 Map／Bot 保留在配置定义目录之外；新版不会以旧字段或离线副本作为读取回退。不改写旧 Run 或 Chat 记录。
 
 完整 Map 示例：
 
@@ -64,13 +64,16 @@ Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归�
   "id": "review-work",
   "name": "核对工作材料",
   "when": "需要对照要求核对材料时。",
-  "plan_guide": "安排核对范围、材料位置和交接条件，不修改原始材料。",
-  "node_guide": "阅读本项 input，核对差异并说明依据与未确认事项。",
+  "description": "## 能力职责\n核对差异，不修改原始材料。",
+  "input_rule": "核对范围及可读的原始材料。",
+  "output_rule": "差异说明、依据与未确认事项。",
   "task_id": "review-node-task"
 }
 ```
 
-`when` 用于决定是否选用能力，`plan_guide` 指引规划者安排工作，`node_guide` 指引规划者填写 node.input。三份都是独立文档，可按任意顺序读取，可各自为空字符串；不要求先读其他文档，也不会自动注入节点执行提示词。节点执行使用关联 Task 的固定 `prompt` 与本次 `node.input`，不以 `node_guide` 替代。Markdown 只是文档内容，不是必填规则、类型检查或业务质量门禁。文档不会自动补全 node 输入、校验业务参数或读取文中路径。定义原文保留 `${key}` 占位符。Task 固定 prompt、Bot 三份指南、Map description 与 node.input 适用本机提示词词典；系统发送配置字段前单次替换，agent 直接读文件时按统一追加的词典路径说明自行解析，不做 JSON 解释。用户输入与 agent 产物不替换。
+Bot 的 when、description、input_rule、output_rule 供规划者和调用者发现、选择与组合能力，不作为执行指令注入目标 Chat，也不要求执行者通过读取 Bot 补全工作规则。执行所需的稳定知识由 Task、script 或 Map 实现及其引用资料完整承接；本次差异由调用输入提供。Bot 的目标引用仍用于解析实际实现。
+
+四个字段均必填字符串，可以各自为空。`when` 写适用性，`description` 写能力职责与边界，Bot 的 `input_rule`／`output_rule` 写规划用的输入／成果摘要，与 Map/node 的结构化规则不同。编写格式见[四字段编写与表达优化](business-materials.md#四字段编写与表达优化)，保存不解析标题。目标可以全省略或为 null（可保存但不可运行的草稿）；非 null 目标互斥。旧字段不再接受，备份须在在线定义读取范围外，不出现在在线列表且不会回退。
 
 ### node.input 的业务职责
 
@@ -86,7 +89,7 @@ Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归�
 
 交接说明与可直接使用的纯正文分别声明输出，下游逐项引用；不只登记交接说明，再通过同目录、固定文件名或报告正文发现其他文件。内部交接使用初始化提供的中间资料位置，不在每个 input 中规定材料根／Run ID／工作编号／execution ID 的路径算法。用户明确指定的正式交付位置、格式或业务命名仍保留。输出 ID 不指定物理文件名，也不替节点分配地址或生成文件。
 
-Bot 指南修订可直接引用同一 `baseline` 及三组 `*_text`、`*_handoff`。这不是 V1 创建保存的输入列表，后者不消费三份 handoff 或批准凭据。各分支的目标身份、基线、必要确认、安全保存与读回见[共同业务材料契约](business-materials.md)。
+Bot 摘要修订可直接引用同一 `baseline` 及四组 `*_text`、`*_handoff`。V1 创建保存只接收基线与四份正文，不消费各字段 handoff 或批准凭据。各分支的目标身份、基线、必要确认、安全保存与读回见[共同业务材料契约](business-materials.md)。
 
 迁移旧定义时，先声明真实输出并补齐消费者的输入规则，再移除人工寻址、全图工作—文件映射、持续追踪上游当前 execution 和重复报告策略。通用保存与交接要求遵循[统一文件交接约定](workflow-runtime.md#统一文件交接约定)。规则仍为空或通用职责尚无承接方时，不得仅删文字造成信息丢失；本规范不表示存量 Map 或 Task 提示词已经迁移。
 
@@ -181,7 +184,7 @@ Map 可为一个 node 设置 `end_node: true`（省略为 `false`）。该节点
 
 “校验启动配置”调用真实后端整图预检，**校验通过不表示已经启动**，此检查不创建 Run、Tab 或 Chat。“启动 Run”再次执行同一预检，通过后初始化三份运行记录，并在配置选择的 TUI Workspace 或 App Space 启动真实管理者。后端先核实本次终端的原生身份和输入就绪，再保存 Run、必要的委派关联及 Chat 历史，最后提交初始指示。取得 Run ID 后进入可刷新、可重新进入的 workflow 基础只读详情；读取详情不会再次启动。部署前必须交付 manager-chat 外部角色扩展，配置入口存在不代表原生加载已验收。运行路径、工具协议、错误部分效果及配置见[Map Run 运行说明](workflow-runtime.md)。Workspace 在表单里只展示推导名称，实际目标由启动链路向 Herdr 核实。
 
-预检每次重读当前 Map、共享 Bot、Task 与 zone 登记及真实目录，检查全部 node（包含尚有前置依赖的 node），而不是只检查当前可派发项。空 Map、非法图、缺失／无效 Bot、未绑定或不存在的 Task、错误用途／非法 agent、缺失登记或已失效的 zone 都拒绝。管理者必须使用 manager Task，node 经 Bot 的 `task_id` 必须引用普通（normal）Task，同一 Task 也可从 zone 独立发起；两种角色均支持 omp/pi；不制造默认绑定，也不把 Bot 三份文档、Task.prompt 或 node.input 的业务质量当成启动门禁。
+预检每次重读当前 Map、共享 Bot、Task 与 zone 登记及真实目录，检查全部 node（包含尚有前置依赖的 node），而不是只检查当前可派发项。空 Map、非法图、缺失／无效 Bot、未绑定或不存在的 Task、错误用途／非法 agent、缺失登记或已失效的 zone 都拒绝。管理者必须使用 manager Task，node 经 Bot 的 `task_id` 必须引用普通（normal）Task，同一 Task 也可从 zone 独立发起；两种角色均支持 omp/pi；不制造默认绑定，也不把 Bot 能力摘要、Task.prompt 或 node.input 的业务质量当成启动门禁。
 
 脚本型 Bot 检查目标路径、实际脚本与节点设置，不要求 Task 或 `manager_task_id`。缺失脚本、混合目标或不适用设置明确定位 Bot 或 node，不创建 Run 或 Chat。预检不运行脚本，也不判断业务请求或脚本依赖能否完成操作；普通节点的实际材料在派发时另行检查。
 
@@ -213,7 +216,7 @@ Map 以文件名标识，列表优先显示定义中的 `title`；空白或不�
 
 选中 Map 后，常驻图显示真实的 `blocked_by` 依赖，包括无连线的节点。B 依赖 A 就画 A → B；边不代表材料流、运行状态、Chat 在线状态或实际调度顺序。静态图可平移并用键盘选择节点，不可拖动改定义或连线。node 明细分开显示本次 `input`、关联目标与固定 Task.prompt、成果批准模式、zone 和命名交接规则。脚本型目标显示脚本路径，Task.prompt 不适用。缺失或不可读的引用给出原因，不沿用旧提示词或捏造配置。空 Map 可查看但不能启动。
 
-从外侧 **bot** 选择共享定义，不从 node 明细打开第二份编辑器。可按名称或 ID 筛选。切换 `when`、`plan_guide`、`node_guide` 阅读指南，`json` 为只读原始定义。Task 栏读取当前名称，未绑定、引用不存在或读取失败时给出相应提示。回到 **scheduler** 时重新读取来源，保留仍存在的 node 选择。窄屏可用 **返回 Map** 回到节点清单，未保存修改仍须确认。
+从外侧 **bot** 选择共享定义，不从 node 明细打开第二份编辑器。可按名称或 ID 筛选。切换 `when`、`description`、`input_rule`、`output_rule` 阅读能力摘要，`json` 为只读原始定义。Task 栏读取当前名称，未绑定、引用不存在或读取失败时给出相应提示。回到 **scheduler** 时重新读取来源，保留仍存在的 node 选择。窄屏可用 **返回 Map** 回到节点清单，未保存修改仍须确认。
 
 Bot 列表（含空态）可新增，预览可修改；当前 Map 可新增 node，选中 node 可修改。ID 独立输入，新增初始为空，修改时只读，JSON 不含顶层 `id`。node 编辑器的 `node_id` 表示 `nodes` 的 key，不在 node 内容中新增字段；Bot ID 由服务端补回。ID 不是文件路径。新草稿使用打包的 [天气 Bot](example/bots/weather-capability.json)／[上海 A](example/maps/trip-readiness.json)，部署不依赖开发仓库；打开、修改草稿或放弃不写定义，也不自动安装依赖。
 

@@ -2,8 +2,9 @@
   "group": "meta-bot",
   "id": "create-blank-bot",
   "name": "空白 Bot 创建者",
-  "when": "需要为既有 normal Task 或 Map 新建唯一绑定它、三指南均为空字符串的 Bot，并取得创建后的共同基线时使用。自行核实目标，只创建空白 Bot，不创建或修改执行目标，不编写指南或运行能力。",
-  "plan_guide": "目标已存在且创建委托明确即可安排，名称／ID 可缺省按目标生成；未来三指南全文批准不阻塞空白创建。目标查询由本能力完成，不要求用户抄配置。后续编写、按需表达优化和最终指南保存另行安排，所有必要消费者使用同一份创建后 baseline。",
-  "node_guide": "通过命名 request 提供符合 docs/business-materials.md「创建分支 v1」的 JSON；可选 materials 仅供参考。创建和材料写入须有明确委托，但不把授权或确认凭据加入 request。交付共同 baseline 与 handoff，不创建或执行目标。",
+  "when": "需要为既有 normal Task 或 Map 准备共同 Bot 创作基线时选用。",
+  "description": "## 能力职责\n核实目标，创建唯一绑定的空白 Bot。\n\n## 能力边界\n不编写能力摘要，不创建、修改或运行目标。\n\n## 特殊前提\n本次委托明确；不要求提前批准未来正文。",
+  "input_rule": "创建 V1 的命名 request 与可选参考材料；目标必须已存在，名称和 ID 可按目标缺省。",
+  "output_rule": "四个能力字段为空的已保存 Bot、真实 revision 与完整目标形成的 baseline，以及 created handoff。",
   "script": "create-blank-bot.ts"
 }

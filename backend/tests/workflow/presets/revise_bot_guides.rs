@@ -1,22 +1,22 @@
 //! Ticket 18 enabling seam: shipped definitions -> public save/read/preflight.
-//! Independent expectation: five nodes, read-only baseline producer, three
-//! independent manual writers and one directly bound seven-material save.
+//! Independent expectation: six nodes, read-only baseline producer, four
+//! independent manual writers and one directly bound nine-material save.
 //! Violation: retaining the Task.prompt optimizer prerequisite or dropping the
 //! baseline edge must fail even if the service accepts the remaining graph.
 //! P40-P45 real-model scenarios and dedicated Task pairing belong to ticket 22.
 use super::*;
 
 #[tokio::test]
-async fn revise_bot_guides_publishes_independent_five_node_material_interface() {
+async fn revise_bot_guides_publishes_four_independent_field_bindings() {
     let s = Scenario::new().await;
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let file = "enhance-existing-bot--bc-301b25d9f8d6.json";
     let definition: Value = serde_json::from_str(&fs::read_to_string(root.join("meta-data/workflow-maps").join(file)).unwrap()).unwrap();
     // Material guidance is editable; this contract fixes identities and requiredness.
-    let inputs: Vec<Value> = definition["input_files"].as_array().unwrap().iter()
+    let inputs: Vec<Value> = definition["map_input_rule"]["files"].as_array().unwrap().iter()
         .map(|input| json!({"id":input["id"],"required":input["required"]})).collect();
     assert_eq!(inputs, vec![json!({"id":"request","required":true}), json!({"id":"materials","required":false})]);
-    assert_eq!(definition["nodes"].as_object().unwrap().len(), 5);
+    assert_eq!(definition["nodes"].as_object().unwrap().len(), 6);
     assert_eq!(definition["nodes"]["w1"]["bot_id"], "prepare-bot-revision");
     assert_eq!(definition["nodes"]["w1"]["input_rule"], json!([
         {"id":"request","type":"run","input_id":"request"},
@@ -25,7 +25,7 @@ async fn revise_bot_guides_publishes_independent_five_node_material_interface() 
     assert_eq!(definition["nodes"]["w1"]["output_rule"], json!([{"id":"baseline"},{"id":"handoff"}]));
     let baseline = json!({"id":"baseline","type":"node","node_id":"w1","output_id":"baseline"});
     let mut final_inputs = vec![baseline.clone()];
-    for (id, field, bot) in [("w2","when","write-bot-when"),("w3","plan_guide","write-bot-plan-guide"),("w4","node_guide","write-bot-node-guide")] {
+    for (id, field, bot) in [("w2","when","write-bot-when"),("w3","description","write-bot-plan-guide"),("w4","input_rule","write-bot-node-guide"),("w6","output_rule","write-bot-output-rule")] {
         let node = &definition["nodes"][id];
         assert_eq!(node["bot_id"], bot);
         assert_eq!(node["input_rule"], json!([baseline.clone()]));
@@ -37,7 +37,7 @@ async fn revise_bot_guides_publishes_independent_five_node_material_interface() 
         }
     }
     assert_eq!(definition["nodes"]["w5"]["bot_id"], "replace-text");
-    assert_eq!(definition["nodes"]["w5"]["blocked_by"], json!(["w2","w3","w4"]));
+    assert_eq!(definition["nodes"]["w5"]["blocked_by"], json!(["w2","w3","w4","w6"]));
     assert_eq!(definition["nodes"]["w5"]["input_rule"], json!(final_inputs));
     assert_eq!(definition["nodes"]["w5"]["output_rule"], json!([{"id":"saved"},{"id":"handoff"}]));
     let tasks: Value = serde_json::from_str(&fs::read_to_string(root.join("meta-data/tasks.json")).unwrap()).unwrap();
@@ -61,16 +61,16 @@ async fn revise_bot_guides_publishes_independent_five_node_material_interface() 
         assert_eq!(serde_json::from_str::<Value>(&read.body).unwrap()["content"], bot);
     }
     // Host resources remain test-owned; this is not deployed Suite evidence.
-    for id in ["write-bot-when","write-bot-plan-guide","write-bot-node-guide","replace-text"] {
+    for id in ["write-bot-when","write-bot-plan-guide","write-bot-node-guide","write-bot-output-rule","replace-text"] {
         let saved = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/save", &json!({"id":id,"revision":null,"content":worker["content"].to_string()}).to_string()).await;
         assert_eq!(saved.status, 200, "{}", saved.body);
     }
     let endpoint = format!("/api/scheduler/maps/{file}");
     let interface = get_over_tcp(s.server.addr(), &format!("{endpoint}/inputs")).await;
     let interface: Value = serde_json::from_str(&interface.body).unwrap();
-    let saved = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"input_files":definition["input_files"],"input_requirements":definition["input_requirements"].as_str().unwrap_or(""),"revision":interface["revision"]}).to_string()).await;
+    let saved = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"map_input_rule":definition["map_input_rule"],"revision":interface["revision"]}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
-    for id in ["w1","w2","w3","w4","w5"] {
+    for id in ["w1","w2","w3","w4","w6","w5"] {
         let mut node = definition["nodes"][id].clone();
         node["zone"] = json!("node");
         let draft = get_over_tcp(s.server.addr(), &format!("{endpoint}/nodes/new")).await;
@@ -86,7 +86,7 @@ async fn revise_bot_guides_publishes_independent_five_node_material_interface() 
     fs::write(&request, "Revise existing Bot worker only. Keep its Task unchanged. No reference material required.").unwrap();
     fs::write(&material, "Preserve the original authorization boundary.").unwrap();
     for (inputs, status) in [(json!([]),200), (json!([{"id":"request","path":request}]),200), (json!([{"id":"request","path":request},{"id":"materials","path":material}]),200), (json!([{"id":"request","path":request},{"id":"materials","path":s.data.path().join("missing.md")}]),400)] {
-        let response = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/preflight"), &json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":"Revise guides, not the target","fileInputs":inputs}).to_string()).await;
+        let response = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/preflight"), &json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":"Revise capability summaries, not the target","fileInputs":inputs}).to_string()).await;
         assert_eq!(response.status, status, "{}", response.body);
     }
     assert!(s.herdr.calls().is_empty(), "publication and preflight must not run business work");

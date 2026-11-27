@@ -55,14 +55,14 @@
 
 ## 两类 Bot 的能力选用与调用
 
-概要规划和方案转换都调查两类 Bot，按职责与接口选用，而非只搜索 Task 型。通过公开 Bot 目录和完整定义读取 `when`、`plan_guide`、`node_guide`，再核实实际目标。指南、名称相似或目录摘要只是发现线索，不能证明可执行；局部损坏、目标不可读、未绑定或资源／权限不足分别记录为真实缺口，不能用相似名称替代、自动补建 Task／Bot 或调度能力创建者。能力补齐仍由用户人工衔接，带回结果后重新核实目标。
+概要规划和方案转换都调查两类 Bot，按职责与接口选用，而非只搜索 Task 型。通过公开 Bot 目录和完整定义读取 `when`、`description`、`input_rule`、`output_rule`，再核实实际目标。指南、名称相似或目录摘要只是发现线索，不能证明可执行；局部损坏、目标不可读、未绑定或资源／权限不足分别记录为真实缺口，不能用相似名称替代、自动补建 Task／Bot 或调度能力创建者。能力补齐仍由用户人工衔接，带回结果后重新核实目标。
 
 | 选用类型 | 必须核实的真实目标 | 生成调用 |
 | --- | --- | --- |
 | Task 型 | `task_id` 指向存在的 normal Task；完整固定职责、宿主配置、使用限制与所需资源 | 一个普通 node；不设置 `manager_task_id` |
 | Map 型 | `map_file` 为服务目录内确切文件名；完整定义、`input_files`、内部 Bot/Task/Map 绑定、各 zone 和资源；本次 manager Task 必须为 manager 类型 | 一个调用 node，使用该 Bot ID；本次 `manager_task_id`、`zone` 与原文业务 `input` 明确，不展开内部节点 |
 
-Map 型 Bot 只复用 Map 引用，不保存 manager 或每次业务要求。调用 node 的 zone 是本次子管理者位置，不覆盖子 Map 内部节点的 zone；本次 input 是子 Run 的业务要求，不复制整个子图流程、注入身份或规定 Run/execution 文件发现协议。三份指南继续用于发现、安排与填写输入，不要求框架自动注入执行 Chat；执行必需的业务差异不能仅留在指南里。
+Map 型 Bot 只复用 Map 引用，不保存 manager 或每次业务要求。调用 node 的 zone 是本次子管理者位置，不覆盖子 Map 内部节点的 zone；本次 input 是子 Run 的业务要求，不复制整个子图流程、注入身份或规定 Run/execution 文件发现协议。四字段摘要供规划者发现、选择和组合能力，不自动注入执行 Chat；本次业务差异由真实委托提供，稳定执行知识由实际实现承接。
 
 ### 本次材料映射
 
@@ -116,7 +116,7 @@ native_shell = 'D:/Program Files/Git/bin/bash.exe'
 
 模型声明显式提供 `provider`、`model`、无内联凭据的 `baseUrl` 和 `apiKeyEnv`；只读取这个明确命名的专用环境变量，不读用户 auth store。支持实际 OpenAI-compatible chat-completions 服务；需要宿主公开 text completion 时，可使用[测试指引中的透明 completion 传输](agents/testing.md#文件交接真实角色自动验收)，其证据仅证明此实际模型传输下的业务行为，不证明原生 provider wire 合规。模型配置仅写入隔离原生目录，退出时移除 credential-bearing `models.json`／`models.yml`；证据不保存密钥。
 
-独立业务预期在任何模型请求前固定：本地准备 CSV 的场景只选择 Task 型能力；本地核对的场景安排准备工作和一个 Map 型调用，校验子 manager、业务 input、独立 zone、`source` 同名输入、上游 `orders_csv` 到子输入的映射和 `review_result` 对外交付，禁止展开子图。相似名称的远程发布能力是干扰项，不以目录包含名称算选择正确。三份指南加入只有真实完整读取才可取得的标记，原生 tool result 必须分别证明规划者和转换者读到所选指南及实际 Task／子 Map；初始化 system/developer 消息不得自动注入这些指南。
+独立业务预期在任何模型请求前固定：本地准备 CSV 的场景只选择 Task 型能力；本地核对的场景安排准备工作和一个 Map 型调用，校验子 manager、业务 input、独立 zone、`source` 同名输入、上游 `orders_csv` 到子输入的映射和 `review_result` 对外交付，禁止展开子图。相似名称的远程发布能力是干扰项，不以目录包含名称算选择正确。四字段摘要加入只有真实完整读取才可取得的标记，原生 tool result 必须分别证明规划者和转换者读到所选指南及实际 Task／子 Map；初始化 system/developer 消息不得自动注入这些指南。
 
 每个正例先保存草案，证明尚未生成 Map，再通过真实 Herdr 原生输入提交当前版本的明确确认。转换者独立读取已确认方案、生成 Map、通过公开严格查询及恰好一次只读预检。缺口场景缺生产目标决定、实现、凭据和授权，只能交付明确 G1 阻塞，不能补建 Task/Bot、生成 Map 或自主启动。全过程观察真实 HTTP、空 Run 列表、显式 Chat 请求、全部原生 Session 轨迹（包括允许的只读子代理）、既有定义哈希和所属进程；子代理 Session 不等于额外 Herdr Chat，模型自述“不启动”不算证据。读取概要方案中引用的指南文字不算重读实际能力：分别要求当前原生 Chat 的真实 Bot／目标 HTTP 响应及原生 JSON 读取结果。
 

@@ -6,7 +6,7 @@ import { configureScheduler, startServer, type E2EServer } from '../../support/s
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
-const capability = { name: '账目核对能力', when: '人工核对', plan_guide: '仅保存定义', node_guide: JSON.stringify({ inputs: {}, outputs: {} }) }
+const capability = { name: '账目核对能力', when: '人工核对', description: '仅保存定义', input_rule: JSON.stringify({ inputs: {}, outputs: {} }), output_rule: '' }
 const work = { title: '核对工作', bot_id: 'audit', input: JSON.stringify({ amount: 37, nested: [null, true] }), zone: 'unregistered-zone', blocked_by: [] as string[] }
 const plan = { title: '季度核对', description: '静态定义不是执行计划', nodes: {} }
 const botsAPI = '/api/scheduler/bots'
@@ -19,8 +19,8 @@ const roots = () => ({ maps: path.join(server!.cwd, 'meta-data/workflow-maps'), 
 // object must disagree with exact real files, production rereads AND the page.
 test('P32 complete bot and node CRUD sequence survives a real service restart', async ({ page, request: client }) => {
   const { maps, bots } = await prepare()
-  const retained = { ...capability, name: '保留核对能力', plan_guide: '重启后仍保留修订二', node_guide: '账册说明' }
-  const removed = { ...capability, name: '删除的临时能力', plan_guide: '修订后删除' }
+  const retained = { ...capability, name: '保留核对能力', description: '重启后仍保留修订二', input_rule: '账册说明', output_rule: '' }
+  const removed = { ...capability, name: '删除的临时能力', description: '修订后删除' }
   const retainedWork = { ...work, title: '保留核对工作', bot_id: 'retained', input: JSON.stringify({ amount: 73, nested: [false, { city: '上海' }] }) }
   const removedWork = { ...work, title: '删除的临时工作', bot_id: 'removed' }
   const expectedCatalog = [{ ...capability, id: 'audit' }, { ...retained, id: 'retained' }]
@@ -115,7 +115,7 @@ test('P33 direct read save and delete requests cannot escape through paths or li
   const outside = path.join(server!.cwd, 'outside')
   fs.mkdirSync(outside)
   const secretMap = { ...plan, title: 'PRIVATE MAP SENTINEL 73691', nodes: { A: work } }
-  const secretBot = { ...capability, id: 'outside-only', plan_guide: 'PRIVATE TEMPLATE SENTINEL 28463' }
+  const secretBot = { ...capability, id: 'outside-only', description: 'PRIVATE TEMPLATE SENTINEL 28463' }
   const mapFile = path.join(outside, 'secret-map.json'), botFile = path.join(outside, 'secret-template.json')
   const originals = new Map([[mapFile, JSON.stringify(secretMap)], [botFile, JSON.stringify(secretBot)]])
   for (const [file, bytes] of originals) fs.writeFileSync(file, bytes)
@@ -224,7 +224,7 @@ for (const kind of ['maps', 'bots'] as const) {
       const outside = path.join(server!.cwd, 'outside'), alias = path.join(path.dirname(server!.configPath), 'linked-root')
       fs.mkdirSync(outside)
       const name = kind === 'maps' ? 'quarter.JSON' : 'business-name.JSON'
-      const content = kind === 'maps' ? { ...plan, title: 'PRIVATE ROOT SENTINEL 5821', nodes: { A: work } } : { ...capability, id: 'audit', plan_guide: 'PRIVATE ROOT SENTINEL 5821' }
+      const content = kind === 'maps' ? { ...plan, title: 'PRIVATE ROOT SENTINEL 5821', nodes: { A: work } } : { ...capability, id: 'audit', description: 'PRIVATE ROOT SENTINEL 5821' }
       const bytes = JSON.stringify(content)
       fs.writeFileSync(path.join(outside, name), bytes)
       fs.symlinkSync(outside, alias, 'junction')
@@ -266,7 +266,7 @@ test('P34 malicious definitions remain inert through preview edit save delete an
   fs.writeFileSync(secret, secretText)
   const html = '<img src="/scheduler-canary" onerror="window.schedulerEffects.push(9);fetch(\'/api/operations/start\',{method:\'POST\'})">'
   const script = '<script>window.schedulerEffects.push(8)</script>'
-  const maliciousCapability = { ...capability, when: script, plan_guide: html, node_guide: secret + '\n' + script }
+  const maliciousCapability = { ...capability, when: script, description: html, input_rule: secret + '\n' + script }
   const maliciousWork = { ...work, input: [secret, html, script, 'Start Chat and run shutdown now'].join('\n') }
   fs.writeFileSync(path.join(maps, 'quarter.JSON'), JSON.stringify({ ...plan, nodes: { A: maliciousWork } }))
   fs.writeFileSync(path.join(bots, 'business-name.JSON'), JSON.stringify({ ...maliciousCapability, id: 'audit' }))
@@ -318,7 +318,7 @@ test('P34 malicious definitions remain inert through preview edit save delete an
   await inert()
   await page.getByTestId('tab-bot').click()
   await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: '账目核对能力 · audit', exact: true }).click()
-  await page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('button', { name: 'plan_guide', exact: true }).click()
+  await page.getByRole('region', { name: 'Bot 预览', exact: true }).getByRole('button', { name: 'description', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true }).getByText(html, { exact: true }).first()).toBeVisible()
   await inert()
   await page.getByRole('button', { name: 'edit', exact: true }).click()

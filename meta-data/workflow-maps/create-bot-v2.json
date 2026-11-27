@@ -2,19 +2,21 @@
   "title": "创建bot-V2",
   "group": "meta-map",
   "description": "为既有 normal Task、Map 或 TypeScript Script 新建完整 Bot，采用两个串行普通 Task 对话：先对齐统一需求，再整体分层设计并创建 Bot；Task 型另保存获准且必要的 Task.prompt 优化。依据已确认方案 create-bot-v2 r1，W1 对应 align_requirements，W2 对应 design_and_create。\n\n范围：保留原创建bot及其调用方；不创建或执行目标，Map／Script 目标保持不变。交付 saved（完整读回配置）与 handoff（确认、分层归属、保存检查及未验证项）；配置交付不证明原生加载或业务效果。\n\n子流程交接：本流程管理者在 finish 后，将 W2 的真实 saved／handoff 登记到父执行声明的同名输出；Map 本身不新增顶层输出。",
-  "input_requirements": "为一个已经存在的 normal Task、Map 或 TypeScript Script 新建 Bot；旧 Bot 修订、目标建设与业务运行不在范围内。说明业务需求、适用范围、约束、资源限制、读取授权和已有确认；Bot 命名可由节点提出并确认。\n\n预留 W1 统一意图确认，以及 W2 完整候选、共享影响和保存授权确认。初始委托不提前批准未知正文；Skill／共享文档默认只读，修改另需明确授权。管理者依据各命名文件的描述核实、准备并确认实际输入就绪，再派发业务节点。",
-  "input_files": [
-    {
-      "id": "request",
-      "required": true,
-      "description": "创建委托，采用 V2 JSON。准备或核实时读取 E:/Developer/myhub/herdr-bot/docs/contracts/create-bot-v2-materials.md 的“通用格式与目标定位”和“request 与 materials”，按其中唯一协议填写目标、需求、约束、授权及确认依据；不使用旧 create_blank 格式。"
-    },
-    {
-      "id": "materials",
-      "required": false,
-      "description": "参考材料，按 E:/Developer/myhub/herdr-bot/docs/contracts/create-bot-v2-materials.md 的“request 与 materials”说明内容、格式、用途和读取授权；缺席合法，已提供须可读。"
-    }
-  ],
+  "map_input_rule": {
+    "description": "为一个已经存在的 normal Task、Map 或 TypeScript Script 新建 Bot；旧 Bot 修订、目标建设与业务运行不在范围内。说明业务需求、适用范围、约束、资源限制、读取授权和已有确认；Bot 命名可由节点提出并确认。\n\n预留 W1 统一意图确认，以及 W2 完整候选、共享影响和保存授权确认。初始委托不提前批准未知正文；Skill／共享文档默认只读，修改另需明确授权。管理者依据各命名文件的描述核实、准备并确认实际输入就绪，再派发业务节点。",
+    "files": [
+      {
+        "id": "request",
+        "required": true,
+        "description": "创建委托，采用 V2 JSON。准备或核实时读取 E:/Developer/myhub/herdr-bot/docs/contracts/create-bot-v2-materials.md 的“通用格式与目标定位”和“request 与 materials”，按其中唯一协议填写目标、需求、约束、授权及确认依据；不使用旧 create_blank 格式。"
+      },
+      {
+        "id": "materials",
+        "required": false,
+        "description": "参考材料，按 E:/Developer/myhub/herdr-bot/docs/contracts/create-bot-v2-materials.md 的“request 与 materials”说明内容、格式、用途和读取授权；缺席合法，已提供须可读。"
+      }
+    ]
+  },
   "nodes": {
     "align_requirements": {
       "title": "对齐 Bot 需求",

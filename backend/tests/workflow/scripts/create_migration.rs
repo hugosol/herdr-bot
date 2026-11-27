@@ -77,12 +77,12 @@ async fn create_migration_rejects_missing_and_malformed_explicit_materials() {
 async fn published_approval_responsibilities_round_trip_every_shipped_node() {
     let s = Scenario::new().await;
     let expected = [
-        ("create-bot-wrapper.json", vec![("create_blank",true),("write_when",false),("write_plan_guide",false),("write_node_guide",false),("optimize_when",true),("optimize_plan_guide",true),("optimize_node_guide",true),("save_bot",true)]),
+        ("create-bot-wrapper.json", vec![("create_blank",true),("write_when",false),("write_plan_guide",false),("write_node_guide",false),("write_output_rule",false),("optimize_when",true),("optimize_plan_guide",true),("optimize_node_guide",true),("optimize_output_rule",true),("save_bot",true)]),
         ("create-bot-task-workflow--bc-61ce48b80a4c.json", vec![("w1",false),("w2",true),("wrap_bot",true),("optimize_bot",false)]),
         ("create-bot-v2.json", vec![("align_requirements",false),("design_and_create",false)]),
         ("create-task-v2.json", vec![("create_task",false),("create_bot_v2",true)]),
         ("create-task-script-type.json", vec![("create_script",false),("create_bot_v2",true)]),
-        ("enhance-existing-bot--bc-301b25d9f8d6.json", vec![("w1",true),("w2",false),("w3",false),("w4",false),("w5",true)]),
+        ("enhance-existing-bot--bc-301b25d9f8d6.json", vec![("w1",true),("w2",false),("w3",false),("w4",false),("w6",false),("w5",true)]),
         ("github-repository-exploration.json", vec![("W1",true),("W2",true),("W3",true)]),
         ("plan_workflow.json", vec![("outline",false),("generate_map",true),("optimize_map",false)]),
         ("tibo-monitor-then-c-drive-inspection.json", vec![("tibo-monitor",true),("c-drive-inspection",true)]),
@@ -132,6 +132,14 @@ async fn published_producers_do_not_require_v1_credentials_or_report_approval() 
         let path = path.unwrap().path();
         if path.extension().is_none_or(|e|e != "json") { continue; }
         let bot: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        if bot.get("output_rule").is_none() {
+            // Definitions outside the authoring cutover are deliberately not
+            // installed for execution; their historical wording is still checked.
+            for retired in ["report_policy", "报告发送确认", "报告发送分别授权"] {
+                assert!(!bot.to_string().contains(retired), "{} restores {retired}", bot["id"]);
+            }
+            continue;
+        }
         fs::write(s.config.scheduler.bot_directory.join(path.file_name().unwrap()), bot.to_string()).unwrap();
         let read = api(&s, "/api/scheduler/bots/edit", json!({"id":bot["id"]}), 200).await;
         assert!(!read.to_string().contains("report_policy"), "{} teaches a retired report switch", bot["id"]);
@@ -175,6 +183,11 @@ async fn migrated_workflow(fault: Option<&str>) {
                 ),
                 1,
             );
+            let expected = expected.replacen(
+                "native_name = 'retro'\n",
+                concat!("native_name = 'retro'\n", "[[skills]]\nid = 'design-taste-frontend'\nlabel = '/design-taste-frontend'\nnative_name = 'design-taste-frontend'\n"),
+                1,
+            );
             assert_eq!(actual, expected, "Unrelated definition changed: {path}");
             continue;
         }
@@ -196,14 +209,36 @@ async fn migrated_workflow(fault: Option<&str>) {
                 if path.ends_with("plan_workflow.json") { map.as_object_mut().unwrap().remove("description"); }
             }
         }
-        let changed_guides: &[&str] = match path.as_str() {
-            "meta-data/bots/bot-1793304246857557100-58200-0.json" => &["node_guide"],
-            "meta-data/bots/bot-1793343165820110000-25960-0.json" => &["when", "plan_guide", "node_guide"],
-            "meta-data/bots/create-bot-wrapper.json" => &["plan_guide", "node_guide"],
-            "meta-data/bots/revise-bot-guides.json" => &["plan_guide"],
-            _ => &[],
-        };
-        for field in changed_guides { expected.as_object_mut().unwrap().remove(*field); current.as_object_mut().unwrap().remove(*field); }
+        if path.starts_with("meta-data/bots/") && current.get("output_rule").is_some() {
+            // Direct authoring consumers have intentionally redistributed their old
+            // text. The historical archive still checks every unaffected identity,
+            // group, binding and non-index field rather than blessing a new snapshot.
+            for field in ["when", "plan_guide", "node_guide"] { expected.as_object_mut().unwrap().remove(field); }
+            for field in ["when", "description", "input_rule", "output_rule"] { current.as_object_mut().unwrap().remove(field); }
+            if matches!(current["id"].as_str(), Some("write-bot-plan-guide" | "write-bot-node-guide" | "revise-bot-guides")) {
+                let display = match current["id"].as_str().unwrap() {
+                    "write-bot-plan-guide" => "Bot.description 编写者",
+                    "write-bot-node-guide" => "Bot.input_rule 编写者",
+                    _ => "独立修订既有 Bot 能力摘要",
+                };
+                expected["name"] = json!(display);
+            }
+        }
+        if path.ends_with("bot-1793304246857557100-58200-0.json") && current.get("node_guide").is_some() {
+            expected.as_object_mut().unwrap().remove("node_guide");
+            current.as_object_mut().unwrap().remove("node_guide");
+        }
+        if path.ends_with("bot-1793343165820110000-25960-0.json") {
+            for bot in [&mut expected, &mut current] { for field in ["when", "plan_guide", "node_guide"] { bot.as_object_mut().unwrap().remove(field); } }
+        }
+        if path.ends_with("enhance-existing-bot--bc-301b25d9f8d6.json") {
+            // The independent revision graph test checks its four-lane wiring.
+            for map in [&mut expected, &mut current] { for field in ["title", "description", "nodes"] { map.as_object_mut().unwrap().remove(field); } }
+            let old = expected.as_object_mut().unwrap();
+            old.remove("input_files");
+            old.remove("input_requirements");
+            current.as_object_mut().unwrap().remove("map_input_rule");
+        }
         assert_eq!(current, expected, "Unrelated definition content changed: {path}");
     }
     for original in original_tasks["tasks"].as_array().unwrap() {
@@ -225,16 +260,13 @@ async fn migrated_workflow(fault: Option<&str>) {
         assert_eq!(current, expected, "Unrelated Task execution configuration changed");
 
     }
+    // The public definition test independently verifies every current writer,
+    // optimizer and save binding. This historical check protects the unchanged
+    // entry and terminal material interface across the field cutover.
     let old_wrapper: Value = serde_json::from_str(before["meta-data/workflow-maps/create-bot-wrapper.json"].as_str().unwrap()).unwrap();
     let new_wrapper = source("meta-data/workflow-maps/create-bot-wrapper.json");
-    for (id, node) in old_wrapper["nodes"].as_object().unwrap() {
-        for field in ["input_rule", "output_rule", "blocked_by"] {
-            let expected = if id == "save_bot" && field == "input_rule" {
-                Value::Array(node[field].as_array().unwrap().iter().filter(|rule| !rule["id"].as_str().unwrap().ends_with("_handoff")).cloned().collect())
-            } else { node[field].clone() };
-            assert_eq!(new_wrapper["nodes"][id][field], expected);
-        }
-        if id != "save_bot" { assert_eq!(new_wrapper["nodes"][id]["bot_id"], node["bot_id"]); }
+    for (id, fields) in [("create_blank", &["bot_id", "input_rule", "output_rule", "blocked_by"][..]), ("save_bot", &["output_rule"][..])] {
+        for field in fields { assert_eq!(new_wrapper["nodes"][id][field], old_wrapper["nodes"][id][field]); }
     }
     let references: Vec<_> = fs::read_dir(root().join("meta-data/workflow-maps")).unwrap().filter_map(|p| {
         let p = p.unwrap().path();
@@ -250,18 +282,23 @@ async fn migrated_workflow(fault: Option<&str>) {
     let mut deployed_tasks: Value = serde_json::from_str(&fs::read_to_string(&s.config.tasks.storage_file).unwrap()).unwrap();
     deployed_tasks["tasks"].as_array_mut().unwrap().extend(tasks["tasks"].as_array().unwrap().clone());
     fs::write(&s.config.tasks.storage_file, deployed_tasks.to_string()).unwrap();
-    // Full catalog snapshot is retained; only physical node zones and the five
-    // controlled host bindings are relocated in this isolated S1 deployment.
-    for path in fs::read_dir(root().join("meta-data/workflow-maps")).unwrap() {
-        let path = path.unwrap().path();
-        if path.extension().is_some_and(|e| e == "json") { fs::copy(&path, s.config.scheduler.map_directory.join(path.file_name().unwrap())).unwrap(); }
+    // Only the deployed authoring definitions are online. Keep unselected
+    // old-format definitions unchanged in the isolated offline archive.
+    for file in ["create-bot-wrapper.json", "enhance-existing-bot--bc-301b25d9f8d6.json"] {
+        fs::copy(root().join("meta-data/workflow-maps").join(file), s.config.scheduler.map_directory.join(file)).unwrap();
     }
     let worker = api(&s, "/api/scheduler/bots/edit", json!({"id":"worker"}), 200).await;
+    let backup = s.data.path().join("offline-bots");
+    fs::create_dir(&backup).unwrap();
     for path in fs::read_dir(root().join("meta-data/bots")).unwrap() {
         let path = path.unwrap().path();
         if path.extension().is_none_or(|e| e != "json") { continue; }
         let mut bot: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-        if ["write-bot-when","write-bot-plan-guide","write-bot-node-guide","optimize-prompt"].contains(&bot["id"].as_str().unwrap()) { bot["task_id"] = worker["content"]["task_id"].clone(); }
+        if !matches!(bot["id"].as_str(), Some("write-bot-when" | "write-bot-plan-guide" | "write-bot-node-guide" | "write-bot-output-rule" | "optimize-prompt" | "create-blank-bot" | "save-created-bot-guides" | "replace-text" | "create-bot-wrapper" | "prepare-bot-revision" | "revise-bot-guides")) {
+            fs::copy(&path, backup.join(path.file_name().unwrap())).unwrap();
+            continue;
+        }
+        if ["write-bot-when","write-bot-plan-guide","write-bot-node-guide","write-bot-output-rule","optimize-prompt"].contains(&bot["id"].as_str().unwrap()) { bot["task_id"] = worker["content"]["task_id"].clone(); }
         fs::write(s.config.scheduler.bot_directory.join(path.file_name().unwrap()), bot.to_string()).unwrap();
     }
     let revise_file = "enhance-existing-bot--bc-301b25d9f8d6.json";
@@ -274,7 +311,7 @@ async fn migrated_workflow(fault: Option<&str>) {
     assert_eq!(creator["content"]["script"], "create-blank-bot.ts");
     assert!(creator["content"].get("task_id").is_none());
     let saver = api(&s, "/api/scheduler/bots/edit", json!({"id":"save-created-bot-guides"}), 200).await;
-    assert_eq!(saver["content"], json!({"group":"meta-bot","name":"创建流程三指南保存者","when":"","plan_guide":"","node_guide":"","script":"save-bot-guides.ts"}));
+    assert_eq!(saver["content"], json!({"group":"meta-bot","name":"创建流程四字段保存者","when":"","description":"","input_rule":"","output_rule":"","script":"save-bot-guides.ts"}));
     let mut definition = source("meta-data/workflow-maps/create-bot-wrapper.json");
     for node in definition["nodes"].as_object_mut().unwrap().values_mut() { node["zone"] = json!("node"); }
     if fault == Some("missing-binding") { definition["nodes"]["save_bot"]["input_rule"].as_array_mut().unwrap().retain(|r| r["id"] != "when_text"); }
@@ -313,15 +350,15 @@ async fn migrated_workflow(fault: Option<&str>) {
     assert!(created_handoff["target"].get("configuration").is_none());
     assert_eq!(baseline["request"], request);
     assert_eq!(baseline["target"]["configuration"], target);
-    assert_eq!(baseline["bot"], json!({"id":"migration-result","name":"Literal migrated Bot","when":"","plan_guide":"","node_guide":"","task_id":target["id"]}));
+    assert_eq!(baseline["bot"], json!({"id":"migration-result","name":"Literal migrated Bot","when":"","description":"","input_rule":"","output_rule":"","task_id":target["id"]}));
     assert_eq!(detail(&s, &run["id"]).await["run"]["nodes"]["create_blank"]["status"], "running");
     complete(&s, "create_blank").await;
     let locator = json!({"type":"task","task_id":target["id"]});
     let mut final_texts = serde_json::Map::new();
-    for (field, text) in [("when","abc"),("plan_guide","hello"),("node_guide","")] {
+    for (field, suffix, text) in [("when","when","abc"),("description","plan_guide","hello"),("input_rule","node_guide",""),("output_rule","output_rule","Read-only report")] {
         let mut previous = None;
         for stage in ["write", "optimize"] {
-            let node = format!("{stage}_{field}");
+            let node = format!("{stage}_{suffix}");
             let session = format!("literal-{node}");
             s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":session},"native_cwd":s.data.path().join("node-zone"),"consume_named_files":true}));
             let dispatched = s.dispatch("migration-manager", &[&node]).await;
@@ -365,7 +402,7 @@ async fn migrated_workflow(fault: Option<&str>) {
     assert_eq!(saved_handoff["checks"], json!({"bot_read_back":true,"target_unchanged":true}));
     assert!(saved_handoff.get("bot").is_none());
     assert!(saved_handoff["target"].get("configuration").is_none());
-    assert_eq!(saved_handoff["sources"], json!([{"binding_id":"baseline","direction":"input","role":"baseline"},{"binding_id":"when_text","direction":"input","role":"text"},{"binding_id":"plan_guide_text","direction":"input","role":"text"},{"binding_id":"node_guide_text","direction":"input","role":"text"}]));
+    assert_eq!(saved_handoff["sources"], json!([{"binding_id":"baseline","direction":"input","role":"baseline"},{"binding_id":"when_text","direction":"input","role":"text"},{"binding_id":"description_text","direction":"input","role":"text"},{"binding_id":"input_rule_text","direction":"input","role":"text"},{"binding_id":"output_rule_text","direction":"input","role":"text"}]));
     assert!(saved_handoff.get("confirmation_evidence").is_none());
     let mut expected = baseline["bot"].clone();
     expected.as_object_mut().unwrap().extend(final_texts);
@@ -448,7 +485,7 @@ async fn compare_independent_v2(s: &Scenario, v1: &Value, v1_saved: &Value, v1_r
         } else {
             assert_eq!(files["bot_requirements"], requirements);
             assert_eq!(serde_json::from_str::<Value>(files["target_materials"].as_str().unwrap()).unwrap(), target_materials);
-            let bot = json!({"name":"Independent V2 Bot","when":"Read-only CSV comparison","plan_guide":"Arrange independent read-only comparison","node_guide":"Provide two explicitly readable CSV files","task_id":target["id"]});
+            let bot = json!({"name":"Independent V2 Bot","when":"Read-only CSV comparison","description":"Arrange independent read-only comparison","input_rule":"Provide two explicitly readable CSV files","output_rule":"","task_id":target["id"]});
             api(s, "/api/scheduler/bots/save", json!({"id":"v2-result","content":bot.to_string(),"revision":null}), 200).await;
             let read = api(s, "/api/scheduler/bots/edit", json!({"id":"v2-result"}), 200).await;
             assert_eq!(read["content"], bot);

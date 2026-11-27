@@ -138,7 +138,7 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   fs.writeFileSync(source, JSON.stringify(definition))
   const brief = path.join(host.cwd, 'actual-brief.txt')
   fs.writeFileSync(brief, 'Named material in a real file')
-  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '', when: '', plan_guide: '', node_guide: '', task_id: nodeTask.id }))
+  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '', when: '', description: '', input_rule: '', output_rule: '', task_id: nodeTask.id }))
   const native = (id: string) => {
     const file = path.join(host.cwd, `${id}.jsonl`)
     fs.writeFileSync(file, JSON.stringify({ type: 'session', version: 3, id, cwd: host.cwd }) + '\n')

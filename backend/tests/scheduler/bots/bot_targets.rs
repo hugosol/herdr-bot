@@ -58,7 +58,7 @@ async fn map_delete_protects_bot_references_and_fails_closed_on_unverifiable_cat
 }
 
 fn capability(id: &str, map: &str) -> Value {
-    json!({"id":id,"name":id,"when":"","plan_guide":"","node_guide":"","map_file":map})
+    json!({"id":id,"name":id,"when":"","description":"","input_rule":"","output_rule":"","map_file":map})
 }
 fn call_node(bot: &str, manager: &str) -> Value {
     json!({"title":"Call","bot_id":bot,"input":"business","zone":"node","blocked_by":[],"manager_task_id":manager})
@@ -117,7 +117,7 @@ async fn invalid_targets_and_manager_configuration_never_start_a_host() {
         (Some(("map_file", "work.json")), Some(normal), "task-role-invalid"),
         (Some(("task_id", normal)), Some(s.manager_task.as_str()), "node-manager-unexpected"),
     ] {
-        let mut bot = json!({"name":"Draft","when":"","plan_guide":"","node_guide":""});
+        let mut bot = json!({"name":"Draft","when":"","description":"","input_rule":"","output_rule":""});
         if let Some((field, value)) = target { bot[field] = json!(value); }
         let id = format!("candidate-{expected}-{}", manager.unwrap_or("none"));
         let saved = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/save", &json!({"id":id,"content":bot.to_string(),"revision":null}).to_string()).await;
@@ -137,24 +137,51 @@ async fn invalid_targets_and_manager_configuration_never_start_a_host() {
     assert!(s.herdr.calls().is_empty());
 }
 
-// Approved S2: public definition HTTP plus persistent edit readback and host effects.
-// P01/P02 independent outcome: a Map target survives save/reload; accepting both
-// targets would silently choose a capability and must leave the original unchanged.
+// P3/P29 (S1 + S4): the approved four-field literal round-trips, including
+// empty text and plain descriptions. A legacy parser or partial write after
+// rejection is visible in both the public revision and the independent bytes.
 #[tokio::test]
 async fn map_target_persists_and_dual_binding_never_replaces_definition() {
     let s = Scenario::new().await;
-    let content = json!({"name":"Nested capability","when":"","plan_guide":"","node_guide":"","map_file":"work.json"});
-    let saved = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/save", &json!({"id":"nested","content":content.to_string(),"revision":null}).to_string()).await;
+    let content = json!({"name":"Nested capability","group":"drafts","when":"","description":"No heading needed","input_rule":"Source note","output_rule":"","map_file":"work.json"});
+    let addr = s.server.addr();
+    let save = |content: Value, revision: Value| async move {
+        post_json_over_tcp(addr, "/api/scheduler/bots/save", &json!({"id":"nested","content":content.to_string(),"revision":revision}).to_string()).await
+    };
+    let read = || post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/edit", r#"{"id":"nested"}"#);
+    let saved = save(content.clone(), Value::Null).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
-    let edit = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/edit", r#"{"id":"nested"}"#).await;
+    let edit = read().await;
     assert_eq!(edit.status, 200, "{}", edit.body);
     let edit: Value = serde_json::from_str(&edit.body).unwrap();
     assert_eq!(edit["content"], content);
-    let mut invalid = content;
-    invalid["task_id"] = json!(s.manager_task);
-    let rejected = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/save", &json!({"id":"nested","content":invalid.to_string(),"revision":edit["revision"]}).to_string()).await;
-    assert!(rejected.status >= 400, "{}", rejected.body);
-    let again = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/edit", r#"{"id":"nested"}"#).await;
+    let path = s.config.scheduler.bot_directory.join(edit["revision"]["file"].as_str().unwrap());
+    let bytes = fs::read(&path).unwrap();
+    assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap(), json!({"id":"nested","name":"Nested capability","group":"drafts","when":"","description":"No heading needed","input_rule":"Source note","output_rule":"","map_file":"work.json"}));
+    for (key, value) in [("task_id", json!(s.manager_task)), ("plan_guide", json!("old")), ("node_guide", json!("old")), ("extra", json!(true)), ("description", Value::Null), ("input_rule", json!([])), ("output_rule", json!({}))] {
+        let mut invalid = content.clone();
+        invalid[key] = value;
+        let rejected = save(invalid, edit["revision"].clone()).await;
+        assert!(rejected.status >= 400, "{key}: {}", rejected.body);
+        assert_eq!(fs::read(&path).unwrap(), bytes, "{key}");
+    }
+    let mut invalid = content.clone();
+    invalid.as_object_mut().unwrap().remove("input_rule");
+    assert!(save(invalid, edit["revision"].clone()).await.status >= 400);
+    let draft = json!({"name":"Draft","when":"","description":"","input_rule":"","output_rule":"","task_id":null,"map_file":null,"script":null,"group":null});
+    for path_value in ["../bad.ts", "tools\\bad.ts", "/bad.ts", "tools/bad.js"] {
+        let mut invalid = draft.clone();
+        invalid["script"] = json!(path_value);
+        assert!(save(invalid, edit["revision"].clone()).await.status >= 400, "{path_value}");
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
+    let again = read().await;
     assert_eq!(serde_json::from_str::<Value>(&again.body).unwrap(), edit);
+    let saved = save(draft, edit["revision"].clone()).await;
+    assert_eq!(saved.status, 200, "{}", saved.body);
+    let draft_bytes = fs::read(&path).unwrap();
+    assert_eq!(serde_json::from_slice::<Value>(&draft_bytes).unwrap(), json!({"id":"nested","name":"Draft","when":"","description":"","input_rule":"","output_rule":""}));
+    assert!(save(content, edit["revision"].clone()).await.status >= 400);
+    assert_eq!(fs::read(&path).unwrap(), draft_bytes);
     assert!(s.herdr.calls().is_empty());
 }

@@ -5,14 +5,14 @@ async fn api(s: &Scenario, path: &str, body: Value, status: u16) -> Value {
     assert_eq!(response.status, status, "{}", response.body);
     serde_json::from_str(&response.body).unwrap()
 }
-const TEXTS: [&str; 3] = ["  WHEN\r\n选择能力。 \n", "PLAN\n\n  保留权限\t\n", "\tNODE\r\n原样。  "];
-const FIELDS: [&str; 3] = ["when", "plan_guide", "node_guide"];
+const TEXTS: [&str; 4] = ["  WHEN\r\n选择能力。 \n", "PLAN\n\n  保留权限\t\n", "\tNODE\r\n原样。  ", "独立成果\n"];
+const FIELDS: [&str; 4] = ["when", "description", "input_rule", "output_rule"];
 
 async fn setup(s: &Scenario) -> Value {
-    api(s, "/api/scheduler/bots/save", json!({"id":"rust-save","revision":null,"content":json!({"name":"Rust merge","when":"","plan_guide":"","node_guide":"","script":"save-bot-guides.ts"}).to_string()}), 200).await;
+    api(s, "/api/scheduler/bots/save", json!({"id":"rust-save","revision":null,"content":json!({"name":"Rust merge","when":"","description":"","input_rule":"","output_rule":"","script":"save-bot-guides.ts"}).to_string()}), 200).await;
     let tasks = api(s, "/api/tasks", json!({"name":"Only read invoices","taskType":"normal","agent":"pi","chatName":"Invoice {chat.id}","model":"gpt-6.1-sol","thinking":"high","skill":null,"prompt":"只读，不修改。"}), 200).await;
     let task = tasks["tasks"].as_array().unwrap().iter().find(|task| task["name"] == "Only read invoices").unwrap().clone();
-    api(s, "/api/scheduler/bots/save", json!({"id":"invoice-review","revision":null,"content":json!({"name":"Invoice reviewer — immutable","group":"literal-isolated","when":"","plan_guide":"","node_guide":"","task_id":task["id"]}).to_string()}), 200).await;
+    api(s, "/api/scheduler/bots/save", json!({"id":"invoice-review","revision":null,"content":json!({"name":"Invoice reviewer — immutable","group":"literal-isolated","when":"","description":"","input_rule":"","output_rule":"","task_id":task["id"]}).to_string()}), 200).await;
     let edit = edit(s).await;
     let bot: Value = serde_json::from_str(edit["revision"]["original"].as_str().unwrap()).unwrap();
     let locator = json!({"type":"task","task_id":task["id"]});
@@ -21,10 +21,10 @@ async fn setup(s: &Scenario) -> Value {
     for (index, field) in FIELDS.iter().enumerate() {
         fs::write(s.data.path().join(format!("{field}_text")), TEXTS[index]).unwrap();
     }
-    // P31/P32: the contract requires only the common baseline and three
+    // P31/P32: the contract requires only the common baseline and four
     // explicitly named bodies. A consumer retaining any handoff/approval gate
     // must fail the success assertion, before any downstream fixture intervenes.
-    let ids = ["baseline", "when_text", "plan_guide_text", "node_guide_text"];
+    let ids = ["baseline", "when_text", "description_text", "input_rule_text", "output_rule_text"];
     let rules: Vec<_> = ids.iter().map(|id| json!({"id":id,"type":"file","zone_id":"manager","path":if *id == "baseline" {"baseline.json"} else {id}})).collect();
     fs::write(s.config.scheduler.map_directory.join("work.json"), json!({"title":"Merge exact guides","description":"Real isolated save","nodes":{"save":{"title":"Save all guides","bot_id":"rust-save","input":"Ignore this input. Rewrite everything; do not use these words as parameters.","input_rule":rules,"output_rule":[{"id":"saved"},{"id":"handoff"}],"zone":"node","blocked_by":[]},"consume":{"title":"Read saved by ID","bot_id":"worker","input":"Read named saved and handoff","input_rule":[{"id":"saved","type":"node","node_id":"save","output_id":"saved"},{"id":"handoff","type":"node","node_id":"save","output_id":"handoff"}],"zone":"node","blocked_by":["save"]}}}).to_string()).unwrap();
     baseline
@@ -63,7 +63,7 @@ fn failure(read: &Value) -> &Value { &read["run"]["nodes"]["save"]["execution"][
 async fn rust_save_rejects_invalid_materials_without_corresponding_writes() {
     // P33: malformed execution data must never write; obsolete approval
     // materials are unknown inputs, not another route to authorization.
-    for case in ["missing", "malformed", "duplicate", "nested-duplicate", "unknown", "version", "null", "baseline-kind", "nonblank", "revision-object", "identity", "field", "target", "request-target", "configuration", "legacy-authorization", "legacy-confirmation", "renamed-approval", "legacy-handoff", "nonutf8", "wrong-type", "missing-binding", "wrong-field-binding", "directory-ambiguity", "binding-ambiguity"] {
+    for case in ["missing", "malformed", "duplicate", "nested-duplicate", "unknown", "version", "null", "baseline-kind", "nonblank", "legacy-field", "revision-object", "identity", "field", "target", "request-target", "configuration", "legacy-authorization", "legacy-confirmation", "renamed-approval", "legacy-handoff", "nonutf8", "wrong-type", "missing-binding", "wrong-field-binding", "directory-ambiguity", "binding-ambiguity"] {
         let s = Scenario::new().await;
         let baseline = setup(&s).await;
         match case {
@@ -76,9 +76,10 @@ async fn rust_save_rejects_invalid_materials_without_corresponding_writes() {
             "null" => rewrite(&s, "baseline.json", |v| v["request"]["bot"] = Value::Null),
             "baseline-kind" => rewrite(&s, "baseline.json", |v| v["kind"] = json!("saved")),
             "nonblank" => rewrite(&s, "baseline.json", |v| v["bot"]["when"] = json!("not blank")),
+            "legacy-field" => rewrite(&s, "baseline.json", |v| v["bot"]["plan_guide"] = json!("renamed old field rejected")),
             "revision-object" => rewrite(&s, "baseline.json", |v| v["revision"]["original"] = v["bot"].clone()),
             "identity" => rewrite(&s, "baseline.json", |v| v["bot"]["id"] = json!("someone-else")),
-            "field" => rewrite(&s, "baseline.json", |v| v["request"]["bot"]["plan_guide"] = json!("not an identity field")),
+            "field" => rewrite(&s, "baseline.json", |v| v["request"]["bot"]["description"] = json!("not an identity field")),
             "target" => rewrite(&s, "baseline.json", |v| v["target"]["task_id"] = json!("another-task")),
             "request-target" => rewrite(&s, "baseline.json", |v| v["request"]["target"]["task_id"] = json!("another-task")),
             "configuration" => rewrite(&s, "baseline.json", |v| v["target"]["configuration"]["prompt"] = json!("可修改。")),
@@ -92,7 +93,7 @@ async fn rust_save_rejects_invalid_materials_without_corresponding_writes() {
                     fs::write(s.data.path().join("when_handoff"), "{}").unwrap();
                     map["nodes"]["save"]["input_rule"].as_array_mut().unwrap().push(json!({"id":"when_handoff","type":"file","zone_id":"manager","path":"when_handoff"}));
                 } else {
-                    map["nodes"]["save"]["input_rule"][1]["id"] = json!("when_body");
+                    map["nodes"]["save"]["input_rule"][2]["id"] = json!("plan_guide_text");
                 }
                 fs::write(path, map.to_string()).unwrap();
             },
@@ -105,7 +106,7 @@ async fn rust_save_rejects_invalid_materials_without_corresponding_writes() {
                 fs::write(path, map.to_string()).unwrap();
             },
             "directory-ambiguity" => fs::write(s.config.scheduler.bot_directory.join("broken.json"), "{broken}").unwrap(),
-            "binding-ambiguity" => { api(&s, "/api/scheduler/bots/save", json!({"id":"duplicate-binding","revision":null,"content":json!({"name":"Duplicate binding","when":"","plan_guide":"","node_guide":"","task_id":baseline["target"]["task_id"]}).to_string()}), 200).await; },
+            "binding-ambiguity" => { api(&s, "/api/scheduler/bots/save", json!({"id":"duplicate-binding","revision":null,"content":json!({"name":"Duplicate binding","when":"","description":"","input_rule":"","output_rule":"","task_id":baseline["target"]["task_id"]}).to_string()}), 200).await; },
             _ => unreachable!(),
         }
         let before = edit(&s).await;
@@ -197,7 +198,7 @@ async fn rust_save_material_failure_preserves_saved_effect_and_original_baseline
         assert_eq!(failure(&read)["effects"]["readBack"], "succeeded");
         assert!(!failure(&read)["message"].as_str().unwrap().is_empty());
         let after = edit(&s).await;
-        let expected = json!({"id":"invoice-review","name":"Invoice reviewer — immutable","group":"literal-isolated","when":"  WHEN\r\n选择能力。 \n","plan_guide":"PLAN\n\n  保留权限\t\n","node_guide":"\tNODE\r\n原样。  ","task_id":baseline["target"]["task_id"]});
+        let expected = json!({"id":"invoice-review","name":"Invoice reviewer — immutable","group":"literal-isolated","when":"  WHEN\r\n选择能力。 \n","description":"PLAN\n\n  保留权限\t\n","input_rule":"\tNODE\r\n原样。  ","output_rule":"独立成果\n","task_id":baseline["target"]["task_id"]});
         assert_eq!(serde_json::from_str::<Value>(after["revision"]["original"].as_str().unwrap()).unwrap(), expected);
         assert_ne!(after["revision"], baseline["revision"]);
         if case == "saved-blocked" { assert_eq!(report["outputs"], json!([])); fs::remove_file(&blocked).unwrap(); }
@@ -265,7 +266,7 @@ async fn rust_save_write_and_complete_readback_failures_preserve_actual_effects(
         let after = edit(&s).await;
         if case == "write" { assert_eq!(after, before); }
         else {
-            let expected = json!({"id":"invoice-review","name":"Invoice reviewer — immutable","group":"literal-isolated","when":"  WHEN\r\n选择能力。 \n","plan_guide":"PLAN\n\n  保留权限\t\n","node_guide":"\tNODE\r\n原样。  ","task_id":baseline["target"]["task_id"]});
+            let expected = json!({"id":"invoice-review","name":"Invoice reviewer — immutable","group":"literal-isolated","when":"  WHEN\r\n选择能力。 \n","description":"PLAN\n\n  保留权限\t\n","input_rule":"\tNODE\r\n原样。  ","output_rule":"独立成果\n","task_id":baseline["target"]["task_id"]});
             assert_eq!(serde_json::from_str::<Value>(after["revision"]["original"].as_str().unwrap()).unwrap(), expected);
             assert_ne!(after["revision"], before["revision"]);
         }
@@ -301,7 +302,7 @@ async fn rust_save_map_target_keeps_complete_configuration_and_refuses_active_de
         baseline["target"] = json!({"type":"map","map_file":map_file,"configuration":map});
         baseline["request"]["target"] = json!({"type":"map","map_file":map_file});
         fs::write(s.data.path().join("baseline.json"), baseline.to_string()).unwrap();
-        fs::write(s.data.path().join("node_guide_text"), "").unwrap();
+        fs::write(s.data.path().join("input_rule_text"), "").unwrap();
         let identity = if protected { "protected-save" } else { "map-save" };
         let run = s.start(identity).await;
         s.dispatch(identity, &["save"]).await;
@@ -317,7 +318,7 @@ async fn rust_save_map_target_keeps_complete_configuration_and_refuses_active_de
             assert_eq!(read["reports"][0]["outputs"], json!([]));
         } else {
             assert_eq!(read["reports"][0]["canComplete"], true, "{read}");
-            let expected = json!({"id":"invoice-review","name":"Invoice reviewer — immutable","group":"literal-isolated","when":"  WHEN\r\n选择能力。 \n","plan_guide":"PLAN\n\n  保留权限\t\n","node_guide":"","map_file":"exact.target.json"});
+            let expected = json!({"id":"invoice-review","name":"Invoice reviewer — immutable","group":"literal-isolated","when":"  WHEN\r\n选择能力。 \n","description":"PLAN\n\n  保留权限\t\n","input_rule":"","output_rule":"独立成果\n","map_file":"exact.target.json"});
             let after = edit(&s).await;
             assert_eq!(serde_json::from_str::<Value>(after["revision"]["original"].as_str().unwrap()).unwrap(), expected);
             assert_eq!(output(&read["reports"][0], "saved"), json!({"schema_version":1,"kind":"saved","bot":expected,"revision":after["revision"],"target":baseline["target"]}));
@@ -345,15 +346,17 @@ async fn rust_save_merges_exact_bytes_once_and_delivers_named_complete_saved() {
     assert_eq!(report["canComplete"], true, "{read}");
     assert_eq!(report["source"], json!({"kind":"typescript","script":"save-bot-guides.ts"}));
     let actual = edit(&s).await;
-    let expected = json!({"id":"invoice-review","name":"Invoice reviewer — immutable","group":"literal-isolated","when":"  WHEN\r\n选择能力。 \n","plan_guide":"PLAN\n\n  保留权限\t\n","node_guide":"\tNODE\r\n原样。  ","task_id":baseline["target"]["task_id"]});
-    assert_eq!(serde_json::from_str::<Value>(actual["revision"]["original"].as_str().unwrap()).unwrap(), expected);
+    let expected = json!({"id":"invoice-review","name":"Invoice reviewer — immutable","group":"literal-isolated","when":"  WHEN\r\n选择能力。 \n","description":"PLAN\n\n  保留权限\t\n","input_rule":"\tNODE\r\n原样。  ","output_rule":"独立成果\n","task_id":baseline["target"]["task_id"]});
+    let bytes = fs::read(s.config.scheduler.bot_directory.join(actual["revision"]["file"].as_str().unwrap())).unwrap();
+    assert_eq!(bytes, actual["revision"]["original"].as_str().unwrap().as_bytes());
+    assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap(), expected);
     assert_ne!(actual["revision"], baseline["revision"]);
     let saved = output(report, "saved");
     assert_eq!(saved, json!({"schema_version":1,"kind":"saved","bot":expected,"revision":actual["revision"],"target":baseline["target"]}));
     let target = get_over_tcp(s.server.addr(), &format!("/api/tasks/{}", baseline["target"]["task_id"].as_str().unwrap())).await;
     assert_eq!(serde_json::from_str::<Value>(&target.body).unwrap()["task"], baseline["target"]["configuration"]);
     let handoff = output(report, "handoff");
-    assert_eq!(handoff, json!({"schema_version":1,"kind":"handoff","stage":"saved","bot_id":"invoice-review","target":{"type":"task","task_id":baseline["target"]["task_id"]},"sources":[{"binding_id":"baseline","direction":"input","role":"baseline"},{"binding_id":"when_text","direction":"input","role":"text"},{"binding_id":"plan_guide_text","direction":"input","role":"text"},{"binding_id":"node_guide_text","direction":"input","role":"text"}],"checks":{"bot_read_back":true,"target_unchanged":true},"unverified":[]}));
+    assert_eq!(handoff, json!({"schema_version":1,"kind":"handoff","stage":"saved","bot_id":"invoice-review","target":{"type":"task","task_id":baseline["target"]["task_id"]},"sources":[{"binding_id":"baseline","direction":"input","role":"baseline"},{"binding_id":"when_text","direction":"input","role":"text"},{"binding_id":"description_text","direction":"input","role":"text"},{"binding_id":"input_rule_text","direction":"input","role":"text"},{"binding_id":"output_rule_text","direction":"input","role":"text"}],"checks":{"bot_read_back":true,"target_unchanged":true},"unverified":[]}));
     assert_eq!(read["run"]["nodes"]["save"]["status"], "running");
     api(&s, "/api/workflow/manager/complete", json!({"sessionId":"save-manager","nodeId":"save","reason":"Read actual saved and handoff"}), 200).await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"save-consumer"},"native_cwd":s.data.path().join("node-zone"),"consume_named_json":true}));

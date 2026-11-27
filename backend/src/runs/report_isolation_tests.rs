@@ -57,8 +57,8 @@ impl Fixture {
         }
         fixture.manager = tasks[0]["id"].clone();
         fixture.targets = tasks[2..].to_vec();
-        fs::write(fixture.config.scheduler.bot_directory.join("creator.json"), json!({"id":"creator","name":"creator","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}).to_string()).unwrap();
-        fs::write(fixture.config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"","plan_guide":"","node_guide":"","task_id":tasks[1]["id"]}).to_string()).unwrap();
+        fs::write(fixture.config.scheduler.bot_directory.join("creator.json"), json!({"id":"creator","name":"creator","when":"","description":"","input_rule":"","output_rule":"","script":"create-blank-bot.ts"}).to_string()).unwrap();
+        fs::write(fixture.config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"","description":"","input_rule":"","output_rule":"","task_id":tasks[1]["id"]}).to_string()).unwrap();
         fs::write(fixture.config.scheduler.map_directory.join("isolation.json"), json!({"title":"Report isolation","description":"","nodes":{
             "create":{"title":"Create","bot_id":"creator","input":"No natural language arguments","input_rule":[{"id":"request","type":"file","zone_id":"isolation","path":"request.json"}],"output_rule":[{"id":"baseline"},{"id":"handoff"},{"id":"legacy"}],"zone":"isolation","blocked_by":[]},
             "decoy":{"title":"Other node","bot_id":"worker","input":"Other scope","output_rule":[{"id":"legacy"}],"zone":"isolation","blocked_by":[]},

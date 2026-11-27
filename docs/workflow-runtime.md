@@ -4,7 +4,7 @@
 
 ## 无 Chat 的执行与报告表示契约
 
-本节细化 [ADR 0019](adr/0019-rust-script-bots.md)。用户维护的 TypeScript 脚本由已有 Bun 执行；两个发布实现为 `create-blank-bot.ts`、`save-bot-guides.ts`，业务规则不再编入 Rust。manager dispatch 保存独立 execution 后返回，后台执行并自动保存报告、尝试一次通知。V1 创建消费 request／可选 materials；V1 保存仅消费 baseline 与 when_text／plan_guide_text／node_guide_text，不消费三份指南 handoff 或人类批准凭据；各自输出 baseline 或 saved 及事实 handoff。完整协议见[共同业务材料](business-materials.md#创建分支-v1可校验表示与空白创建)。通用脚本只需返回状态和可选 outputs。编写与宿主操作见[动态脚本使用说明](usage.md#动态-typescript-脚本)。不创建 Chat、自动 complete 或派发下游；Run 持久化和显式管理流程保持不变。
+本节细化 [ADR 0019](adr/0019-rust-script-bots.md)。用户维护的 TypeScript 脚本由已有 Bun 执行；两个发布实现为 `create-blank-bot.ts`、`save-bot-guides.ts`，业务规则不再编入 Rust。manager dispatch 保存独立 execution 后返回，后台执行并自动保存报告、尝试一次通知。V1 创建消费 request／可选 materials；V1 保存仅消费 baseline 与 when_text／description_text／input_rule_text／output_rule_text，不消费各字段 handoff 或人类批准凭据；各自输出 baseline 或 saved 及事实 handoff。完整协议见[共同业务材料](business-materials.md#创建分支-v1可校验表示与空白创建)。通用脚本只需返回状态和可选 outputs。编写与宿主操作见[动态脚本使用说明](usage.md#动态-typescript-脚本)。不创建 Chat、自动 complete 或派发下游；Run 持久化和显式管理流程保持不变。
 
 ### execution 与节点交接分别表达
 
@@ -325,7 +325,7 @@ manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `fi
 - 交接说明与可直接使用的纯正文是独立文件时，分别声明输出 ID 并登记地址；消费者逐项声明输入，不从同目录文件名或交接说明中推导未声明材料。输出规则不代替交付内容、格式、确认范围和验收要求。
 - 内部交接材料使用初始化提供的中间资料位置。生产者先核实写入位置、权限与路径边界；不要沿符号链接、目录联接或重解析点越出授权位置。新文件选不冲突的真实路径，不能覆盖其他节点或执行的产物；按业务约定安全写入后，从正式路径完整读回并核对，再登记。业务明确要求的正式位置仍有效，规则本身不预分配路径。
 - 已提供的根输入在预检、启动与输入准备入口，普通节点的直接文件／报告输出／Run 输入在本次派发前检查实际文件存在且可打开。检查只证明当时可读，固定输入地址不等于文件正文快照；框架不读取业务正文，不复制、锁定、校验或阻止后续改写。中间资料位置仅按 Run 区分，不提供自动的每 execution 隔离，上述不覆盖约定依赖生产者遵守。派发后删改不会触发系统重试、修复、补文件或搬运，不承诺持续可用性、不可变存储或服务端强制隔离保证。
-- 文件来源解析不证明业务正确。消费者仍核验目标 Bot 的 normal Task／Map 目标、共同基线、确认范围和实际配置冲突；保存时继续遵守业务授权、真实 revision 及完整读回要求。Bot 指南的共同基线、唯一正文与必要说明统一按[共同业务材料契约](business-materials.md)生产、直接传入与核对。管理者仍负责完成与派发，`blocked_by` 与材料引用保持独立。
+- 文件来源解析不证明业务正确。消费者仍核验目标 Bot 的 normal Task／Map 目标、共同基线、确认范围和实际配置冲突；保存时继续遵守业务授权、真实 revision 及完整读回要求。Bot 能力摘要的共同基线、唯一正文与必要说明统一按[共同业务材料契约](business-materials.md)生产、直接传入与核对。管理者仍负责完成与派发，`blocked_by` 与材料引用保持独立。
 
 例如消费者已获得 `text → A.md` 后，生产者将修订正文写入 `B.md` 并更新 `text` 登记；该消费者继续使用 `A.md`，后续消费者可取得 `B.md`。若在授权范围内原地修改 `A.md`，原消费者之后读取的就是新内容；删掉它后读取会失败，系统不提供旧内容副本或自动修复。
 

@@ -243,6 +243,10 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-paired-chief-run `
 
 运行环境须已有 Bun；隔离夹具复制实际 `meta-data/scripts` 到临时 Bot 目录旁。`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch typescript_ -- --nocapture` 通过真实 HTTP、Bun 子进程和实际文件验证任意用户脚本、相对 import、日志、最小状态、异常退出、缺输出／文件、目录假输出、重复／未声明 ID 和失败部分效果。原 `rust_create_`／`rust_save_` 测试名保留，但执行的是迁移后的真实 TS 业务，检查严格材料、revision、并发保护、完整读回和交接。沿用既有独占静态页、绝对 CARGO_TARGET_DIR 与宿主进程清理规则；这些测试不调用真实模型。
 
+## 四字段 Bot 定义与 backup 隔离
+
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch bot_targets::` 通过公开保存、编辑、预检和独立文件核实四字段、草稿、目标互斥与路径、未知／旧字段及 revision 拒绝后字节不变。`cargo test --manifest-path backend/Cargo.toml --test runtime_data bot_and_map_backup_stays_offline_after_real_startup` 在真实进程启动前隔离放置备份定义，启动后交叉核对在线目录、详情、预检、备份字节；既有历史布局的标记隔离另由 `definition_migration_preserves_bytes_and_never_reimports_retained_backups` 验证。`npm --prefix frontend run test:browser:build -- schedulerBotEditing.spec.ts --workers=1` 在真实页面编辑并重新加载，和公开 HTTP、实际配置文件交叉比较；受控传输分别保留明确拒绝与提交结果未知。隔离 backup 不代表部署已移动；不执行任何实际切换。
+
 ## 脚本表示验证
 
 `python -m pip install -r scripts/requirements-contracts.txt` 安装单独的 Schema 验证依赖后，`python scripts/test-script-contracts.py` 从公开文件 seam 消费 `docs/contracts/script-bots.schema.json` 和独立 JSONL 字面实例。离线检查类型、必填、互斥、相对 TS 路径、完整配置形状、无 Chat 来源与失败效果表达；不启动宿主／服务、不写业务配置，不以源码快照验证接线。跨材料身份／revision／正文确认及真实保存仍是业务实现的公开 HTTP／文件验收，不能由 Schema 通过推断。
@@ -263,7 +267,7 @@ cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_crea
 
 `npm --prefix frontend run test:browser:build -- workflowScripts.spec.ts --workers=1` 使用独占生产后端、真实 Map 和 Bun 脚本。分别核对运行中、成功和部分材料失败的页面与公开读回。观察不发起动作；无 Chat 的脚本执行及报告没有 Resume 或关闭入口。受控 Herdr 不证明真实宿主消费。
 
-## TypeScript 三路合并保存公开 HTTP／文件回归
+## TypeScript 四字段合并保存公开 HTTP／文件回归
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_save_ -- --nocapture` 执行真实 Bun 保存。比较实际文件、完整 Bot／目标及新 revision。用独立原文验证 CRLF、LF、空行、tab 和首尾空格；下游只从声明的 ID 读取，handoff 不带正文。并发修改、过期 revision 或错误绑定应拒绝。已保存但材料失败时保留部分效果，不回滚或刷新 baseline。具体输入和授权见[共同业务材料契约](../business-materials.md)。
 
@@ -343,7 +347,7 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-node-approval-v1 --to
 
 用户已经明确授权某个 auth 文件时，复用 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-codex --scenario node-approval-v1 --hosts omp,pi --backend "$HERDR_BOT_BINARY" --toolkit "$TOOLKIT_WT" --paths-file "$ISOLATED_PATHS" --pi-package "$PI_PACKAGE" --auth-file "$AUTHORIZED_AUTH_FILE" --evidence-dir "$NEW_EVIDENCE_DIR"`；先用同入口 `--smoke` 和另一个新证据目录检查真实返回身份。该传输只支持 canonical `gpt-6-luna`，每个实际 `serverModel` 必须匹配；不复制、刷新或修改 auth，不把传输烟测当业务验收。HTTP 200 的 `error`／`response.failed` 终帧保留白名单错误类别和请求结构计数，不记录原文；无终帧的超时保留已观察到的帧数与 SDK 状态，不推断上游错误或重发请求。
 
-独占发布副本保留所有 node 的真实 Task、Suite、初始 Skill、宿主与业务职责，只重定位物理位置、传输及存储。两个 V1 Run 分别由 OMP／Pi 原生管理者协调，内部编写者／优化者仍使用原发布的混合宿主；不会将节点全改为管理者宿主。新 request 由真实模型生产，真实 Bun 创建与保存；保存只接收 baseline 和三份明确命名正文。完整 Bot／目标／新 revision、实际文件字节、原生确认真实返回及管理者显式 complete／finish 交叉核对，不能由成功文字或 Schema 代替。其余四张非 V2 发布 Map 也分别由 OMP、Pi 管理者独立执行。五张 Map 共十格；按管理者宿主分别记录 22 个发布节点的 S2 和 S3，加上两个宿主各自的 P31／P35，共 92 项。outer 中嵌套的 V1 子 Run 不能替代独立顶层 V1 格。Tibo 只读真实公开页面，临时目录调查仅指词典重定位的独占目录，不扫描用户 TEMP 或部署环境。两个调查节点没有命名输出约定，按各自保存的报告正文和真实来源验收；目录报告须给出项目绝对路径及 branch。静默观察保留所属 Session 的已接受 heartbeat 原始 wire 索引，不将其计为业务推进；其他写入仍拒绝，同时核对公开 Run、报告和待处理报告不变。
+独占发布副本保留所有 node 的真实 Task、Suite、初始 Skill、宿主与业务职责，只重定位物理位置、传输及存储。两个 V1 Run 分别由 OMP／Pi 原生管理者协调，内部编写者／优化者仍使用原发布的混合宿主；不会将节点全改为管理者宿主。新 request 由真实模型生产，真实 Bun 创建与保存；保存只接收 baseline 和四份明确命名正文。完整 Bot／目标／新 revision、实际文件字节、原生确认真实返回及管理者显式 complete／finish 交叉核对，不能由成功文字或 Schema 代替。其余四张非 V2 发布 Map 也分别由 OMP、Pi 管理者独立执行。五张 Map 共十格；按管理者宿主分别记录 22 个发布节点的 S2 和 S3，加上两个宿主各自的 P31／P35，共 92 项。outer 中嵌套的 V1 子 Run 不能替代独立顶层 V1 格。Tibo 只读真实公开页面，临时目录调查仅指词典重定位的独占目录，不扫描用户 TEMP 或部署环境。两个调查节点没有命名输出约定，按各自保存的报告正文和真实来源验收；目录报告须给出项目绝对路径及 branch。静默观察保留所属 Session 的已接受 heartbeat 原始 wire 索引，不将其计为业务推进；其他写入仍拒绝，同时核对公开 Run、报告和待处理报告不变。
 
 页面专项 `node-approval-v1-browser.mjs` 读取上述真实定义与真实 Run，逐节点比较独立字面模式、当前配置、冻结模式和实际来源，并保留截图／公开 JSON；不新增通用控件保存用例、不通过 HTTP 代原生批准。打开当前节点编辑器会以 `POST .../nodes/edit` 读取草稿；只接受当前 Map／node 的纯 `{id}` 查询，不把保存或其他写请求豁免为观察。打包页与业务判据分开收证；页面清理缺 Chrome 退出确认时不得继续派发。原生 Yes 只能作用于本次 owned pane，必须看到选中项并核对原始 UI true 返回；原生 Ask 业务问题不能通过取消表单或强迫工具顺序规避。外层创建 Task 可核对原生表单控件之前展示的完整候选，选项与默认值不充当授权；比较原生表单返回的选项值与 Ask 工具返回的可读标签，不将二者按裸字符串对比。单请求容量下，由真实 manager 逐个派发 V1 就绪节点（含嵌套 V1），不改发布依赖或模型并发。业务输入只供给当前 Run 及其真实子 Run；任一实际节点已失败时，本格不能以 retry 补齐原执行的覆盖，立即保留该节点、报告和当前公开事实，不继续等待整格超时。仍 running 的节点不按失败处理。顶层 V1、外层创建、修订和规划场景在各格独占的 MCP runtime/cache 中先索引参与 worktree 并核对 ready 与源码根，再启动业务；不修改共享索引配置。透明代理保留 manager collect 的原有 91 分钟原生传输预算，不按普通请求的 330 秒截断已开始的响应。规划场景通过公开 HTTP 准备和读回两个职责不同的隔离 Bot／Task，只规划并验证 `inspect → summarize` 的 `findings` 绑定，不运行生成的 Map。原生 Yes 前核对实际完整候选字节，不把目录中同字节的额外 proposal 文件都必须由该 actor 再次 read 当作批准前提；必要材料的完整消费仍按本 execution 的真实命名输入另行核对。
 
@@ -423,7 +427,7 @@ Codex 非成功响应仅记录固定错误类别和请求形状（数量、长�
 
 专项以发布 `create-task-v2.json` 及其真实两节点 `create-bot-v2.json` 独占副本运行，保留业务提示词、Skill、Suite、拓扑和专用 V2 authorization／confirmation 材料；只重定位物理 zone、契约地址和显式模型／宿主。两个宿主分别真实创建只读 CSV Task 与完整 Bot，三个人工职责观察原生完整问题、选中 Yes、真实 true 返回；子管理者 finish 后独立执行父层自动批准。原生历史、真实模型请求／返回身份、工具与透传 HTTP、命名材料字节、实际配置／revision、显式 complete／finish、独立 Run 身份及 V1 原定义未改证据均归档。批准、最新可交接报告及声明交付分别核对。驱动不发送 `complete` 探针：首次交接取真实 manager 工具结果及 `changed=true` 的公开快照，用快照的有序报告和累计 outputs 验证门禁，不按响应结束时间排序。无报告／最新 false 的拒绝由原 S1 `completion_gate` 覆盖。以 Run、node、execution 和 session 关联原生 Yes、公开来源与父子 finish；自动节点查原始成果确认记录，不以驱动未按键推断无弹窗。
 
-业务交互驱动按实际 node 身份限定权限：Task 阶段不能授权 Bot 保存，需求阶段不能提前批准三指南／最终保存，设计阶段仅批准真实展示且与本次目标一致的完整候选；没有结构化完整候选或动作不明时不授权；Task 候选可用结构化块，或用单一字段表格配唯一的完整 prompt 块展示，仍按同一规则核对全部字段。不把创建 Task 和写入材料合并授权。先校验整张原生表单，再操作终端。不合规表单以真实 Esc 拒绝并保留返回。将实际授权的候选与 Task／Bot 保存、完整读回及 revision 关联；按发布 Map 的已知接线核对 V2 request、双材料及父层最终交付，按角色在执行动作前验证实际读取。隔离副本仅额外授权读取 Map 明确绑定的 V2 格式契约文件。离线授权策略自测只证明驱动边界，不证明原生批准或模型业务成功。每个进程显式设置 TMP／TEMP／TMPDIR，业务消息明确独占材料／临时目录与只读文档／Skill 范围；沿用现有规划验收的参与 worktree 只读仓库绑定，使 Task 文档根与 `run_instructions` 同根，不建立第二份仓库副本或路径别名。禁止共享 Temp／`/tmp` 发现式查找和写入；这些是配置与授权约束，不是 OS 文件系统沙箱，观察到越界不能认证通过或事后扩权。
+业务交互驱动按实际 node 身份限定权限：Task 阶段不能授权 Bot 保存，需求阶段不能提前批准四字段摘要／最终保存，设计阶段仅批准真实展示且与本次目标一致的完整候选；没有结构化完整候选或动作不明时不授权；Task 候选可用结构化块，或用单一字段表格配唯一的完整 prompt 块展示，仍按同一规则核对全部字段。不把创建 Task 和写入材料合并授权。先校验整张原生表单，再操作终端。不合规表单以真实 Esc 拒绝并保留返回。将实际授权的候选与 Task／Bot 保存、完整读回及 revision 关联；按发布 Map 的已知接线核对 V2 request、双材料及父层最终交付，按角色在执行动作前验证实际读取。隔离副本仅额外授权读取 Map 明确绑定的 V2 格式契约文件。离线授权策略自测只证明驱动边界，不证明原生批准或模型业务成功。每个进程显式设置 TMP／TEMP／TMPDIR，业务消息明确独占材料／临时目录与只读文档／Skill 范围；沿用现有规划验收的参与 worktree 只读仓库绑定，使 Task 文档根与 `run_instructions` 同根，不建立第二份仓库副本或路径别名。禁止共享 Temp／`/tmp` 发现式查找和写入；这些是配置与授权约束，不是 OS 文件系统沙箱，观察到越界不能认证通过或事后扩权。
 
 `node-approval-v2-browser.mjs` 使用本次真实打包页面：逐项消费四个发布职责、实际发起 Run、在选中节点的执行事实、适用报告及累计 outputs 区域对照独立 HTTP 的执行 ID、冻结模式、批准来源、报告 ID／正文和 output ID／地址，不重复通用编辑场景。Chrome profile、宿主会话、HOME／APPDATA／XDG、定义、进程、数值高位回环端口和材料全部独占；保留实际 Chrome 进程句柄退出及 profile 关联 utility 退出确认，清理错误与原始错误分开。完成后 91 秒单调窗口覆盖 60 秒成果批准＋30 秒 HTTP 预算及 1 秒余量。
 
