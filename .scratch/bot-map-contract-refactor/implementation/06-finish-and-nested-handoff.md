@@ -30,6 +30,14 @@
 
 从本票 bot worktree 运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch` 中 `nested_completion::`、`nesting::`、`nested_retry::`、`end_node::`、报告通知及新增 finish case；补齐并复跑 04 的冻结选择器。分别保留状态、HTTP、实际文件和外部调用证据，不把最终 completed 当作全部交接通过。
 
+### 本票产品证据
+
+- P15–P17、P21、P29：`end_node::public_finish_rejects_each_bad_binding_and_preserves_first_delivery`、`public_finish_without_file_rule_accepts_no_output_parameter`、`public_finish_preserves_truth_across_current_save_and_history_failures` 与 `end_node_waits_for_every_node_then_explicit_finish_preserves_open_running_chat` 分别观察 HTTP 拒绝、首次持久结果与文件字节、保存/历史部分效果，以及交给用户继续后仍需显式结束。
+- P7、P18–P20、P27：`nested_outputs_use_frozen_parent_rules_and_feed_both_downstream_kinds`、`nested_completion_requires_explicit_child_finish_before_ready_report` 和 `nested_saved_notification_failure_latest_report_and_exact_close_are_independent` 分开核对完整子 Run 成果、父节点同名子集、逐动作公开状态、持久报告及通知调用；`delayed_failed_notification_preserves_saved_report_and_pending_handoff` 与 `approval::` 保留普通节点的独立报告、批准和完成证据。
+- P12、P32：`frozen_map::` 与 `execution_rules_remain_frozen_on_retry_and_change_only_in_a_new_run` 对照原图编辑前后的准备、dispatch、retry、finish 与新 Run；`workflowCurrent.spec.ts`、`workflowRefresh.spec.ts` 和 `workflowHistory.spec.ts` 对照生产页面、公开读取及刷新不重放。另用 `schedulerNodeDeletion.spec.ts` 的 P30 case 核对实际删除后历史与冻结图保留。
+- 原 bot worktree 同步后，通过前端生产构建、后端及安全关机壳构建、后端定向回归 59 项、Vitest `runDetails`/`runExecutionZone` 14 项、实际浏览器 16 项。Bun 默认链接安装出现模块解析失败，改用同一冻结锁文件的 hoisted/copyfile 本地安装后通过构建和测试。
+- 本票只列 bot 仓；跨仓工具接缝由 11 承接，原生 tester 专项由 13 承接。上述产品检查是定向证据，不表示全仓测试、原生工具、实际业务或现场切换已验收。
+
 ## 覆盖及测试所有权
 
 [逐 promise 覆盖分区](../tickets.md#coverage-partition)中标为 06 的每个 case 由本票负责编写、维护和取证；不同证据层级不能互相补格。若一个 case 同时证明多个 promise，引用同一份证据，不复制测试。依赖票提供能力，不自动承担本票的验收 case。
