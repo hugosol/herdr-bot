@@ -197,7 +197,7 @@ for (const condition of ['missing', 'unreadable'] as const) {
     const secondRead = page.waitForResponse(response => response.url() === `${host.baseURL}/api/workflow/runs/${old.childRunId}` && response.request().method() === 'GET')
     await page.getByRole('button', { name: '刷新 Run', exact: true }).click()
     expect((await secondRead).status()).toBe(500)
-    expect((await (await page.request.get(`${host.baseURL}/api/workflow/runs/${decoy.id}`)).json()).run.userInput).toBe('DECOY MUST NOT OPEN')
+    expect((await (await page.request.get(`${host.baseURL}/api/workflow/runs/${decoy.id}`)).json()).run.mapInput.runInput).toBe('DECOY MUST NOT OPEN')
     expect(fs.readFileSync(parentPath, 'utf8')).toBe(before)
     expect(fs.readdirSync(runRoot).sort()).toEqual(ids)
     expect(host.herdrCalls()).toEqual(calls)

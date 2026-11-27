@@ -44,6 +44,9 @@ pub(crate) async fn manager_retry(state: AppState, input: RetryRequest) -> RunRe
         if !run.inputs_ready {
             return rejection(&state, &run, &map, "run-inputs-not-ready", "Run 输入尚未检查并确认；请先 prepare_inputs。").await;
         }
+        if let Some(message) = preflight::check_required_inputs(&map, &run.map_input.files) {
+            return rejection(&state, &run, &map, "run-inputs-invalid", &message).await;
+        }
         let overrides = input.zone_id.as_ref().map(|zone| BTreeMap::from([(input.node_id.clone(), zone.clone())])).unwrap_or_default();
         let mut zones = match crate::scheduler::validate_zone_selections(&state, &run, &map, std::slice::from_ref(&input.node_id), &overrides).await {
             Ok(zones) => zones,

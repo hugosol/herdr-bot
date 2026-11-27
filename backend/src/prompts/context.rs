@@ -1,6 +1,6 @@
 use std::{fmt::Write, path::{Path, PathBuf}};
 
-use crate::{chief_delegation::Material, scheduler::maps::{OutputRule, ResolvedFile}};
+use crate::{chief_delegation::Material, runs::MapInput, scheduler::maps::{OutputRule, ResolvedFile}};
 
 use super::roles;
 
@@ -22,6 +22,7 @@ pub(crate) struct ManagerContext<'a> {
     pub id: &'a str,
     pub map: PathBuf,
     pub files: RunFiles<'a>,
+    pub input: &'a MapInput,
 }
 
 pub(crate) struct NodeContext<'a> {
@@ -50,26 +51,35 @@ pub(crate) struct ChiefDelegationContext<'a> {
     pub materials: &'a [Material],
 }
 
-fn write_manager_facts(text: &mut String, context: &ManagerContext<'_>, child: bool) {
-    writeln!(text, "Run ID: {}\nMap: {}", context.id, context.map.display()).unwrap();
-    if !child {
-        writeln!(text, "运行说明: {}", context.files.instructions.display()).unwrap();
-    }
+fn write_manager(text: &mut String, context: &ManagerContext<'_>) {
+    writeln!(text, "{}\n\nRun ID: {}\nMap: {}\n运行说明: {}",
+        roles::MANAGER, context.id, context.map.display(), context.files.instructions.display()).unwrap();
     context.files.write_records(text);
     write!(text, "\n中间资料位置: {}", context.files.materials.display()).unwrap();
 }
 
-fn write_manager_contract(text: &mut String, child: bool) {
-    write!(text, "\n\n[End node contract] {} [/End node contract]", roles::manager_end_node_contract(child)).unwrap();
+fn write_named_files(text: &mut String, files: &[ResolvedFile]) {
+    text.push_str("[Named file inputs]\n");
+    for file in files {
+        writeln!(text, "{}: {}", file.id, file.path).unwrap();
+    }
+    text.push_str("[/Named file inputs]");
 }
 
-pub(super) fn manager(context: &ManagerContext<'_>, input: &str) -> String {
+pub(super) fn manager(context: &ManagerContext<'_>, delegated: bool) -> String {
     let mut text = String::new();
-    write_manager_facts(&mut text, context, false);
-    write_manager_contract(&mut text, false);
-    if !input.is_empty() {
+    write_manager(&mut text, context);
+    if delegated {
         text.push_str("\n\n");
-        text.push_str(input);
+        text.push_str(roles::CHIEF_DELEGATION);
+    }
+    if !context.input.files.is_empty() {
+        text.push_str("\n\n");
+        write_named_files(&mut text, &context.input.files);
+    }
+    if !context.input.run_input.is_empty() {
+        text.push_str("\n\n");
+        text.push_str(&context.input.run_input);
     }
     text
 }
@@ -77,26 +87,23 @@ pub(super) fn manager(context: &ManagerContext<'_>, input: &str) -> String {
 pub(super) fn node(context: &NodeContext<'_>, rendered_input: &str) -> serde_json::Result<String> {
     let mut text = String::new();
     if let Some(role) = &context.role {
-        writeln!(text, "Node ID: {}\nNode: {}\n运行说明: {}", role.id, role.title, role.run_files.instructions.display()).unwrap();
+        writeln!(text, "{}\n\nNode ID: {}\nNode: {}\n运行说明: {}", roles::NODE, role.id, role.title, role.run_files.instructions.display()).unwrap();
         role.run_files.write_records(&mut text);
         write!(text, "\n\n中间资料位置: {}\n\n", role.run_files.materials.display()).unwrap();
     }
-    write!(text, "[Run background / userInput]\n{}\n[/Run background / userInput]\n\n[Named file inputs]\n", context.background).unwrap();
-    for file in context.files {
-        writeln!(text, "{}: {}", file.id, file.path).unwrap();
-    }
-    text.push_str("[/Named file inputs]\n\n");
+    write!(text, "[Run background / runInput]\n{}\n[/Run background / runInput]\n\n", context.background).unwrap();
+    write_named_files(&mut text, context.files);
+    text.push_str("\n\n");
     if let Some(role) = &context.role {
         let output_rule = serde_json::to_string(&role.output_rule)?;
-        write!(text, "[Output rules]\n{output_rule}\n[/Output rules]\n\n[Result approval control]\nauto_approved: {}\n{}\n[/Result approval control]\n\n",
+        write!(text, "[Output rules]\n{output_rule}\n[/Output rules]\n\n[Result approval control]\n本次成果批准模式为 {}。{}\n[/Result approval control]\n\n",
             role.auto_approved, roles::NODE_APPROVAL).unwrap();
     }
     write!(text, "[Business input]\n{rendered_input}").unwrap();
     if let Some(child) = &context.child {
-        text.push_str("\n\n[Child Run manager context]\n");
-        write_manager_facts(&mut text, child, true);
-        text.push_str("\n[/Child Run manager context]");
-        write_manager_contract(&mut text, true);
+        text.push_str("\n[/Business input]\n\n[Child Run manager context]\n");
+        write_manager(&mut text, child);
+        write!(text, "\n\n{}\n[/Child Run manager context]", roles::CHILD_MANAGER).unwrap();
     }
     Ok(text)
 }
@@ -110,5 +117,5 @@ pub(super) fn chief_delegated_task(context: &ChiefDelegationContext<'_>, input: 
         "cwd": context.cwd,
         "materials": context.materials,
     });
-    format!("{input}\n\n[Chief delegation]\n{}", serde_json::to_string_pretty(&facts).expect("context serialization"))
+    format!("{input}\n\n[Chief delegation]\n{}\n\n{}", roles::CHIEF_DELEGATION, serde_json::to_string_pretty(&facts).expect("context serialization"))
 }

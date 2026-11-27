@@ -720,9 +720,9 @@ async fn root_runs_preserve_named_bindings_separately_from_business_text() {
         let detail = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{id}")).await;
         assert_eq!(detail.status, 200, "{}", detail.body);
         let detail: Value = serde_json::from_str(&detail.body).unwrap();
-        assert_eq!(detail["run"]["fileInputs"], bindings);
+        assert_eq!(detail["run"]["mapInput"]["files"], bindings);
         assert_eq!(detail["run"]["inputsReady"], false, "readable startup bindings are not semantic confirmation, including after reload");
-        assert_eq!(detail["run"]["userInput"], business);
+        assert_eq!(detail["run"]["mapInput"]["runInput"], business);
     }
 }
 
@@ -747,7 +747,7 @@ async fn handoff_order_requires_a_declared_map_input_before_manager_preparation(
     let unchanged = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{}", first["id"].as_str().unwrap())).await;
     let unchanged: Value = serde_json::from_str(&unchanged.body).unwrap();
     assert_eq!(unchanged["run"]["inputsReady"], false);
-    assert_eq!(unchanged["run"]["fileInputs"], json!([]));
+    assert_eq!(unchanged["run"]["mapInput"]["files"], json!([]));
 
     let declarations = json!([{"id":"order","required":true,"description":"Original order; discount may be null for discussion."}]);
     let draft = get_over_tcp(server.addr(), "/api/scheduler/maps/work.json/inputs").await;
@@ -769,7 +769,7 @@ async fn handoff_order_requires_a_declared_map_input_before_manager_preparation(
     let detail = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{}", corrected["id"].as_str().unwrap())).await;
     let detail: Value = serde_json::from_str(&detail.body).unwrap();
     assert_eq!(detail["run"]["inputsReady"], true);
-    assert_eq!(detail["run"]["fileInputs"], bindings);
+    assert_eq!(detail["run"]["mapInput"]["files"], bindings);
     assert!(detail["run"]["nodes"]["A"]["execution"].is_null());
     assert_eq!(fs::read(&order).unwrap(), br#"{"quantity":7,"unitPriceCents":1200,"discountPercent":null}"#);
     println!("handoff fixture public HTTP: undeclared order -> 409; declared order -> prepared without discount, dispatch or model");
@@ -819,7 +819,7 @@ async fn roots_without_files_and_omitted_optional_inputs_start_with_empty_bindin
         assert_eq!(started.status, 201, "{}", started.body);
         let body: Value = serde_json::from_str(&started.body).unwrap();
         let detail = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{}",body["id"].as_str().unwrap())).await;
-        assert_eq!(serde_json::from_str::<Value>(&detail.body).unwrap()["run"]["fileInputs"], json!([]));
+        assert_eq!(serde_json::from_str::<Value>(&detail.body).unwrap()["run"]["mapInput"]["files"], json!([]));
     }
 }
 
@@ -904,7 +904,9 @@ async fn manager_trigger_and_status_follow_committed_identity() {
         .find(|c| c["kind"] == "agent_prompt")
         .unwrap();
     let body = common::prompt_body(&prompt);
-    assert!(body.starts_with("/skill:teach FIXED-ROLE-MARKER\n\n"));
+    assert!(body.starts_with("/skill:teach FIXED-ROLE-MARKER\n\n你负责本次 Run 的输入准备、节点编排、通用交接判断与流程收束"));
+    assert!(body.contains("业务执行和成果检查由节点承担，不加载或执行每张 Map 专属的业务验收规则。"));
+    assert!(!body.contains("BOT-WHEN-NOT-INJECTED") && !body.contains("BOT-PLAN-NOT-INJECTED") && !body.contains("BOT-NODE-NOT-INJECTED"));
     assert!(body.ends_with("\n\nLAST-USER-MARKER"));
     assert!(body.contains(original["id"].as_str().unwrap()));
     for required_path in [
@@ -1418,14 +1420,14 @@ async fn valid_empty_bot_documents_start_manager_and_preserve_literal_requiremen
         assert_eq!(response.status, 201, "{}", response.body);
         let body: Value = serde_json::from_str(&response.body).unwrap();
         let id = body["run"]["id"].as_str().unwrap();
-        assert_eq!(body["run"]["userInput"], requirements);
+        assert_eq!(body["run"]["mapInput"]["runInput"], requirements);
         assert_eq!(body["run"]["manager"]["sessionId"], "manager-native-04");
         assert_eq!(body["run"]["manager"]["workspaceId"], "w-manager");
         assert_eq!(body["run"]["managerTaskId"], ids[0]);
         let root = config.scheduler.run_directory.join(id);
         let persisted: Value =
             serde_json::from_slice(&fs::read(root.join("run.json")).unwrap()).unwrap();
-        assert_eq!(persisted["userInput"], requirements);
+        assert_eq!(persisted["mapInput"]["runInput"], requirements);
         assert_eq!(fs::read(root.join("messages.jsonl")).unwrap(), b"");
         assert_eq!(fs::read(root.join("history.jsonl")).unwrap(), b"");
         assert_eq!(persisted["nodes"]["A"]["status"], "pending");
@@ -1436,7 +1438,7 @@ async fn valid_empty_bot_documents_start_manager_and_preserve_literal_requiremen
             .rev()
             .find(|c| c["kind"] == "agent_prompt")
             .unwrap());
-        assert!(prompt.starts_with("FIXED-MANAGER-ROLE\n\nRun ID: "));
+        assert!(prompt.starts_with("FIXED-MANAGER-ROLE\n\n你负责本次 Run 的输入准备"));
         assert!(prompt.contains(&root.join("map.json").display().to_string()));
         assert!(!prompt.contains("MAP-BODY-NOT-INJECTED"));
         assert!(!prompt.contains("NODE-INPUT-NOT-INJECTED"));
@@ -1449,7 +1451,7 @@ async fn valid_empty_bot_documents_start_manager_and_preserve_literal_requiremen
         let detail = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{id}")).await;
         assert_eq!(detail.status, 200, "{}", detail.body);
         assert_eq!(
-            serde_json::from_str::<Value>(&detail.body).unwrap()["run"]["userInput"],
+            serde_json::from_str::<Value>(&detail.body).unwrap()["run"]["mapInput"]["runInput"],
             requirements
         );
         assert_eq!(

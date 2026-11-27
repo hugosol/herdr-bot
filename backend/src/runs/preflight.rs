@@ -236,6 +236,18 @@ pub(crate) fn check_prepared_inputs(map: &WorkflowMap, name: &str, files: &[Reso
     (!issues.is_empty()).then(|| PreflightFailure(issues).message())
 }
 
+pub(super) fn check_required_inputs(map: &WorkflowMap, files: &[ResolvedFile]) -> Option<String> {
+    for declared in map.input_files().iter().filter(|declared| declared.required) {
+        let Some(binding) = files.iter().find(|file| file.id == declared.id) else {
+            return Some(format!("缺少必需文件输入：{}", declared.id));
+        };
+        if let Err(error) = check_input_file(&binding.path) {
+            return Some(format!("必需文件输入 {}：{error}", declared.id));
+        }
+    }
+    None
+}
+
 fn github_material_issues(name: &str, declarations: &[MapFileInput], input: &RunPreflightRequest) -> Vec<PreflightIssue> {
     let Some(github) = &input.github_exploration else { return Vec::new(); };
     if name != "github-repository-exploration.json" {

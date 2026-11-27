@@ -14,7 +14,7 @@ async fn resolve_inputs(state: &AppState, run: &Run, rules: &[crate::scheduler::
                 (id, absolute)
             },
             crate::scheduler::maps::InputRule::Run { id, input_id } => {
-                let Some(file) = run.file_inputs.iter().find(|file| file.id == *input_id) else { continue; };
+                let Some(file) = run.map_input.files.iter().find(|file| file.id == *input_id) else { continue; };
                 (id, file.path.clone())
             }
             crate::scheduler::maps::InputRule::Node { id, node_id, output_id } => {
@@ -279,7 +279,8 @@ async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &
         parent: Some(ParentExecution { run_id: parent.id.clone(), node_id: node_id.to_owned(), execution_id: execution.id.clone() }),
         manager_zone_id: Some(zone_id.clone()), zone: target.zone.clone(),
         zone_bindings: { let mut bindings = checked.zone_bindings; bindings.insert(zone_id, target.zone.clone()); bindings },
-        workspace_name: parent.workspace_name.clone(), user_input: input.user_input, file_inputs: input.file_inputs,
+        workspace_name: parent.workspace_name.clone(),
+        map_input: MapInput { run_input: input.user_input, files: input.file_inputs },
         inputs_ready: false, manager: None, status: "running".into(), finished: None,
         nodes: checked.map.nodes.into_keys().map(|id| (id, NodeState { status: "pending".into(), execution: None, failure: None, completion: None, auto_close_failure: None, previous_executions: Vec::new() })).collect(),
     };
@@ -432,12 +433,12 @@ async fn protocol(
         let fixed = &task.trigger.prompt;
         let skill = preset.trigger.native_skill.as_deref();
         let text = match &role {
-            Role::Manager => state.prompts.manager(fixed, skill, &run.manager_context(state), &run.user_input),
+            Role::Manager => state.prompts.manager(fixed, skill, &run.manager_context(state), false),
             Role::Node { id, target, .. } => {
                 use crate::prompts::{NodeContext, NodeRole};
                 let execution = run.nodes[*id].execution.as_ref().ok_or("缺少冻结执行。")?;
                 state.prompts.node(fixed, skill, &NodeContext {
-                    background: &run.user_input,
+                    background: &run.map_input.run_input,
                     input: target.input,
                     files: execution.inputs.as_deref().ok_or("缺少冻结输入地址。")?,
                     role: (!execution.end_node).then(|| NodeRole {
@@ -445,7 +446,7 @@ async fn protocol(
                         title: &target.title,
                         run_files: run.prompt_files(state),
                         output_rule: execution.output_rule.as_deref(),
-                        auto_approved: target.auto_approved,
+                        auto_approved: execution.auto_approved,
                     }),
                     child: child.as_deref().map(|child| child.manager_context(state)),
                 })

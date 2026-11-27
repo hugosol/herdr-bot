@@ -83,7 +83,7 @@ Bot 的 when、description、input_rule、output_rule 供规划者和调用者�
 | --- | --- |
 | 文件来源与上游交付物引用 | `input_rule`；正文解释命名材料用途，不重复地址或寻址算法 |
 | 可交接文件的逻辑标识 | `output_rule`；正文说明内容、格式与业务完成标准 |
-| 本次 `userInput`、解析后的文件地址、中间资料位置 | 系统初始化，不为取得这些信息读取运行记录或推导运行身份 |
+| 本次 `mapInput.runInput`、解析后的文件地址、中间资料位置 | 系统初始化，不为取得这些信息读取运行记录或推导运行身份 |
 | 前置依赖与流程推进 | `blocked_by` 与管理者编排，不由消费者筛报告重做调度 |
 | 成果批准模式 | `auto_approved`；不控制报告发送。业务内容确认与保存授权仍由业务约定。 |
 
@@ -105,11 +105,11 @@ Bot 摘要修订可直接引用同一 `baseline` 及四组 `*_text`、`*_handoff
 
 发起表单按 `map_input_rule.files` 展示输入项，以各文件说明或 ID 作为标签，并另标必需／可选。总体输入说明非空时在文件输入上方单独呈现。
 
-“+ 发起 Run”中，“本次要求”只承载业务文字，文件输入控件分别填写服务器上已有文件的绝对地址。所有文件项（包括必需项）均可在启动时留空，交由管理者对话补齐；持久 `fileInputs` 不生成未提供项；不填占位地址、默认路径，也不从业务文字或目录自动找文件。启动表单更换文件只改变新 Run 的初始绑定，不需要重写 Map；已有 Run 可由管理者通过 `prepare_inputs` 整批替换绑定，但不改变已派发 execution 的输入地址。地址绑定不是文件内容快照，不复制或锁定源文件。
+“+ 发起 Run”中，“本次要求”只承载业务文字，文件输入控件分别填写服务器上已有文件的绝对地址。所有文件项（包括必需项）均可在启动时留空，交由管理者对话补齐；持久 `mapInput.files` 不生成未提供项；不填占位地址、默认路径，也不从业务文字或目录自动找文件。启动表单更换文件只改变新 Run 的初始绑定，不需要重写 Map；已有 Run 可由管理者通过 `prepare_inputs` 整批替换绑定，但不改变已派发 execution 的输入地址。地址绑定不是文件内容快照，不复制或锁定源文件。
 
 公开声明编辑入口为 `GET /api/scheduler/maps/{filename}/inputs`，返回已声明的 `map_input_rule`／`map_output_rule` 和 `{file,original}` revision；`POST` 同一路径提交 `{map_input_rule?,map_output_rule?,revision}`，一并替换两侧，省略任一侧即移除该规则，成功返回更新后 Map。非法规则不写文件；revision 已变化时拒绝覆盖。启动／预检接受可选 `fileInputs: [{id,path}]`，省略与 `[]` 均表示没有绑定。启动允许必需文件暂缺；未声明 ID、同次绑定 ID 重复或已提供文件缺失／不可读仍在 Run 分配与宿主启动前拒绝（文件错误为 `run-input-unreadable`），反馈 `target: "run-input"` 与 `inputId`，页面可定位对应文件输入。
 
-新 Run 的 `inputsReady=false`。管理者须先阅读 Map 的 `map_input_rule.description`、每项 `map_input_rule.files[].description` 及已有材料，接收用户文字／文件、澄清语义与授权，必要时在授权范围内整理文件，再用 `prepare_inputs` 绑定并确认；全部业务节点在确认前均不得 dispatch／retry，不能先派发“准备节点”代替管理者完成输入准备。必需项在确认时强制齐全；直接与嵌套调用遵循同一规则，协议见[运行输入准备](workflow-runtime.md#管理者输入准备prepare_inputs)。
+新 Run 的 `inputsReady=false`。管理者须先阅读 Map 的 `map_input_rule.description`、每项 `map_input_rule.files[].description` 及已有材料，接收用户文字／文件、澄清语义与授权，必要时在授权范围内整理文件，再用 `prepare_inputs` 绑定并确认；全部业务节点在确认前均不得 dispatch／retry，不能先派发“准备节点”代替管理者完成输入准备。必需项在确认及派发时必须齐全可读；直接、嵌套与 chief 委派的 Map 遵循同一规则，协议见[运行输入准备](workflow-runtime.md#管理者输入准备prepare_inputs)。
 
 ### 动态执行 zone
 

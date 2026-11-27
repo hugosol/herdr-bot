@@ -356,12 +356,10 @@ async fn invalid_nested_links_and_source_mismatches_are_rejected_without_effects
     role_request(&s, "/api/workflow/manager/status", json!({"sessionId":"auth-child"}), 200).await;
 }
 
-// P10/P11: absence is legal only when the child declaration permits it.
-// A pass-through that fabricates a placeholder or skips child preflight would
-// start the required case. Observe empty bindings, explicit missing ID, and no
-// additional host start or child record after changing only requiredness.
+// Optional and required absence both allow a child manager to start, but only
+// optional absence can pass preparation. Never manufacture an input address.
 #[tokio::test]
-async fn optional_absence_passes_nested_interface_but_cannot_bypass_required_child() {
+async fn missing_required_child_material_does_not_block_manager_but_blocks_work() {
     let s = Scenario::new().await;
     nested(&s, &s.manager_task, "OPTIONAL");
     let maps = &s.config.scheduler.map_directory;
@@ -377,7 +375,7 @@ async fn optional_absence_passes_nested_interface_but_cannot_bypass_required_chi
     native(&s, "omp", "optional-child", "node-zone");
     let first = s.dispatch("optional-root", &["A"]).await;
     let child_id = first["snapshot"]["nodes"]["A"]["execution"]["childRunId"].as_str().unwrap();
-    assert_eq!(detail(&s, child_id).await["run"]["fileInputs"], json!([]));
+    assert_eq!(detail(&s, child_id).await["run"]["mapInput"]["files"], json!([]));
     native(&s, "omp", "optional-worker", "");
     let work = s.dispatch("optional-child", &["A"]).await;
     assert_eq!(work["snapshot"]["nodes"]["A"]["status"], "running");
@@ -388,7 +386,9 @@ async fn optional_absence_passes_nested_interface_but_cannot_bypass_required_chi
     let started = s.dispatch("optional-root", &["B"]).await;
     assert_eq!(started["results"][0]["status"], "running");
     let child_id = started["snapshot"]["nodes"]["B"]["execution"]["childRunId"].as_str().unwrap();
-    assert_eq!(detail(&s, child_id).await["run"]["inputsReady"], false);
+    let child = detail(&s, child_id).await;
+    assert_eq!(child["run"]["mapInput"]["files"], json!([]));
+    assert_eq!(child["run"]["inputsReady"], false);
     let calls = s.herdr.calls();
     let rejected = role_request(&s, "/api/workflow/manager/prepare_inputs", json!({"sessionId":"required-child","fileInputs":[],"confirmed":true,"reason":"Review cannot supply the absent material"}), 409).await;
     assert!(rejected.to_string().contains("material"));
@@ -427,7 +427,7 @@ async fn upstream_output_uses_parent_local_id_for_the_child_interface() {
     let dispatched = s.dispatch("mapping-root", &["A"]).await;
     let execution = &dispatched["snapshot"]["nodes"]["A"]["execution"];
     assert_eq!(execution["inputs"], json!([{"id":"child-material","path":path}]));
-    assert_eq!(detail(&s, execution["childRunId"].as_str().unwrap()).await["run"]["fileInputs"], json!([{"id":"child-material","path":path}]));
+    assert_eq!(detail(&s, execution["childRunId"].as_str().unwrap()).await["run"]["mapInput"]["files"], json!([{"id":"child-material","path":path}]));
     assert_eq!(fs::read_to_string(path).unwrap(), "UPSTREAM-REAL-729");
 }
 
@@ -455,7 +455,7 @@ async fn multilevel_local_ids_bind_only_the_owning_run() {
         let parent = s.dispatch(root_session, &["A"]).await;
         let child_id = parent["snapshot"]["nodes"]["A"]["execution"]["childRunId"].as_str().unwrap();
         let child = detail(&s, child_id).await;
-        assert_eq!(child["run"]["fileInputs"], json!([{"id":"shared","path":path}]));
+        assert_eq!(child["run"]["mapInput"]["files"], json!([{"id":"shared","path":path}]));
         assert_eq!(child["run"]["inputsReady"], false, "parent preparation does not attest the child's business scope");
         let calls = s.herdr.calls();
         let rejected = role_request(&s, "/api/workflow/manager/dispatch", json!({"sessionId":child_session,"nodes":["A"]}), 200).await;
@@ -465,7 +465,7 @@ async fn multilevel_local_ids_bind_only_the_owning_run() {
         native(&s, "omp", grand_session, "");
         let middle = s.dispatch(child_session, &["A"]).await;
         let grand_id = middle["snapshot"]["nodes"]["A"]["execution"]["childRunId"].as_str().unwrap();
-        assert_eq!(detail(&s, grand_id).await["run"]["fileInputs"], json!([{"id":"shared","path":path}]));
+        assert_eq!(detail(&s, grand_id).await["run"]["mapInput"]["files"], json!([{"id":"shared","path":path}]));
         native(&s, "omp", worker_session, "node-zone");
         let leaf = s.dispatch(grand_session, &["A"]).await;
         assert_eq!(leaf["snapshot"]["nodes"]["A"]["execution"]["inputs"], json!([{"id":"local","path":path}]));
@@ -495,8 +495,8 @@ async fn nested_dispatch_uses_node_manager_business_zone_and_independent_runs() 
         assert_eq!(child["run"]["managerTaskId"], task);
         assert_eq!(child["run"]["managerZoneId"], "node");
         assert_eq!(child["run"]["zone"], json!(s.data.path().join("node-zone")));
-        assert_eq!(child["run"]["userInput"], business);
-        assert_eq!(child["run"]["fileInputs"], json!([]));
+        assert_eq!(child["run"]["mapInput"]["runInput"], business);
+        assert_eq!(child["run"]["mapInput"]["files"], json!([]));
         assert_eq!(child["run"]["parent"], json!({"runId":root["id"],"nodeId":"A","executionId":execution["id"]}));
         assert_eq!(child["run"]["manager"], execution["chat"]);
         assert_eq!(dispatched["snapshot"]["nodes"].as_object().unwrap().len(), 2);
@@ -509,6 +509,11 @@ async fn nested_dispatch_uses_node_manager_business_zone_and_independent_runs() 
         assert!(prompt.contains(business), "{prompt}");
         assert!(prompt.contains(&format!("FIXED-{name}")), "{prompt}");
         assert!(!prompt.contains("MANAGER-FIXED"), "root manager preset must not replace node manager");
+        assert!(prompt.contains("你负责本次 Run 的输入准备、节点编排、通用交接判断与流程收束"));
+        assert!(prompt.contains("你同时承担内部 Run 管理者与父节点执行者职责。内部完成后，再向父层交接整体成果；内部结束不自动完成父节点。"));
+        assert!(prompt.contains("本次成果批准模式为 true。"));
+        assert!(prompt.contains(root["id"].as_str().unwrap()));
+        assert!(prompt.contains(child_id));
         assert_eq!(s.herdr.tabs().last().unwrap()["cwd"], json!(s.data.path().join("node-zone")));
         native(&s, host, &format!("{session}-second"), "node-zone");
         let second = s.dispatch("root-manager", &["B"]).await;

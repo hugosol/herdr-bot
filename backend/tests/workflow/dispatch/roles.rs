@@ -136,6 +136,10 @@ async fn same_normal_task_uses_standalone_node_and_persisted_resume_roles_for_bo
         let mut task = task.clone();
         task.as_object_mut().unwrap().remove("id");
         task["agent"] = json!(host);
+        task["prompt"] = json!("NODE-FIXED: read ${implementation}");
+        let implementation = s.data.path().join("implementation.md");
+        fs::write(&implementation, "IMPLEMENTATION-BODY-9247").unwrap();
+        fs::write(&s.config.prompts_file, format!("implementation = '{}'\n", implementation.display())).unwrap();
         let response = common::request_json_over_tcp(s.server.addr(), "PUT", &format!("/api/tasks/{id}"), Some(&task.to_string())).await;
         assert_eq!(response.status, 200, "{}", response.body);
         let zone = "node";
@@ -157,6 +161,10 @@ async fn same_normal_task_uses_standalone_node_and_persisted_resume_roles_for_bo
             }
         }).await.unwrap();
         assert_role(&s, offset, host, false, false);
+        let submissions = || common::read_json_lines(&s.herdr.path().join("submitted.jsonl"));
+        let standalone = submissions();
+        assert_eq!(common::prompt_body(&standalone[0]), format!("/skill:teach NODE-FIXED: read {}\n\nSTANDALONE ONLY", implementation.display()));
+        assert!(!standalone[0]["text"].as_str().unwrap().contains("IMPLEMENTATION-BODY-9247"));
         tokio::time::timeout(Duration::from_secs(10), async {
             loop {
                 let response = get_over_tcp(s.server.addr(), "/api/sessions/history").await;
@@ -175,6 +183,13 @@ async fn same_normal_task_uses_standalone_node_and_persisted_resume_roles_for_bo
         assert_eq!(original["agent"], host);
         assert_eq!(dispatched["snapshot"]["nodes"]["A"]["status"], "running");
         assert_role(&s, offset, host, true, false);
+        let messages = submissions();
+        let node = messages.last().unwrap()["text"].as_str().unwrap();
+        assert!(node.starts_with(&format!("/skill:teach NODE-FIXED: read {}\n\n你负责本次派发的工作", implementation.display())));
+        assert!(!node.contains("IMPLEMENTATION-BODY-9247"));
+        assert!(node.contains("[Business input]\nNODE-INPUT\n第二行"));
+        assert!(node.contains("[Run background / runInput]\nMANAGER-USER-SECRET"));
+        assert!(!node.contains("STANDALONE ONLY") && !node.contains("BOT-PLAN-SECRET"));
 
         // A new application has no active-run memory: Resume must use persisted execution facts.
         let restored = TestServer::start(&s.config).await;

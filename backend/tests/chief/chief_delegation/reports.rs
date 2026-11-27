@@ -115,7 +115,7 @@ async fn p17_only_actual_independent_chat_or_direct_manager_can_submit_chief_rep
     let (f, _, request) = map::map_fixture().await;
     let preview = post(&f.server, "/api/chief/delegations/preview", request).await;
     let started = body(post_json_over_tcp(f.server.addr(), "/api/chief/delegations", &json!({"sessionId":"chief-a","previewId":preview["previewId"]}).to_string()).await, 201);
-    post(&f.server, "/api/workflow/manager/prepare_inputs", json!({"sessionId":"flow-manager","fileInputs":started["run"]["fileInputs"],"confirmed":true,"reason":"Independent supplied brief approval"})).await;
+    post(&f.server, "/api/workflow/manager/prepare_inputs", json!({"sessionId":"flow-manager","fileInputs":started["run"]["mapInput"]["files"],"confirmed":true,"reason":"Independent supplied brief approval"})).await;
     f.identity("internal-reviewer");
     fs::write(f.root.path().join("internal-reviewer.jsonl"), json!({"type":"session","version":3,"id":"internal-reviewer","timestamp":"2026-11-12T00:00:00.000Z","cwd":f.root.path().join("materials")}).to_string()+"\n").unwrap();
     let mut behavior: Value = serde_json::from_slice(&fs::read(f.herdr.path().join("behavior.json")).unwrap()).unwrap();

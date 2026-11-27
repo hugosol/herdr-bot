@@ -8,7 +8,7 @@
 
 **Repositories:** bot
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 ## 权威与范围
 
@@ -18,18 +18,26 @@
 
 ## Acceptance criteria
 
-- [ ] 独立 Task 取得固定设定、初始 Skill、环境和自由用户输入，不被赋予普通节点报告角色；用独立标记区分 Bot 摘要、实现资料、用户输入和实际提交内容。Bot 文案和 Map.description 不自动注入。
-- [ ] 直接、嵌套及 chief Map 发起均允许必需材料未齐时先启动管理者；已提供的非法/不可读材料仍拒绝。chief 确认入口在 07 对齐此规则。
-- [ ] 公开与持久实际值为 mapInput.runInput/files，inputsReady 独立保留；按既有适用约定处理 camelCase/snake_case，不机械改名 prepare_inputs 既有操作参数，不新增原始说明编辑入口。
-- [ ] prepare_inputs 文件绑定整批替换：遗漏删除、空列表清空；confirmed=false 可保存未齐绑定，确认就绪及业务派发检查必需项；已派发 execution 输入冻结不随后续替换改变。
-- [ ] 普通节点分段取得 Run 背景、node.input、真实文件地址及输出要求，定义前后字节不变。节点按条件取得业务资料入口；管理者仅收通用编排说明，不加载 Map 专属业务验收。
-- [ ] 根/子管理者、独立 chief 委派路径复用批准正文，子管理者保留两层职责；OMP/Pi 产品装配及恢复沿用真实 execution/Run 关联，不新建执行或重放 trigger，结束节点仍无普通节点报告角色。
-- [ ] 每条消息共用一份词典快照，只替换既定类型字段；覆盖转义/未知标签/初始 Skill，不替换自由输入、路径或报告，不在后端展开业务文档。
-- [ ] P29 本票拥有输入拒绝和有真实外部启动/提交部分效果的 case，分别记录持久和外部事实，不将错误视为完全未发生。后续 06/07 消费本票输入机制而不重新维护政策；补齐 04 的冻结反例。
+- [x] 独立 Task 取得固定设定、初始 Skill、环境和自由用户输入，不被赋予普通节点报告角色；用独立标记区分 Bot 摘要、实现资料、用户输入和实际提交内容。Bot 文案和 Map.description 不自动注入。
+- [x] 直接、嵌套及 chief Map 发起均允许必需材料未齐时先启动管理者；已提供的非法/不可读材料仍拒绝。chief 确认入口在 07 对齐此规则。
+- [x] 公开与持久实际值为 mapInput.runInput/files，inputsReady 独立保留；按既有适用约定处理 camelCase/snake_case，不机械改名 prepare_inputs 既有操作参数，不新增原始说明编辑入口。
+- [x] prepare_inputs 文件绑定整批替换：遗漏删除、空列表清空；confirmed=false 可保存未齐绑定，确认就绪及业务派发检查必需项；已派发 execution 输入冻结不随后续替换改变。
+- [x] 普通节点分段取得 Run 背景、node.input、真实文件地址及输出要求，定义前后字节不变。节点按条件取得业务资料入口；管理者仅收通用编排说明，不加载 Map 专属业务验收。
+- [x] 根/子管理者、独立 chief 委派路径复用批准正文，子管理者保留两层职责；OMP/Pi 产品装配及恢复沿用真实 execution/Run 关联，不新建执行或重放 trigger，结束节点仍无普通节点报告角色。
+- [x] 每条消息共用一份词典快照，只替换既定类型字段；覆盖转义/未知标签/初始 Skill，不替换自由输入、路径或报告，不在后端展开业务文档。
+- [x] P29 本票拥有输入拒绝和有真实外部启动/提交部分效果的 case，分别记录持久和外部事实，不将错误视为完全未发生。后续 06/07 消费本票输入机制而不重新维护政策；补齐 04 的冻结反例。
 
 ## 检查与证据
 
 从本票 bot worktree 定向运行 `chat_creation`、`workflow_start`、`workflow_dispatch` 的初始提交/输入准备/roles/end_node case；恢复使用测试指引中 `p42` 及 chief Map 关联 case。页面发起用 `npm --prefix frontend run test:browser:build -- workflowStart.spec.ts --workers=1`。记录实际消息、公开身份/输入和定义字节；受控宿主结果不计为 tester 原生加载通过。
+
+### 本票产品证据
+
+- P1/P4/P10/P33/P36：`roles::same_normal_task_uses_standalone_node_and_persisted_resume_roles_for_both_hosts` 和 `dispatch_receives_background_direct_addresses_and_run_scoped_material_location` 对照受控终端已提交原文、独立 Task/节点角色、业务资料地址与正文、Bot/Map 描述及定义字节；`node_dictionary_reads_latest_and_does_not_expand_run_user_input` 与 `chat_creation` 的词典/Skill 用例核对标签、转义、自由文字、路径及报告。
+- P2/P8/P9/P12：`input_preparation::`、`missing_required_child_material_does_not_block_manager_but_blocks_work`、`map_accepts_missing_required_materials_but_rejects_invalid_supplied_materials` 及 `frozen_map::` 核对三种启动、公开及持久 `mapInput`、整批替换和派发/重试门禁。保留启动/预检的既有请求参数；`prepare_inputs` 仍用 `fileInputs`，没有修改原始要求的入口。
+- P29/P34/P35：`manager_trigger_and_status_follow_committed_identity`、`nested_dispatch_uses_node_manager_business_zone_and_independent_runs` 和 chief Map/Task 委派分别核对实际初始消息；`p42`、`app_delegated_map_binds_manager_before_approved_input`、`end_node::` 核对原角色与关联。`partial_child_submission_distinguishes_rejected_and_unknown_without_replaying` 和 `map_startup_failure_retains_run_provenance_and_real_submission_outcome` 将已经保存的身份、实际启动、明确拒绝和已写入但回执未知分开验证。
+- 定向 Cargo 主轮为 38 项通过；准备、冻结、原角色恢复和初始提交的补测轮为 12 项通过；最终独立 Task/普通节点实际提交对照 1 项通过（有重叠）。浏览器构建命令选 `workflowStart.spec.ts workflowCurrent.spec.ts --workers=1`，13 项通过；冻结图/刷新失败恢复另通过 2 项，嵌套、历史详情、子 Run 入口和 Map 删除另通过 7 项。Vitest 的 `runDetails`、`runExecutionZone`、`runLaunchForm` 共 15 项通过。首次浏览器构建因 Bun 链接安装缺 `picocolors` 未进入测试，改用同一冻结锁文件的本地 hoisted/copyfile 安装后通过。
+- 受控宿主和页面结果只证明产品装配、实际受控发送和公开/文件事实。不计为 tester 原生扩展加载、真实模型遵从或现场切换验收。
 
 ## 覆盖及测试所有权
 

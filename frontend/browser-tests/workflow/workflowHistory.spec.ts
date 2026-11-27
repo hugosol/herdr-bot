@@ -20,7 +20,7 @@ async function fixture(condition: 'missing' | 'invalid' | 'mismatch' = 'missing'
     fs.writeFileSync(path.join(directory, 'map.json'), condition === 'invalid' ? '{ invalid frozen definition' : JSON.stringify({ title: 'Unrelated definition', description: '', nodes: { Z: { title: 'Never map saved A here', bot_id: 'absent-bot', zone: '', input: '', blocked_by: [] } } }))
   }
   const manager = reference('manager-native'), current = reference('current-native'), old = reference('old-native')
-  const run = { id: 'history-run', map: 'missing.json', createdAt: 1000, managerTaskId: 'manager-task', zone: server.cwd, workspaceName: 'saved-workspace', userInput: 'KEEP USER INPUT', status: 'running', manager, finished: null, nodes: {
+  const run = { id: 'history-run', map: 'missing.json', createdAt: 1000, managerTaskId: 'manager-task', zone: server.cwd, workspaceName: 'saved-workspace', mapInput: { runInput: 'KEEP USER INPUT', files: [] }, status: 'running', manager, finished: null, nodes: {
     A: { status: 'running', execution: { autoApproved: true, approved: false, approvalSource: null, agent: 'omp', id: 'exec-new', taskId: 'task-new', zone: 'C:/new-zone', chat: current }, failure: null, completion: null, previousExecutions: [{ execution: { autoApproved: true, approved: false, approvalSource: null, agent: 'omp', id: 'exec-old', taskId: 'task-old', zone: 'C:/old-zone', chat: old }, failure: { stage: 'execution', message: 'OLD FAILURE' } }] },
     B: { status: 'pending', execution: null, failure: null, completion: null, previousExecutions: [] },
   } }

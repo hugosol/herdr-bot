@@ -81,7 +81,7 @@ workflow 区分冻结定义与已保存执行。有执行时读 `autoApproved`�
 | `POST /api/workflow/node/approve` | 严格 JSON 对象 `{sessionId,executionId,source}`；source 为 `auto` 或 `manual`。sessionId 来自公共 Session，executionId 由工具先调用 context 后捕获，source 由冻结 autoApproved 与原生确认结果选择，三者均不是模型可选目标。返回 `{runId,nodeId,executionId,autoApproved,approved:true,approvalSource,changed}`。不需要说明、报告 ID、成果版本、输出或文件；不产生报告、主动通知、complete、dispatch、finish 或重投。人工 HTTP 场景仅证明后端提交，不证明原生 Yes。 |
 | `POST /api/workflow/node/report` | `{sessionId,body,canComplete,outputs?}`。`canComplete` 必须是布尔值；分开返回保存、通知与诊断结果。报告无需发送确认，不改变批准事实。详见[节点报告与独立通知](#节点报告与独立通知)。 |
 
-仅 `github-repository-exploration.json` 的直接启动表单使用可选的 `githubExploration: {githubUrl, parentDirectory, explorationDirection}`。链接和克隆父目录须成对填写或成对留空；探索方向独立可空，可直接填一段文字。预检不写文件。启动时由服务端在选定的管理者 zone 下分配 `.manager-zone/.workflow/<run_id>/`，按需生成 UTF-8 `clone_request.json` 和 `exploration_brief.txt`，将实际绝对路径加入既有 `fileInputs`；不修改 `userInput`，不允许同一个 ID 同时绑定已有文件和生成材料。材料写入失败返回 `run-material-write-failed`，不启动管理者 Chat；可能留下已写入的部分材料。本 Map 的执行授权由其 `map_input_rule.description` 约定：用户发起 Run 即授权本次已声明的工作，管理者核实材料后沿用授权，无需再次询问是否执行。缺项、用户明确限制、与既有要求冲突或范围外操作仍须澄清。此为提示词约定，不新增授权参数、持久化字段或后端门禁；`inputsReady` 仍由管理者完成输入审阅后通过 `prepare_inputs` 声明，不自动派发。Run 状态和历史仍保存在 `scheduler.run_directory`。
+仅 `github-repository-exploration.json` 的直接启动表单使用可选的 `githubExploration: {githubUrl, parentDirectory, explorationDirection}`。链接和克隆父目录须成对填写或成对留空；探索方向独立可空，可直接填一段文字。预检不写文件。启动时由服务端在选定的管理者 zone 下分配 `.manager-zone/.workflow/<run_id>/`，按需生成 UTF-8 `clone_request.json` 和 `exploration_brief.txt`，将实际绝对路径加入 `mapInput.files`；不修改 `mapInput.runInput`，不允许同一个 ID 同时绑定已有文件和生成材料。材料写入失败返回 `run-material-write-failed`，不启动管理者 Chat；可能留下已写入的部分材料。本 Map 的执行授权由其 `map_input_rule.description` 约定：用户发起 Run 即授权本次已声明的工作，管理者核实材料后沿用授权，无需再次询问是否执行。缺项、用户明确限制、与既有要求冲突或范围外操作仍须澄清。此为提示词约定，不新增授权参数、持久化字段或后端门禁；`inputsReady` 仍由管理者完成输入审阅后通过 `prepare_inputs` 声明，不自动派发。Run 状态和历史仍保存在 `scheduler.run_directory`。
 
 approve 与 context 均只接受同机来源及真实执行关联；结束节点无节点权限。无关联、歧义、非法管理者角色沿用 `node-unassociated`／`node-ambiguous`／`node-role-invalid`／`end-node-no-authority`（403）。非法正文、未知字段、数组、重复 key、查询参数为 400。批准 executionId 不匹配为 `approval-execution-mismatch`（400），已被 retry 替代为 `approval-execution-stale`（400）；终态为 `run-terminal`，不可批准阶段为 `node-not-approvable`，来源不符为 `approval-source-mismatch`（均 400）。持久化失败 `approval-save-failed`（500）保留原错误，不发布成功事实；读取失败为 `run-read-failed`（500）。同次重复批准返回 changed=false，不重复业务效果。manager complete 的未批准拒绝为 `node-not-approved`（409），约定交付未登记为 `output-missing`（409）；仍检查当前最新报告，先前 true 不覆盖最新 false。
 
@@ -93,7 +93,7 @@ approve 与 context 均只接受同机来源及真实执行关联；结束节点
 
 | 对象 | 序列化字段及意义 |
 | --- | --- |
-| Run | `id`；可选 `name`（仅供人辨识的名称，未命名时省略，旧记录缺少此字段仍可读取）；可选 `naming`（新 Run 的展示名称快照：`mapPath` 为根到当前 Map 的名称数组，`nodeTitles` 为 node ID → 发起时名称；旧记录缺席不补造）；`map`（Map 文件引用）；`createdAt`；`managerTaskId`；管理者实际目录 `zone`、`workspaceName`；新 Run 的 `managerZoneId` 与 `zoneBindings`（ID → 本次本机路径）；原文 `userInput`；`inputsReady` 表示管理者是否已确认输入就绪（新 Run 为 false；历史记录缺字段也按 false 读取，不视为已验证）；独立 `fileInputs: [{id,path}]` 保存本次调用方或管理者准备的文件地址（省略可选项不生成条目，无输入为 `[]`，旧记录缺字段按空数组读取而不重写文件）；可空 `manager` Chat 引用；`status`；可空 `finished`；`nodes`（node ID → 节点事实）。不是整张 Map 定义快照；旧记录可以没有 managerZoneId 和 zoneBindings，保留本机历史，不从当前登记补造。 |
+| Run | `id`；可选 `name`（仅供人辨识的名称，未命名时省略，旧记录缺少此字段仍可读取）；可选 `naming`（新 Run 的展示名称快照：`mapPath` 为根到当前 Map 的名称数组，`nodeTitles` 为 node ID → 发起时名称；旧记录缺席不补造）；`map`（Map 文件引用）；`createdAt`；`managerTaskId`；管理者实际目录 `zone`、`workspaceName`；新 Run 的 `managerZoneId` 与 `zoneBindings`（ID → 本次本机路径）；`mapInput: {runInput,files}` 保存本次业务原文和调用方或管理者准备的 `[{id,path}]` 文件地址（未提供项不生成条目，无绑定为 `[]`）；`inputsReady` 单独表示管理者是否已确认输入就绪（新 Run 为 false，缺字段也按 false 读取，不视为已验证）；可空 `manager` Chat 引用；`status`；可空 `finished`；`nodes`（node ID → 节点事实）。不是整张 Map 定义快照；旧记录可以没有 managerZoneId 和 zoneBindings，保留本机历史，不从当前登记补造。 |
 | Chat 引用 | `sessionId`、`workspaceId`、`tabId`、`paneId`、`agentName`；原生身份与实际宿主关联，不是新 Tab 即独立身份的证明。 |
 | 节点事实 | `status`；可空 `execution`、`failure`、`completion`；`previousExecutions` 各项保留被替代的 `execution` 与 `failure`。可选 `autoCloseFailure: {code,message}` 保存该完成关联的关闭反馈，不是节点 `failure`。 |
 | execution 共用字段 | `id`、执行目录 `zone`、可选 `zoneId`、`autoApproved`、`approved`、`approvalSource`（null、`auto` 或 `manual`）、`autoClose`、`endNode`（缺省 false）。`inputRule`、`outputRule` 是冻结规则，`inputs` 是解析后的 `{id,path}` 数组；新执行保存数组，未知历史值不从当前定义补造。派发和 retry 分别冻结批准模式、关闭与结束节点设置。 |
@@ -127,7 +127,7 @@ Map 型 Bot 只保存 `map_file`，不固化管理者。具体 node 的 `manager
 
 父 execution 的可选 `childRunId` 与子 Run 的可选 `parent: {runId,nodeId,executionId}` 保存双向执行关联；普通执行／根 Run 省略它们，旧非嵌套记录仍可读取。两侧真实 Chat 引用相同、来源 Task／agent 一致且关联唯一时，该子 manager 才同时拥有子 Run 的管理者与父 execution 的节点角色。OMP／Pi 启动装配各自的 manager-chat 和 node-chat；没有新增 Task 类型或普遍放宽身份唯一性。`run`／`collect` 只定位子 Run，`context`／`report` 只定位关联的父 execution，包括保留的旧 execution；`approve` 也只批准真实父 execution，但旧子 manager 不能批准 retry 后的新 execution，旧执行的批准请求按陈旧执行拒绝。批准请求的 executionId 只校验已取得上下文，不能选择其他归属。请求不能指定其他 Run／execution／接收者来选择身份；同 Run 混用、缺少／错误／多重关联和复用原生 Session 仍拒绝。
 
-父节点本次已经解析的 `inputs: [{id,path}]` 按**本地 id 同名**作为子 Run 的 `fileInputs`。例如上游输出 `upstream-result` 被父 node 规则绑定为 `child-material` 时，子接口必须声明 `child-material`，而不是上游输出名。每层只解析所属 Run 的输入；同名跨 Map／Run 不串材料。空接口和可选缺席合法，不生成占位路径；即使子接口必需项暂缺，也可启动子管理者；子 Run 同样从 `inputsReady=false` 开始，须由子管理者澄清、补齐并确认后，才能派发任何内部业务节点。父 execution 已冻结的 inputs 不因子 Run 后续绑定而改变。
+父节点本次已经解析的 `inputs: [{id,path}]` 按**本地 id 同名**作为子 Run 的 `mapInput.files`。例如上游输出 `upstream-result` 被父 node 规则绑定为 `child-material` 时，子接口必须声明 `child-material`，而不是上游输出名。每层只解析所属 Run 的输入；同名跨 Map／Run 不串材料。空接口和可选缺席合法，不生成占位路径；即使子接口必需项暂缺，也可启动子管理者；子 Run 同样从 `inputsReady=false` 开始，须由子管理者澄清、补齐并确认后，才能派发任何内部业务节点。父 execution 已冻结的 inputs 不因子 Run 后续绑定而改变。
 
 ### 从 workflow 查看子 Run
 
@@ -167,7 +167,7 @@ workflow 的全部 Run 列表将根 Run 与子 Run 并列列出；Run 名称、M
 
 ## 发起与观察
 
-根 Run 的 Map 文件输入声明与本次实际文件绑定分开维护，操作见 [Map 公开输入与输出规则](scheduler.md#map-公开输入与输出规则)。本次要求只传递业务文字，不编码 Run／execution 身份或文件发现协议；文件绑定在运行背景的 `fileInputs` 独立显示，重新进入详情及后端重启后仍读持久事实。未提供即缺席，包括必需文件尚缺时也可启动管理者；不会生成占位地址或默认路径。已保存地址不承诺源文件正文不再变化。
+根 Run 的 Map 文件输入声明与本次实际文件绑定分开维护，操作见 [Map 公开输入与输出规则](scheduler.md#map-公开输入与输出规则)。本次要求只传递业务文字，不编码 Run／execution 身份或文件发现协议；`mapInput.runInput` 和 `mapInput.files` 在运行背景分段显示，重新进入详情及后端重启后仍读持久事实。未提供即缺席，包括必需文件尚缺时也可启动管理者；不会生成占位地址或默认路径。已保存地址不承诺源文件正文不再变化。
 
 在 scheduler 选中 Map，打开「+ 发起 Run」，选择 manager 类型的 omp 或 pi Task 与已登记 zone。Workspace 名称来自管理者 zone 的目录名，不退回默认或当前 Workspace。可先校验配置；「启动 Run」会重新执行同一整图预检，然后创建独立 Run。三份 Bot 文档允许空文本，不是业务质量门禁。
 
@@ -284,15 +284,15 @@ workflow_poll_interval_seconds = 5
 
 管理者启动失败的 `startupError` 仅保存在原后端内存，浏览器刷新可以查询；真正重启后为 null，不从业务历史重建到页面。已提交 Chat 关联仍保留，节点的持久 failure 则继续可见。需要跨进程查询启动诊断时，应由部署环境保留服务 stdout/stderr（含 Run ID、stage 和已发生效果）；三份业务记录不是诊断日志，也没有页面日志浏览入口。
 
-status 除 `snapshot`（包含 `inputsReady` 与当前 `fileInputs`）外返回派生的 `ready`（可派发 node ID）、`blocked`（每个 node 的当前阻塞原因数组）及 `canFinish`。输入尚未确认（`inputsReady=false`）时所有业务节点均阻塞；依赖只在所有前置 node 为 completed 时满足；running、failed 等非 pending 节点不可首次派发。查询不保存第二套 ready 真相，不自动选择路线或创建 Chat。
+status 除 `snapshot`（包含 `inputsReady` 与当前 `mapInput`）外返回派生的 `ready`（可派发 node ID）、`blocked`（每个 node 的当前阻塞原因数组）及 `canFinish`。输入尚未确认（`inputsReady=false`）时所有业务节点均阻塞；依赖只在所有前置 node 为 completed 时满足；running、failed 等非 pending 节点不可首次派发。ready 根据已保存的准备、依赖和执行状态推导，不代替派发时的路径检查。查询不保存第二套 ready 真相，不自动选择路线或创建 Chat。
 
 ### 管理者输入准备：prepare_inputs
 
 Map 的 `map_input_rule.description` 只承载非文件的总体要求，非空时才在发起 Run 表单的“本次文件输入”上方以 Markdown 展示；逐文件要求由各项 `map_input_rule.files[].description` 承载。文件描述是可选纯文本字符串，可省略或为空，显式 `null` 及其他非字符串均拒绝；它在对应文件输入框上方作为标签显示，缺省或为空时回退为 ID，必需／可选状态由 `required` 单独渲染，不解析描述中的 Markdown。管理者先读取总体要求、每项文件描述、本次要求与已有材料，接收用户继续提供的自然语言或文件，核实目标、业务语义、材料用途及授权，缺项或歧义先澄清。可在用户授权范围内将口头需求整理成所需文件，不能凭文件存在或字段非空就认定满足要求。即使没有命名文件声明，也必须先完成语义核实再确认，不以派发业务节点代替此阶段。
 
-`POST /api/workflow/manager/prepare_inputs` 接收公共 Session 取得的 `sessionId`，以及模型业务参数 `fileInputs: [{id,path}]`、`confirmed: boolean`、`reason: string`。fileInputs 是本 Run 全量绑定的替换，不是增量 patch；未列出的绑定移除，空数组表示清空。后端校验当前 Map 的声明、唯一 ID 及所供绝对路径的真实可读性；未知／重复 ID、无效或不可读文件拒绝，不能降级成缺席。`confirmed=false` 可保存尚缺必需项的准备状态，保持 `inputsReady=false`；`confirmed=true` 仅在管理者完成全部语义核实后使用，后端此时强制必需文件齐全，并保存 `inputsReady=true`。reason 记录本次准备／确认依据，不是业务内容校验的替代。返回后的已提交事实与部分生效错误应按既有动作协议处理。
+`POST /api/workflow/manager/prepare_inputs` 接收公共 Session 取得的 `sessionId`，以及模型业务参数 `fileInputs: [{id,path}]`、`confirmed: boolean`、`reason: string`。操作参数 `fileInputs` 整批替换 `mapInput.files`，未列出的绑定移除，空数组表示清空；`mapInput.runInput` 不变。后端校验本 Run 冻结 Map 的声明、唯一 ID 及所供绝对路径的真实可读性；未知／重复 ID、无效或不可读文件拒绝，不能降级成缺席。`confirmed=false` 可保存尚缺必需项的准备状态，保持 `inputsReady=false`；`confirmed=true` 仅在管理者完成全部语义核实后使用，后端此时强制必需文件齐全，并保存 `inputsReady=true`。reason 记录本次准备／确认依据，不是业务内容校验的替代。返回后的已提交事实与部分生效错误应按既有动作协议处理。
 
-输入未就绪时 dispatch／retry 均拒绝，不创建业务 Chat 或子 Run；确认不会自动派发，须另行显式 dispatch。直接发起和嵌套子 Run 使用同一输入准备流程；已派发 execution 的规则和实际 inputs 保持冻结，不因 Run 绑定调整而热更新。此阶段只解决输入准备，不增加输出要求、输出处理或交付后禁止改写规则。
+输入未就绪或必需文件已不可读时 dispatch／retry 均拒绝，不创建业务 Chat 或子 Run；确认不会自动派发，须另行显式 dispatch。直接发起、嵌套及 chief 委派的 Map 使用同一输入准备流程；已派发 execution 的规则和实际 inputs 保持冻结，不因 Run 绑定调整而热更新。此阶段只解决输入准备，不增加输出要求、输出处理或交付后禁止改写规则。
 
 ### 管理者显式批量派发
 
@@ -302,13 +302,13 @@ Map 的 `map_input_rule.description` 只承载非文件的总体要求，非空�
 {"sessionId":"<公共 Session 能力取得的当前真实身份>","nodes":["A","B"]}
 ```
 
-模型业务参数为目标 `nodes` 与可选 `zoneIds`，所选动态节点必须指定位置。`sessionId` 由工具取得，模型不填 Run ID、角色或归属。后端解析当前管理 Run，重查 `inputsReady`、状态与依赖，返回 `results` 和 status 查询字段。目标为 Task 时启动独立 Chat，为 Map 时启动[子 Run](#map-型节点与子-run)，为脚本时交由 Bun [后台执行](#无-chat-的执行与报告表示契约)。每项包含 `nodeId`、`status`（`rejected`、`failed` 或 `running`）。拒绝项有 `reasons`，启动失败项有 `failure.stage/message/effects`；已发生的 Workspace、Tab、pane、agent、原生身份及指示尝试/确认均如实保留。`persistenceError` 表示失败事实未能落盘，`historyError` 表示当前事实已提交但追加历史失败；调用者不能把它们当作全量成功或自动重试理由。
+模型业务参数为目标 `nodes` 与可选 `zoneIds`，所选动态节点必须指定位置。`sessionId` 由工具取得，模型不填 Run ID、角色或归属。后端解析当前管理 Run，重查 `inputsReady`、必需文件、状态与依赖，返回 `results` 和 status 查询字段。目标为 Task 时启动独立 Chat，为 Map 时启动[子 Run](#map-型节点与子-run)，为脚本时交由 Bun [后台执行](#无-chat-的执行与报告表示契约)。每项包含 `nodeId`、`status`（`rejected`、`failed` 或 `running`）。拒绝项有 `reasons`，启动失败项有 `failure.stage/message/effects`；已发生的 Workspace、Tab、pane、agent、原生身份及指示尝试/确认均如实保留。`persistenceError` 表示失败事实未能落盘，`historyError` 表示当前事实已提交但追加历史失败；调用者不能把它们当作全量成功或自动重试理由。
 
 普通 Task 型目标沿 node、Bot、normal Task 解析完整 trigger config 和 env config，在本次解析的 zone 创建独立原生 Chat。固定 zone 沿用 Run 快照，动态 zone 按本次明确选择；位置必须仍安全、可用。目标 Workspace 只取已保存的管理者实际 Workspace ID；目标不存在或查询失败即报错，不按目录名重选，不退回当前/默认 Workspace。原生身份必须不同于本 Run 的管理者及已有 node Chat，宿主返回的 cwd 必须与本次保存的 zone 实际路径一致。真实关联保存前不提交初始指示；运行文件锁不跨宿主调用。
 
-节点初始输入按原有 Skill → Task 固定 prompt → 本次 input 组合规则提交。本次 input 包含自身 node 标识/名称、运行说明及三份记录的绝对路径，并在业务原文外提供独立策略控制段，明确本次 `auto_approved: true|false` 及行为定义，另以独立背景段给出本次 `userInput`，命名文件输入段只给地址，最后提供经本机词典单次替换的 node.input；Task 固定 prompt 同样单次替换，不解释 userInput、规则 JSON、文件地址、报告或产物；不附 Bot 文档、完整 Map、上游聊天或文件正文。只有替换前的 Task 固定 prompt 含未转义且闭合的 `${key}` 时，系统才追加字典路径，供 agent 直接读取原始定义时使用。`$${key}`、未闭合写法、用户或其他消息段与替换值均不触发。管理者与节点均获知管理者 zone 下 `.manager-zone/.workflow/<Run ID>` 的中间资料位置；该位置按 Run 区分、与 node 执行 zone 解耦，不建立背景副本、每 node 子目录或输出预分配协议，不限制业务产物的地址，也不是输出登记白名单。框架不替节点创建业务文件或读取其正文。node 应主动按需读取说明与记录，在自身 zone 工作；记录路径可以位于 zone 外，不按 cwd 推导替代路径，也不增加可读性门禁。node 不得通过自行退出、停轮或报告假定完成交接，流程推进由管理者显式决定。
+节点初始输入按原有 Skill → Task 固定 prompt → 本次 input 组合规则提交。本次 input 包含自身 node 标识/名称、运行说明及三份记录的绝对路径，并在业务原文外提供独立策略控制段，明确本次 `auto_approved: true|false` 及行为定义，另以独立背景段给出 `mapInput.runInput`，命名文件输入段只给地址，最后提供经本机词典单次替换的 node.input。节点按其中的条件式指引在适用时读取业务资料，后端不展开正文，也不为管理者注入 Map 专属验收要求。Task 固定 prompt 与 node.input 使用同一词典快照，不替换本次业务原文、规则 JSON、文件地址、报告或产物；不附 Bot 文档、完整 Map、上游聊天或文件正文。只有替换前的 Task 固定 prompt 含未转义且闭合的 `${key}` 时，系统才追加字典路径，供 agent 直接读取原始定义时使用。`$${key}`、未闭合写法、用户或其他消息段与替换值均不触发。管理者与节点均获知管理者 zone 下 `.manager-zone/.workflow/<Run ID>` 的中间资料位置；该位置按 Run 区分、与 node 执行 zone 解耦，不建立背景副本、每 node 子目录或输出预分配协议，不限制业务产物的地址，也不是输出登记白名单。框架不替节点创建业务文件或读取其正文。node 应主动按需读取说明与记录，在自身 zone 工作；记录路径可以位于 zone 外，不按 cwd 推导替代路径，也不增加可读性门禁。node 不得通过自行退出、停轮或报告假定完成交接，流程推进由管理者显式决定。
 
-派发读取 Map 的 `input_rule`／`output_rule` 数组，并固定为本次执行的 `inputRule`／`outputRule`；`type: file` 使用本次 Run 已确定的 zone 绑定解析相对 `path`，可选 `zone_id` 缺省时使用 manager zone，并检查文件存在、可读及 zone 安全边界；`type: run` 只按本 Run 的 `fileInputs` 解析本 Map 已声明的 `input_id`，用本地 `id` 重命名，未提供可选项明确缺席，不接受其他 Run 选择；`type: node` 按同 Run 的 `node_id` 当前 execution 查找 `output_id`。输出 ID 是逻辑交接标识，不是文件名。解析只取 `messages.jsonl` 中适用执行的报告 `outputs: [{id,path}]`，按追加顺序累积覆盖；省略保留，新 execution 不继承，旧执行迟到报告不污染当前执行。不解析报告正文、扫描目录或聊天，也不另存输出 registry。保存报告成功即可解析，不等待通知，通知失败不使地址失效；所有解析出的实际地址在本次派发前仍须存在且可打开，失败不启动对应消费者。
+派发读取 Map 的 `input_rule`／`output_rule` 数组，并固定为本次执行的 `inputRule`／`outputRule`；`type: file` 使用本次 Run 已确定的 zone 绑定解析相对 `path`，可选 `zone_id` 缺省时使用 manager zone，并检查文件存在、可读及 zone 安全边界；`type: run` 只按本 Run 的 `mapInput.files` 解析本 Map 已声明的 `input_id`，用本地 `id` 重命名，未提供可选项明确缺席，不接受其他 Run 选择；`type: node` 按同 Run 的 `node_id` 当前 execution 查找 `output_id`。输出 ID 是逻辑交接标识，不是文件名。解析只取 `messages.jsonl` 中适用执行的报告 `outputs: [{id,path}]`，按追加顺序累积覆盖；省略保留，新 execution 不继承，旧执行迟到报告不污染当前执行。不解析报告正文、扫描目录或聊天，也不另存输出 registry。保存报告成功即可解析，不等待通知，通知失败不使地址失效；所有解析出的实际地址在本次派发前仍须存在且可打开，失败不启动对应消费者。
 
 来源节点尚无执行或当前执行未登记所需输出时明确拒绝派发，不创建消费者 Chat、不回退旧执行、不猜路径。规则引用仍不隐式添加 `blocked_by`，也不自动派发。成功解析的实际输入保存为执行的 `inputs: [{id,path}]`，初始化提供这些地址而非正文；后续上游更新登记或 Map 编辑不热更新已派发输入。多个消费者可得到同一地址，业务汇总由明确安排的业务 node 完成，不由框架读取或合并。上游报告产物的地址可以位于所有 zone 外；直接文件规则必须位于其声明或缺省的 zone 内。不复制、移动或重定向业务文件。
 

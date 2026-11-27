@@ -219,7 +219,7 @@ async fn nested_outputs_use_frozen_parent_rules_and_feed_both_downstream_kinds()
     let mapped = s.dispatch("output-root", &["map-consumer"]).await;
     let consumer = &mapped["snapshot"]["nodes"]["map-consumer"]["execution"];
     assert_eq!(consumer["inputs"], json!([{"id":"renamed","path":new}]));
-    assert_eq!(read_run(&s, &consumer["childRunId"]).await["run"]["fileInputs"], json!([{"id":"renamed","path":new}]));
+    assert_eq!(read_run(&s, &consumer["childRunId"]).await["run"]["mapInput"]["files"], json!([{"id":"renamed","path":new}]));
     native(&s, "output-retained-consumer");
     let bound = s.dispatch("output-root", &["retained-consumer"]).await;
     assert_eq!(bound["snapshot"]["nodes"]["retained-consumer"]["execution"]["inputs"], json!([{"id":"retained","path":retained}]));

@@ -21,7 +21,7 @@ async function fixture() {
   for (const sample of runs) {
     const dir = path.join(root, sample.id)
     fs.mkdirSync(dir)
-    fs.writeFileSync(path.join(dir, 'run.json'), JSON.stringify({ managerTaskId: 'saved-manager-task', zone: 'C:/saved-zone', workspaceName: 'saved-workspace', userInput: `USER INPUT ${sample.id}`, manager: { ...chat, sessionId: 'saved-manager-chat' }, finished: null, ...sample }))
+    fs.writeFileSync(path.join(dir, 'run.json'), JSON.stringify({ managerTaskId: 'saved-manager-task', zone: 'C:/saved-zone', workspaceName: 'saved-workspace', mapInput: { runInput: `USER INPUT ${sample.id}`, files: [] }, manager: { ...chat, sessionId: 'saved-manager-chat' }, finished: null, ...sample }))
     fs.writeFileSync(path.join(dir, 'history.jsonl'), '')
     fs.writeFileSync(path.join(dir, 'messages.jsonl'), '')
   }
@@ -37,7 +37,7 @@ async function currentFixture() {
   expect(taskResponse.status).toBe(200)
   const taskId = (await taskResponse.json()).tasks[0].id
   fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '当前共享 Bot', when: '', description: '', input_rule: '', output_rule: '', task_id: taskId }))
-  const definition = { title: '当前 Beta Map', description: '', nodes: {
+  const definition = { title: '当前 Beta Map', description: '', map_input_rule: { files: [{ id: 'brief', required: true }] }, nodes: {
     A: { title: '交接工作', bot_id: 'worker', zone: 'test/definition-zone', input: '当前定义输入 A', blocked_by: [], output_rule: [{ id: 'material' }] },
     B: { title: '失败工作', bot_id: 'worker', zone: 'test/definition-zone', input: '当前定义输入 B', blocked_by: ['A'] },
     C: { title: '依赖工作', bot_id: 'worker', zone: 'test/definition-zone', input: '当前定义输入 C', blocked_by: ['B'] },
@@ -54,6 +54,9 @@ async function currentFixture() {
   // This fixture isolates dependency readiness after the manager has confirmed
   // inputs; missing historical confirmation must remain non-dispatchable.
   run.inputsReady = true
+  const source = path.join(root, 'saved-brief.txt')
+  fs.writeFileSync(source, 'SAVED FILE BODY NOT RENDERED')
+  run.mapInput.files = [{ id: 'brief', path: source }]
   run.nodes = {
     A: { ...node('completed'), execution: { autoApproved: true, approved: true, approvalSource: 'auto', agent: 'omp', id: 'exec-A', taskId, zone: 'C:/saved-execution-zone', chat }, completion: { id: 'complete-A', at: 4000, actor: run.manager, reason: '交接材料已核实' } },
     B: { ...node('failed'), execution: { autoApproved: true, approved: false, approvalSource: null, agent: 'omp', id: 'exec-B', taskId: 'deleted-task', zone: 'C:/failed-zone', chat: { ...chat, sessionId: 'failed-chat' } }, failure: { stage: 'execution', message: '缺少已核实的源文件' } },
@@ -77,7 +80,10 @@ async function currentFixture() {
 // hiding saved execution values behind changed current definitions. Exercise
 // real graph selection and inspect separate visible definition/execution facts.
 test('P51.01 P52.01 current Map graph and node details distinguish execution facts from Chat status @time-contract', async ({ page }, info) => {
-  const { server, root } = await currentFixture()
+  const { server, root, run, mapPath, definition } = await currentFixture()
+  fs.writeFileSync(mapPath, JSON.stringify({ ...definition, title: 'UNRELATED CURRENT MAP', nodes: { ...definition.nodes, A: { ...definition.nodes.A, title: 'REPLACED SOURCE NODE' } } }))
+  const persisted = await (await page.request.get(`${server.baseURL}/api/workflow/runs/new-run`)).json()
+  expect(persisted.run.mapInput).toEqual({ runInput: 'USER INPUT new-run', files: run.mapInput.files })
   const calls = server.herdrCalls()
   const records = ['run.json', 'history.jsonl', 'messages.jsonl'].map(file => fs.readFileSync(path.join(root, 'new-run', file), 'utf8'))
   await page.goto(server.baseURL)
@@ -138,7 +144,11 @@ test('P51.01 P52.01 current Map graph and node details distinguish execution fac
   await expect(details.locator('time')).toHaveAttribute('datetime', '1970-01-01T00:00:05.000Z')
   await expect(details).toContainText('report-chat-offline')
   await page.getByRole('button', { name: '刷新 Run', exact: true }).click()
+  await page.locator('.workflow-run-background > summary').click()
   await expect(page.getByTestId('run-user-input')).toHaveText('USER INPUT new-run')
+  await expect(page.getByRole('region', { name: 'Run 文件输入', exact: true })).toContainText(path.join(root, 'saved-brief.txt'))
+  await expect(page.getByRole('region', { name: 'Run 文件输入', exact: true })).not.toContainText('SAVED FILE BODY NOT RENDERED')
+  await expect(page.getByRole('region', { name: 'workflow', exact: true })).not.toContainText('UNRELATED CURRENT MAP')
   await page.waitForTimeout(750)
   expect(server.herdrCalls()).toEqual(calls)
   expect(['run.json', 'history.jsonl', 'messages.jsonl'].map(file => fs.readFileSync(path.join(root, 'new-run', file), 'utf8'))).toEqual(records)

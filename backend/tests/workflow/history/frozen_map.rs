@@ -55,11 +55,19 @@ async fn edited_source_map_cannot_change_prepare_dispatch_retry_or_finish() {
     manager_action(&s, "prepare_inputs", prepare("frozen-original", "new-brief"), 409).await;
     let ready = manager_action(&s, "prepare_inputs", prepare("frozen-original", "old-brief"), 200).await;
     assert_eq!(ready["ready"], json!(["A"]));
+    assert_eq!(ready["snapshot"]["mapInput"], json!({"runInput":"Freeze the graph for this Run","files":[{"id":"old-brief","path":brief}]}));
     native(&s, "frozen-first-worker");
     let first = manager_action(&s, "dispatch", json!({"sessionId":"frozen-original","nodes":["A"]}), 200).await;
     assert_eq!(first["results"][0]["status"], "running");
     assert_eq!(first["snapshot"]["nodes"]["A"]["execution"]["inputs"], json!([{"id":"source","path":brief}]));
     manager_action(&s, "fail", json!({"sessionId":"frozen-original","nodeId":"A","reason":"First worker failed after starting"}), 200).await;
+    let calls = s.herdr.calls();
+    fs::remove_file(&brief).unwrap();
+    let rejected = manager_action(&s, "retry", json!({"sessionId":"frozen-original","nodeId":"A","confirmed":true,"reason":"Original worker effects checked"}), 409).await;
+    assert_eq!(rejected["code"], "run-inputs-invalid");
+    assert!(rejected["message"].as_str().unwrap().contains("old-brief"));
+    assert_eq!(s.herdr.calls(), calls);
+    fs::write(&brief, "independent named input").unwrap();
     native(&s, "frozen-retry-worker");
     let retry = manager_action(&s, "retry", json!({"sessionId":"frozen-original","nodeId":"A","confirmed":true,"reason":"Original worker effects checked"}), 200).await;
     assert_eq!(retry["result"]["status"], "running");
@@ -85,6 +93,7 @@ async fn edited_source_map_cannot_change_prepare_dispatch_retry_or_finish() {
     manager_action(&s, "prepare_inputs", prepare("frozen-replacement", "old-brief"), 409).await;
     let ready = manager_action(&s, "prepare_inputs", prepare("frozen-replacement", "new-brief"), 200).await;
     assert_eq!(ready["ready"], json!(["C"]));
+    assert_eq!(ready["snapshot"]["mapInput"]["files"], json!([{"id":"new-brief","path":brief}]));
     assert!(ready["snapshot"]["nodes"].get("B").is_none());
     let replacement_copy = s.config.scheduler.run_directory.join(replacement["id"].as_str().unwrap()).join("map.json");
     assert_eq!(serde_json::from_slice::<Value>(&fs::read(replacement_copy).unwrap()).unwrap(), new);

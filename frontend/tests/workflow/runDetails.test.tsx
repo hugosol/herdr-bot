@@ -13,7 +13,7 @@ afterEach(() => {
 
 function savedDetail(id: string, name?: string): RunDetail {
   return { id, managed: false, readError: null, startupError: null, reports: [], pendingReports: {}, run: {
-    id, name, map: 'alpha.json', createdAt: 2000, managerTaskId: 'manager', zone: 'zone', workspaceName: 'workspace', userInput: 'request', status: 'completed', manager: null, nodes: {},
+    id, name, map: 'alpha.json', createdAt: 2000, managerTaskId: 'manager', zone: 'zone', workspaceName: 'workspace', mapInput: { runInput: 'request', files: [] }, status: 'completed', manager: null, nodes: {},
   } }
 }
 
