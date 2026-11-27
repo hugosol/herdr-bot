@@ -1,17 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { suiteRequest, type Suite } from '../../src/controllers/suiteController'
+import { saveResource, suiteRequest, type Suite } from '../../src/controllers/suiteController'
 
 const omp = {
   id: 'source-tools-omp', name: '源入口工具 · OMP', harness: 'omp',
   skills: [{ kind: 'collection', path: '../skill collections' }, { kind: 'skill', path: '../skills/review' }],
-  extensions: ['../omp native package', '../omp/entry.ts'], lsp: {}, mcp: ['search'], dap: ['codelldb'],
+  extensions: ['../omp native package', '../omp/entry.ts'], lsp: ['rust-analyzer'], mcp: ['search'], dap: ['codelldb'],
 } satisfies Suite
 const pi = {
   id: 'source-tools-pi', name: '源入口工具 · Pi', harness: 'pi', skills: ['../skills/review'],
   extensions: ['../pi/entry.ts', '${roots.toolkit}/pi/extra.ts'], prompts: ['../prompts/review.md'], codemode: 'only', mcp: [],
 } satisfies Suite
 const catalog = {
-  suites: [omp, pi], mcp: ['search'],
+  suites: [omp, pi],
+  mcp: [{ id: 'search', name: 'Search', description: 'Local search service', config: { command: 'search' } }],
+  lsp: [{ id: 'rust-analyzer', name: 'rust-analyzer', description: 'Rust language service', config: { command: 'rust-analyzer', fileTypes: ['.rs'] } }],
   dap: [{ id: 'codelldb', name: 'CodeLLDB', description: 'Windows x64', config: {
     command: '../codelldb/adapter/codelldb.exe', languages: ['c', 'cpp', 'rust', 'zig'], connectMode: 'stdio',
   } }],
@@ -37,6 +39,16 @@ describe('Single-harness Suite API contract', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => response })))
     expect(await suiteRequest()).toEqual(response)
   })
+  it('sends the complete option as entered without adding its ID to the JSON', async () => {
+    const raw = '{\n  "name": "Search", "description": "Updated", "config": { "command": "search" }\n}'
+    const response = { ...catalog, mcp: [{ id: 'search', name: 'Search', description: 'Updated', config: { command: 'search' } }] }
+    const fetch = vi.fn(async () => ({ ok: true, json: async () => response }))
+    vi.stubGlobal('fetch', fetch)
+    expect(await saveResource('mcp', 'search', raw)).toEqual(response)
+    expect(fetch).toHaveBeenCalledWith('/api/suites/resources/mcp/search', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: raw,
+    })
+  })
   it('preserves missing references so the editor can remove them', async () => {
     const stale = { ...catalog, dap: [] }
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => stale })))
@@ -45,9 +57,11 @@ describe('Single-harness Suite API contract', () => {
   it.each([
     { suites: [], mcp: [] },
     { ...catalog, dap: undefined },
-    { ...catalog, dap: [{ ...catalog.dap[0], languages: ['rust'] }] },
-    { ...catalog, dap: [{ ...catalog.dap[0], config: { command: [] } }] },
-    { ...catalog, dap: [{ ...catalog.dap[0], config: { command: 'adapter', languages: [false] } }] },
+    { ...catalog, lsp: undefined },
+    { ...catalog, mcp: ['search'] },
+    { ...catalog, mcp: [{ ...catalog.mcp[0], description: undefined }] },
+    { ...catalog, lsp: [{ ...catalog.lsp[0], config: [] }] },
+    { ...catalog, dap: [{ ...catalog.dap[0], config: null }] },
     { ...catalog, extensions: [] },
     ...[
       { ...omp, skills: { omp: ['../legacy'] } }, { ...omp, skills: ['../legacy'] },
@@ -57,7 +71,8 @@ describe('Single-harness Suite API contract', () => {
       { ...omp, skills: [{ kind: 'skill', path: 3 }] }, { ...omp, skills: [{ kind: 'skill', path: ' ' }] },
       { ...pi, skills: [false] }, { ...pi, skills: [{ kind: 'skill', path: '../pi' }] },
       { ...omp, extensions: { omp: [] } }, { ...omp, agents: ['omp'] },
-      { ...omp, prompts: [] }, { ...omp, codemode: 'on' }, { ...pi, lsp: {} },
+      { ...omp, prompts: [] }, { ...omp, codemode: 'on' },
+      { ...omp, lsp: { 'rust-analyzer': { command: 'rust-analyzer' } } }, { ...omp, lsp: [false] }, { ...pi, lsp: [] },
       { ...omp, dap: undefined }, { ...omp, dap: ['codelldb', false] }, { ...pi, dap: [] },
       { ...pi, codemode: undefined }, { ...pi, codemode: 'off' }, { ...pi, pi: { codemode: 'on' } },
       ...['', ' ', '../escape', 'folder/name', 'tools.name', '工具'].map(id => ({ ...omp, id })),

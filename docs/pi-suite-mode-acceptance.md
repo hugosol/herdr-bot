@@ -1,13 +1,6 @@
 # Pi Suite 模式与模板真实验收
 
-黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
-
-```powershell
-$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
-$BOT = 'E:/Developer/myhub/herdr-bot'
-```
-
-验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+按[测试指引](agents/testing.md)设置 `$TESTER`、`$BOT`，并遵守通用隔离和取证规则。
 
 `python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-mode` 负责 P14、P16、P23、P24、P26、P27。
 入口经公开 Task／Chat HTTP 发起真实 Herdr pane，由 PATH 上已安装的 Pi 正常启动；
@@ -31,7 +24,7 @@ $EVIDENCE_DIR = 'D:/acceptance/pi-mode-run-unique'
 $env:CARGO_TARGET_DIR = Join-Path $BOT 'backend/target'
 bun install --cwd=frontend --frozen-lockfile
 npm --prefix frontend run build
-cargo build --manifest-path backend/Cargo.toml --bin herdr-bot
+cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-paths
 $BACKEND_BINARY = Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe'
 python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-suite-pi-mode `
   --toolkit-worktree "$TOOLKIT_WT" `

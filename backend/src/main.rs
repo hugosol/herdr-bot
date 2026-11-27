@@ -103,6 +103,7 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(herdr_bot::SystemPowerOff),
         Arc::clone(&sessions),
     );
+    state.attach_listener(&listener).context("登记脚本服务地址失败")?;
     // 时钟驱动的会话维护跟随进程的生命周期：句柄不保留（丢弃句柄只是让任务脱管，任务本身继续跑），
     // 服务器关停时随运行时一起结束。它同时负责「心跳过期 → 移出完成后关机监听」这一遍重判。
     herdr_bot::sessions::spawn_expiry_scan(sessions, Arc::clone(&state.shutdown));

@@ -1,0 +1,11 @@
+{
+  "group": "meta-bot",
+  "id": "bot-map-create-task-v2",
+
+  "name": "创建task-V2",
+  "when": "需要新建可复用的 normal Task 并创建绑定它的完整 Bot，且目标业务适合一个 Chat 时选用。",
+  "description": "## 能力职责\n创建 Task，复用 V2 的能力需求对齐、定义设计和保存。\n\n## 能力边界\n仅交付配置，不运行生成能力；需要多人协作交接的业务使用 Map。\n\n## 用户参与\n需可用的管理者配置；用户确认取舍、候选与实际写入范围。",
+  "input_rule": "能力需求、资源与权限、预期交付；可附参考材料、命名及执行配置偏好。根调用无需预制 V2 request。",
+  "output_rule": "已保存并完整读回的 normal Task、绑定 Bot 与 V2 saved／handoff；业务试运行需另行授权。",
+  "map_file": "create-task-v2.json"
+}

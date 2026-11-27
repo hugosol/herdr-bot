@@ -112,7 +112,9 @@ async fn dynamic_zone_definition_save_round_trips_and_rejects_noncanonical_objec
     let draft: Value = serde_json::from_str(&edit.body).unwrap();
     let original = fs::read(s.config.scheduler.map_directory.join("work.json")).unwrap();
     let mut node = draft["content"].clone();
-    for zone in [json!({"type":"dynamic","default":"node"}), json!({"type":"dynamic","value":"node"}), json!({"type":"fixed","value":"node"}), json!({}), json!(null), json!(true), json!([])] {
+    node["input_rule"] = json!([{"type":"file","id":"placement","path":"registered.json"}]);
+    for zone in [json!({"type":"dynamic","default":"node"}), json!({"type":"dynamic","value":"node"}), json!({"type":"fixed","value":"node"}), json!({}), json!(null), json!(true), json!([]),
+        json!({"type":"dynamic","input_id":null}), json!({"type":"dynamic","input_id":42}), json!({"type":"dynamic","input_id":""}), json!({"type":"dynamic","input_id":" \t"}), json!({"type":"dynamic","input_id":"unknown"}), json!({"type":"dynamic","input_id":"placement","extra":true})] {
         node["zone"] = zone;
         let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/save", &json!({"id":"A","content":node.to_string(),"revision":draft["revision"],"create":false}).to_string()).await;
         assert_eq!(response.status, 500, "{}", response.body);
@@ -123,6 +125,14 @@ async fn dynamic_zone_definition_save_round_trips_and_rejects_noncanonical_objec
     assert_eq!(response.status, 200, "{}", response.body);
     let saved: Value = serde_json::from_str(&response.body).unwrap();
     assert_eq!(saved["nodes"]["A"]["zone"], json!({"type":"dynamic"}));
+    let edit = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/edit", r#"{"id":"A"}"#).await;
+    assert_eq!(edit.status, 200, "{}", edit.body);
+    let draft: Value = serde_json::from_str(&edit.body).unwrap();
+    node["zone"] = json!({"type":"dynamic","input_id":"placement"});
+    let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/save", &json!({"id":"A","content":node.to_string(),"revision":draft["revision"],"create":false}).to_string()).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let saved: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(saved["nodes"]["A"]["zone"], node["zone"]);
     // Dynamic execution locations do not relax explicitly fixed file input zones.
     let path = s.config.scheduler.map_directory.join("work.json");
     let mut map: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();

@@ -41,7 +41,7 @@ async fn fileless_runs_require_explicit_preparation_before_business_dispatch() {
 async fn drafts_confirmation_authority_and_replacement_preserve_the_gate() {
     let s = Scenario::new().await;
     declare_inputs(&s, json!([{"id":"brief","required":true},{"id":"approval","required":true}])).await;
-    save_node(&s, "B", json!([{"id":"local","type":"run","input_id":"brief"}]), json!([])).await;
+    save_node(&s, "B", json!([{"id":"local","type":"run","run_file_ref":"brief"}]), json!([])).await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"prepare-manager"},"native_cwd":s.data.path()}));
     let started = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/runs", &json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":"Business text is not semantic approval"}).to_string()).await;
     assert_eq!(started.status, 201, "{}", started.body);
@@ -56,7 +56,12 @@ async fn drafts_confirmation_authority_and_replacement_preserve_the_gate() {
     for invalid in [json!({"sessionId":"prepare-manager","fileInputs":[],"reason":"Missing confirmation"}), json!({"sessionId":"prepare-manager","fileInputs":[],"confirmed":false,"reason":"","runId":"caller-selected"}), json!({"sessionId":"prepare-manager","fileInputs":[{"id":"brief","path":"relative.txt","required":false}],"confirmed":false,"reason":""})] {
         action(&s, "prepare_inputs", invalid, 400).await;
     }
-    assert_eq!(snapshot(&s).await["fileInputs"], json!([]));
+    // S1 and S4: the original request and bindings are one actual value;
+    // a draft may change the bindings, but not the original user text.
+    let initial = snapshot(&s).await;
+    assert_eq!(initial["mapInput"], json!({"runInput":"Business text is not semantic approval","files":[]}));
+    assert!(initial.get("fileInputs").is_none());
+    assert!(initial.get("userInput").is_none());
     let brief = s.data.path().join("brief.txt");
     let approval = s.data.path().join("approval.txt");
     fs::write(&brief, "BRIEF-731").unwrap();
@@ -64,7 +69,7 @@ async fn drafts_confirmation_authority_and_replacement_preserve_the_gate() {
     let partial = json!([{"id":"brief","path":brief}]);
     prepare(&s, partial.clone(), false, "", 200).await;
     let draft = snapshot(&s).await;
-    assert_eq!(draft["fileInputs"], partial);
+    assert_eq!(draft["mapInput"]["files"], partial);
     assert_eq!(draft["inputsReady"], false);
     for invalid in [json!([{"id":"alien","path":brief}]), json!([{"id":"brief","path":brief},{"id":"brief","path":brief}]), json!([{"id":"brief","path":s.data.path().join("missing.txt")}])] {
         prepare(&s, invalid, false, "Draft cannot bypass file validation", 409).await;
@@ -84,17 +89,38 @@ async fn drafts_confirmation_authority_and_replacement_preserve_the_gate() {
     assert_eq!(s.herdr.calls(), calls, "preparation must never dispatch business work");
     prepare(&s, complete.clone(), true, "Reviewed business scope and both material contents", 200).await;
     assert_eq!(snapshot(&s).await["inputsReady"], true);
-    let read = get_over_tcp(s.server.addr(), &format!("/api/workflow/runs/{}", serde_json::from_str::<Value>(&started.body).unwrap()["id"].as_str().unwrap())).await;
-    assert_eq!(serde_json::from_str::<Value>(&read.body).unwrap()["run"]["fileInputs"], complete);
+    let started: Value = serde_json::from_str(&started.body).unwrap();
+    let id = started["id"].as_str().unwrap();
+    let run_file = s.config.scheduler.run_directory.join(id).join("run.json");
+    let read = get_over_tcp(s.server.addr(), &format!("/api/workflow/runs/{id}")).await;
+    let detail: Value = serde_json::from_str(&read.body).unwrap();
+    assert_eq!(detail["run"]["mapInput"], json!({"runInput":"Business text is not semantic approval","files":complete}));
+    let saved = fs::read(&run_file).unwrap();
+    assert_eq!(serde_json::from_slice::<Value>(&saved).unwrap(), detail["run"]);
+
+    // B does not consume approval, but the frozen Map still requires it.
+    // A confirmation alone must not allow dispatch after that file disappears.
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"prepared-consumer"},"native_cwd":s.data.path().join("node-zone")}));
+    fs::remove_file(&approval).unwrap();
+    let rejected = action(&s, "dispatch", json!({"sessionId":"prepare-manager","nodes":["B"]}), 200).await;
+    assert_eq!(rejected["results"][0]["status"], "rejected");
+    assert!(rejected["results"][0]["reasons"].to_string().contains("approval"));
+    assert_eq!(s.herdr.calls(), calls);
+    assert_eq!(fs::read(&run_file).unwrap(), saved);
+    fs::write(&approval, "APPROVAL-492").unwrap();
     let dispatched = action(&s, "dispatch", json!({"sessionId":"prepare-manager","nodes":["B"]}), 200).await;
     assert_eq!(dispatched["results"][0]["status"], "running");
     assert_eq!(dispatched["snapshot"]["nodes"]["B"]["execution"]["inputs"], json!([{"id":"local","path":brief}]));
     // Editing remains legal after execution; replacement must remove old bindings
     // and clear readiness, without mutating the already dispatched address.
-    prepare(&s, json!([]), false, "Reconsider materials", 200).await;
+    let replacement = s.data.path().join("replacement.txt");
+    fs::write(&replacement, "LATER-BRIEF-628").unwrap();
+    let draft = prepare(&s, json!([{"id":"brief","path":replacement}]), false, "Reconsider approval", 200).await;
+    assert_eq!(draft["snapshot"]["mapInput"], json!({"runInput":"Business text is not semantic approval","files":[{"id":"brief","path":replacement}]}));
+    assert_eq!(draft["snapshot"]["nodes"]["B"]["execution"]["inputs"], json!([{"id":"local","path":brief}]));
+    prepare(&s, json!([]), false, "Clear all bindings", 200).await;
     let replaced = snapshot(&s).await;
-    assert_eq!(replaced["fileInputs"], json!([]));
+    assert_eq!(replaced["mapInput"]["files"], json!([]));
     assert_eq!(replaced["inputsReady"], false);
     assert_eq!(replaced["nodes"]["B"]["execution"]["inputs"], json!([{"id":"local","path":brief}]));
     let calls = s.herdr.calls();

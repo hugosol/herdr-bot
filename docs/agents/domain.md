@@ -4,18 +4,12 @@
 
 This is a single-context project:
 
-- `GLOSSARY.md` at the project root: domain vocabulary.
-- `docs/adr/`: architectural decision records.
-
-These are locations for real domain documentation, not files to scaffold empty.
+- [`GLOSSARY.md`](../../GLOSSARY.md): domain vocabulary.
+- [`docs/adr/`](../adr/): architectural decisions.
 
 ## Before exploring
 
-Read the root `GLOSSARY.md` and ADRs in `docs/adr/` relevant to the area being explored.
-
-If a root `GLOSSARY-MAP.md` exists in the future, follow its pointers to the glossaries relevant to the topic, and also check `src/<context>/docs/adr/` for context-specific decisions.
-
-If these documents are absent, proceed silently. `/domain-modeling` creates them lazily when terms or decisions are resolved.
+Read the glossary and the ADRs relevant to the area you are exploring.
 
 ## Use the glossary's vocabulary
 

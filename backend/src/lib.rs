@@ -61,8 +61,10 @@ pub mod tasks;
 pub mod suites;
 pub mod zones;
 
+use std::io;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use axum::Router;
 use axum::routing::{any, get, post};
@@ -158,12 +160,39 @@ pub struct AppState {
     ///
     /// 每个已登记 zone 只有一条真实监听和一份节流状态；它只观察本地状态，不触发远端 fetch。
     pub zone_watch: Arc<watch::ZoneWatchManager>,
+    script_service_url: Arc<OnceLock<String>>,
+}
+
+impl AppState {
+    /// Attach the actual bound HTTP listener before serving workflow scripts.
+    /// All router/state clones share one origin; a second attachment is rejected.
+    pub fn attach_listener(&self, listener: &tokio::net::TcpListener) -> io::Result<()> {
+        let addr = listener.local_addr()?;
+        self.script_service_url
+            .set(http_origin(addr))
+            .map_err(|_| io::Error::new(io::ErrorKind::AlreadyExists, "脚本服务已登记 HTTP 监听器"))
+    }
+
+    fn script_service_url(&self) -> io::Result<&str> {
+        self.script_service_url.get().map(String::as_str).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::NotConnected, "脚本服务未登记已绑定的 HTTP 监听器")
+        })
+    }
+}
+
+fn http_origin(addr: SocketAddr) -> String {
+    let ip = match addr.ip() {
+        IpAddr::V4(ip) if ip.is_unspecified() => IpAddr::V4(Ipv4Addr::LOCALHOST),
+        IpAddr::V6(ip) if ip.is_unspecified() => IpAddr::V6(Ipv6Addr::LOCALHOST),
+        ip => ip,
+    };
+    format!("http://{}", SocketAddr::new(ip, addr.port()))
 }
 
 /// 构造使用真实关机动作、新建空会话表的应用：固定操作接口 + 关机端点 + 会话事件接口 + 打包页面。
 ///
-/// 交付运行时不用本函数，而是用 [`app_with_sessions`] 自己持有会话表（于是能把同一份表交给后台过期
-/// 扫描，见 `herdr_bot::sessions::spawn_expiry_scan`）；本函数固定空表，供只关心路由形状的调用方使用。
+/// 本函数固定空表，供不执行 workflow 脚本的调用方使用。要启动支持 workflow 脚本的服务，使用
+/// [`app_with_state`] 并在开始服务前通过 [`AppState::attach_listener`] 登记已绑定的监听器。
 pub fn app(config: &Config) -> Router {
     app_with_power_off(config, Arc::new(SystemPowerOff))
 }
@@ -219,14 +248,16 @@ pub fn app_with_state(
     ));
     let suites = Arc::new(suites::Suites::new(
         config.suites.definition_file.clone(),
-        config.suites.mcp_file.clone(),
-        config.suites.dap_file.clone(),
+        config.suites.mcp_directory.clone(),
+        config.suites.lsp_directory.clone(),
+        config.suites.dap_directory.clone(),
         config.suites.generated_directory.clone(),
     ));
     let chief = Arc::new(chief::Authority::new(config.sessions.history_file.with_extension("chief.json")));
     sessions.attach_chief(Arc::clone(&chief));
     let (start, stop) = config.operations.selected(config.herdr.backend);
     let state = AppState {
+        script_service_url: Arc::new(OnceLock::new()),
         start_operation: ScriptOperation::new(start.script.clone(), start.working_directory.clone()),
         stop_operation: ScriptOperation::new(stop.script.clone(), stop.working_directory.clone()),
         execution: Arc::new(Mutex::new(())),
@@ -295,6 +326,7 @@ pub fn app_with_state(
         // 请求只携带服务器上的目录路径；执行目标仍只来自服务端配置。
         .route("/api/zones", get(controllers::zones_controller::list_zones).post(controllers::zones_controller::register_zone).put(controllers::zones_controller::rebind_zone).delete(controllers::zones_controller::unregister_zone))
         .route("/api/suites", get(controllers::suites_controller::list).post(controllers::suites_controller::create))
+        .route("/api/suites/resources/{kind}/{id}", axum::routing::put(controllers::suites_controller::update_resource))
         .route("/api/suites/{id}", get(controllers::suites_controller::get).put(controllers::suites_controller::update).delete(controllers::suites_controller::delete))
         .route("/api/scheduler/maps", get(controllers::scheduler_controller::list_maps))
         .route("/api/scheduler/maps/{name}", get(controllers::scheduler_controller::get_map))
@@ -308,6 +340,7 @@ pub fn app_with_state(
         .route("/api/scheduler/maps/{name}/runs", post(controllers::runs_controller::start_run))
         .route("/api/workflow/runs", get(controllers::runs_controller::list_runs))
         .route("/api/workflow/runs/{id}", get(controllers::runs_controller::get_run).patch(controllers::runs_controller::rename_run))
+        .route("/api/workflow/runs/{id}/map", get(controllers::runs_controller::get_run_map))
         .route("/api/workflow/runs/{id}/locate", post(controllers::runs_controller::locate_chat))
         .route("/api/workflow/manager/status", post(controllers::runs_controller::manager_status))
         .route("/api/workflow/manager/prepare_inputs", post(controllers::runs_controller::manager_prepare_inputs))
@@ -401,5 +434,54 @@ pub fn app_with_state(
         .with_state(state.clone());
 
     (router, state)
+}
+
+#[cfg(test)]
+mod script_service_origin {
+    use super::*;
+    use tokio::net::TcpListener;
+
+    #[test]
+    fn formats_wildcard_and_concrete_listener_addresses() {
+        for (addr, expected) in [
+            ("0.0.0.0:7123", "http://127.0.0.1:7123"),
+            ("[::]:7123", "http://[::1]:7123"),
+            ("192.0.2.45:7123", "http://192.0.2.45:7123"),
+            ("[2001:db8::45]:7123", "http://[2001:db8::45]:7123"),
+        ] {
+            assert_eq!(http_origin(addr.parse().unwrap()), expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn shares_actual_ephemeral_origin_and_refuses_missing_or_replaced_listener() {
+        let config = Config::from_toml(r#"
+listen_addr = "127.0.0.1:0"
+[operations.start]
+script = "unused.bat"
+working_directory = "."
+[operations.stop]
+script = "unused.bat"
+working_directory = "."
+[herdr]
+workspace_name = "script-origin-test"
+"#).unwrap();
+        let sessions = Arc::new(sessions::SessionsState::with_policy(config.sessions.policy()));
+        let (_, state) = app_with_state(&config, Arc::new(SystemPowerOff), sessions);
+        let clone = state.clone();
+        assert_eq!(clone.script_service_url().unwrap_err().kind(), io::ErrorKind::NotConnected);
+
+        let listener = TcpListener::bind(&config.listen_addr).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert_ne!(port, 0);
+        state.attach_listener(&listener).unwrap();
+        let expected = format!("http://127.0.0.1:{port}");
+        assert_eq!(clone.script_service_url().unwrap(), expected);
+
+        let replacement = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        assert_ne!(replacement.local_addr().unwrap().port(), port);
+        assert_eq!(clone.attach_listener(&replacement).unwrap_err().kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(state.script_service_url().unwrap(), expected);
+    }
 }
 

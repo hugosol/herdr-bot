@@ -10,12 +10,12 @@ fn config(root: &TempDir) -> herdr_bot::Config {
     config.tasks.storage_file = root.path().join("tasks.json");
     config.zones.registry_file = root.path().join("zones.json");
     config.suites.definition_file = root.path().join("suites.json");
-    config.suites.mcp_file = root.path().join("central-mcp.json");
+    config.suites.mcp_directory = root.path().join("central-mcp");
     fs::write(&config.suites.definition_file, json!({"suites":[
         {"id":"shared-omp","name":"Shared tools · OMP","harness":"omp","mcp":["search"]},
         {"id":"pi-only-pi","name":"Pi tools · Pi","harness":"pi","codemode":"on"}
     ]}).to_string()).unwrap();
-    fs::write(&config.suites.mcp_file, r#"{"mcpServers":{"search":{"command":"controlled-search"}}}"#).unwrap();
+    common::write_suite_resource(&config.suites.mcp_directory, "search", json!({"command":"controlled-search"}));
     config
 }
 fn task(name: &str, suite: Value) -> Value {
@@ -122,16 +122,16 @@ async fn suite_saves_validate_central_mcp_ids_without_copying_settings() {
     let root = TempDir::new("suite central MCP saves");
     let config = config(&root);
     let server = TestServer::start(&config).await;
-    let central = fs::read(&config.suites.mcp_file).unwrap();
+    let central = fs::read(config.suites.mcp_directory.join("search.json")).unwrap();
     let literal = json!({"id":"reference-only-omp","name":"Reference only · OMP","harness":"omp","mcp":["search"]});
     let saved = send(&server, "POST", "/api/suites", &literal).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let read = get_over_tcp(server.addr(), "/api/suites/reference-only-omp").await;
     assert_eq!(body(&read)["suite"]["mcp"], json!(["search"]));
     assert!(!read.body.contains("controlled-search"));
-    assert_eq!(fs::read(&config.suites.mcp_file).unwrap(), central);
+    assert_eq!(fs::read(config.suites.mcp_directory.join("search.json")).unwrap(), central);
     let before = fs::read(&config.suites.definition_file).unwrap();
-    fs::write(&config.suites.mcp_file, r#"{"mcpServers":{}}"#).unwrap();
+    fs::remove_file(config.suites.mcp_directory.join("search.json")).unwrap();
     let rejected = send(&server, "PUT", "/api/suites/reference-only-omp", &literal).await;
     assert_eq!(rejected.status, 400, "{}", rejected.body);
     assert!(rejected.body.contains("search"));
@@ -252,7 +252,7 @@ async fn missing_central_mcp_is_readable_but_save_and_launch_are_refused() {
     assert_eq!(preview.status, 200, "{}", preview.body);
     let bytes = fs::read(&config.tasks.storage_file).unwrap();
     let suites = fs::read(&config.suites.definition_file).unwrap();
-    fs::write(&config.suites.mcp_file, r#"{"mcpServers":{}}"#).unwrap();
+    fs::remove_file(config.suites.mcp_directory.join("search.json")).unwrap();
     let read = get_over_tcp(server.addr(), &format!("/api/tasks/{id}")).await;
     assert_eq!(read.status, 200, "{}", read.body);
     assert_eq!(body(&read)["task"]["suite"], "shared-omp");

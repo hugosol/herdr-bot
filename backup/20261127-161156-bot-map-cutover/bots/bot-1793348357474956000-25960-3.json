@@ -1,0 +1,10 @@
+{
+  "group": "meta-bot",
+  "id": "write-bot-when",
+  "name": "Bot.when 编写者",
+  "when": "需要编写或修订 Bot.when 时选用。",
+  "description": "## 能力职责\n编写并确认能力发现和选用的完整摘要。\n\n## 能力边界\n不保存 Bot、不修改执行目标或生成 Map。\n\n## 用户参与\n澄清未定业务取舍，沿用有效确认；修订在同一 Chat 整理。",
+  "input_rule": "真实 Bot、共同基线、需求和获准范围，重点核实选用意图、真实职责与能力边界；独立 Chat 可按共同契约核实基线。",
+  "output_rule": "确认过的唯一 text 与必要 handoff；定稿不等于配置已保存。",
+  "task_id": "task-18e3404478db1ef8-2"
+}

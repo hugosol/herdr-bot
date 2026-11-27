@@ -35,7 +35,11 @@ async fn p42_resume_keeps_chief_delegation_with_or_without_its_role_resource() {
             let submissions = || common::read_json_lines(&f.herdr.path().join("submitted.jsonl"));
             let before = submissions();
             assert_eq!(before.len(), 2);
+            assert!(before[0]["text"].as_str().unwrap().contains("你负责理解用户需求、选择能力、委派工作并呈现结果；业务执行交给执行者，Run 编排交给管理者。"));
             assert_eq!(before[1]["text"], preview["facts"]["prompt"]);
+            let submitted = before[1]["text"].as_str().unwrap();
+            assert!(submitted.contains("本次工作由 chief 委派。按提供的业务要求完成工作，并向当前 chief 交接实际结果"));
+            assert!(!submitted.contains("你负责本次 Run 的输入准备"));
             let app_log = f.herdr.path().join("app-tabs.jsonl");
             let role_id = format!("{agent}-chief-report");
 

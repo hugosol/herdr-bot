@@ -7,13 +7,13 @@ import { zoneRowFor } from '../support/ui'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
-const ompSuite = { id: 'shared-omp', name: '共享工具 · OMP', harness: 'omp', skills: [], extensions: [], mcp: ['search'], lsp: {} }
+const ompSuite = { id: 'shared-omp', name: '共享工具 · OMP', harness: 'omp', skills: [], extensions: [], mcp: ['search'], lsp: [] }
 const piSuite = { id: 'shared-pi', name: '共享工具 · Pi', harness: 'pi', skills: [], extensions: [], mcp: [], prompts: [], codemode: 'on' }
 function definitions(server: E2EServer) {
   const directory = path.join(path.dirname(server.configPath), 'meta-data')
-  fs.mkdirSync(directory, { recursive: true })
+  fs.mkdirSync(path.join(directory, 'mcp'), { recursive: true })
   fs.writeFileSync(path.join(directory, 'suites.json'), JSON.stringify({ suites: [ompSuite, piSuite] }))
-  fs.writeFileSync(path.join(directory, 'mcp.json'), '{"mcpServers":{"search":{"command":"controlled-search"}}}')
+  fs.writeFileSync(path.join(directory, 'mcp', 'search.json'), JSON.stringify({ name: 'search', description: 'Controlled search', config: { command: 'controlled-search' } }))
   return directory
 }
 
@@ -84,8 +84,9 @@ test('pstack P1: only OMP can select, save and launch the shipped pstack Suite',
   const root = path.dirname(server.configPath)
   const definitions = path.join(root, 'meta-data')
   fs.mkdirSync(definitions)
-  for (const name of ['suites.json', 'mcp.json']) {
-    fs.copyFileSync(new URL(`../../../meta-data/${name}`, import.meta.url), path.join(definitions, name))
+  fs.copyFileSync(new URL('../../../meta-data/suites.json', import.meta.url), path.join(definitions, 'suites.json'))
+  for (const kind of ['mcp', 'lsp', 'dap']) {
+    fs.cpSync(new URL(`../../../meta-data/${kind}`, import.meta.url), path.join(definitions, kind), { recursive: true })
   }
   // Isolate the CLI boundary: P1 exercises host compatibility, not native
   // consumption of the delivered toolkit (which has separate acceptance).
@@ -93,7 +94,11 @@ test('pstack P1: only OMP can select, save and launch the shipped pstack Suite',
   const suite = path.join(toolkit, 'pstack-suite')
   fs.mkdirSync(path.join(suite, 'generated', 'skills'), { recursive: true })
   fs.writeFileSync(path.join(suite, 'omp.ts'), '// Controlled CLI does not execute extensions.\n')
-  fs.appendFileSync(path.join(root, 'paths.toml'), `toolkit = '${toolkit}'\n`)
+  const autoExtensions = path.join(toolkit, 'entrypoints', 'omp-auto')
+  fs.mkdirSync(autoExtensions, { recursive: true })
+  fs.writeFileSync(path.join(autoExtensions, 'codebase-tools.ts'), '// Controlled CLI does not execute extensions.\n')
+  // Native commands are projected, not executed by this controlled host.
+  fs.appendFileSync(path.join(root, 'paths.toml'), `toolkit = '${toolkit}'\ncodebase_memory_mcp = '${path.join(root, 'codebase-memory')}'\ncodelldb = '${path.join(root, 'codelldb')}'\n`)
   const zonePath = path.join(root, 'pstack-zone')
   fs.mkdirSync(zonePath)
   execFileSync('git', ['init', '--quiet', zonePath])
@@ -200,6 +205,7 @@ test('P33 browser refuses deletion and lists all referencing Tasks without chang
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-suite').click()
   await page.getByRole('button', { name: '共享工具 · OMP · shared-omp', exact: true }).click()
+  await page.getByRole('button', { name: '编辑 Suite', exact: true }).click()
   page.once('dialog', dialog => dialog.accept())
   await page.getByRole('button', { name: '删除 Suite', exact: true }).click()
   const failure = page.getByRole('alert')
@@ -230,13 +236,15 @@ test('P18 browser retains and marks missing central MCP references and refuses s
   await page.goto(`${server.baseURL}?layout=expanded`)
   await page.getByTestId('tab-suite').click()
   await page.getByRole('button', { name: '共享工具 · OMP · shared-omp', exact: true }).click()
+  const edit = page.getByRole('button', { name: '编辑 Suite', exact: true })
+  await edit.click()
   await expect(page.getByLabel('search', { exact: true })).toBeChecked()
-  fs.writeFileSync(path.join(directory, 'mcp.json'), '{"mcpServers":{}}')
+  fs.unlinkSync(path.join(directory, 'mcp', 'search.json'))
   await page.getByRole('button', { name: '重新读取 Suite', exact: true }).click()
-  const missing = page.getByLabel('search（失效：集中 MCP 定义不存在）', { exact: true })
+  await edit.click()
+  const missing = page.getByRole('checkbox', { name: /search.*失效/ })
   await expect(missing).toBeChecked()
-  await page.getByRole('button', { name: '保存 Suite', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('search')
+  await expect(page.getByRole('button', { name: '保存 Suite', exact: true })).toBeDisabled()
   expect(fs.readFileSync(path.join(directory, 'suites.json'), 'utf8')).toBe(authority)
   await page.getByTestId('tab-tasks').click()
   await expect(page.getByTestId('task-item')).toContainText('集中 MCP 引用失效：search')

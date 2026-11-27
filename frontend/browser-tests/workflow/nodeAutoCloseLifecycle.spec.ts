@@ -55,7 +55,7 @@ async function setup(page: Page, a = false, b = true) {
   }
   const botRoot = path.join(server.cwd, 'meta-data/bots')
   fs.mkdirSync(botRoot, { recursive: true })
-  fs.writeFileSync(path.join(botRoot, 'worker.json'), JSON.stringify({ id: 'worker', name: 'worker', when: '', plan_guide: '', node_guide: '', task_id: ids.normal }))
+  fs.writeFileSync(path.join(botRoot, 'worker.json'), JSON.stringify({ id: 'worker', name: 'worker', when: '', description: '', input_rule: '', output_rule: '', task_id: ids.normal }))
   const mapRoot = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(mapRoot, { recursive: true })
   const node = { title: 'Worker', bot_id: 'worker', input: 'NODE-LIFECYCLE-INPUT', output_rule: [], zone: 'test/zone', blocked_by: [] }
@@ -87,26 +87,26 @@ async function expectClosed(tabId: string, count: number) {
   expect(closes()[count - 1].argv).toEqual(['tab', 'close', tabId])
 }
 
-// P8: Run creation must not freeze node choices. The independent expected
-// values are true/false after opposite Map edits, not values read from execution.
-// A stale Run snapshot would either miss A's close or incorrectly close B.
-test('P8 new dispatch uses current Map choices in both directions @time-contract', async ({ page }) => {
+// P12: the independent initial choices are false/true. Opposite source edits
+// must not redirect the actual close from B to A.
+test('P12 dispatch uses frozen Map close choices in both directions @time-contract', async ({ page }) => {
   const { zone } = await setup(page)
   await setChoice(page, 'A', true)
   await setChoice(page, 'B', false)
   const a = await dispatch(page, 'A', 'lifecycle-new-A', zone)
   const b = await dispatch(page, 'B', 'lifecycle-new-B', zone)
-  expect(a.autoClose).toBe(true)
-  expect(b.autoClose).toBe(false)
+  expect(a.autoClose).toBe(false)
+  expect(b.autoClose).toBe(true)
   expect(a.id).not.toBe(b.id)
   expect(a.chat.sessionId).toBe('lifecycle-new-A')
   expect(b.chat.sessionId).toBe('lifecycle-new-B')
   await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-new-A', body: 'A handoff ready with current close choice', canComplete: true })
   await post(page, '/api/workflow/node/report', { sessionId: 'lifecycle-new-B', body: 'B handoff ready with current close choice', canComplete: true })
   await approveAndComplete(page, 'A')
-  await expectClosed(a.chat.tabId, 1)
+  await noMoreCloses(page, [])
   await approveAndComplete(page, 'B')
-  await noMoreCloses(page, [['tab', 'close', a.chat.tabId]])
+  await expectClosed(b.chat.tabId, 1)
+  await noMoreCloses(page, [['tab', 'close', b.chat.tabId]])
 })
 
 // P18: after a real eligible completion, GET, delivered-page reload and an
@@ -265,15 +265,14 @@ for (const enabled of [true, false]) {
 }
 
 for (const enabled of [true, false]) {
-  // P8: independent retry is a new execution, not Chat restoration. Reusing the
-  // old execution's choice/Tab is a plausible violation; retained old identity
-  // and exact external target distinguish it in both configuration directions.
-  test(`P8 independent retry adopts ${enabled} after the opposite original choice @time-contract`, async ({ page }) => {
-    const { zone, runId } = await setup(page, !enabled)
+  // P12: retry owns a fresh execution and Tab, but not a new Map definition.
+  // Latest-source lookup or closing the old Tab changes the actual close record.
+  test(`P12 independent retry retains frozen ${enabled} despite the opposite source choice @time-contract`, async ({ page }) => {
+    const { zone, runId } = await setup(page, enabled)
     const old = await dispatch(page, 'A', 'lifecycle-retry-old', zone)
-    expect(old.autoClose).toBe(!enabled)
+    expect(old.autoClose).toBe(enabled)
     await post(page, '/api/workflow/manager/fail', { sessionId: manager, nodeId: 'A', reason: 'Original attempt failed' })
-    await setChoice(page, 'A', enabled)
+    await setChoice(page, 'A', !enabled)
     host('lifecycle-retry-new', zone)
     const result = await post(page, '/api/workflow/manager/retry', { sessionId: manager, nodeId: 'A', confirmed: true, reason: 'Explicit independent new attempt' })
     expect(result.result.status).toBe('running')

@@ -1,0 +1,9 @@
+{
+  "id": "bot-map-create-bot-task-workflow--bc-61ce48b80a4c",
+  "name": "创建task",
+  "when": "需要新建普通 Task 并包装为 Bot，且目标业务适合由一个 Chat 承担时选用。",
+  "description": "## 能力职责\n组织 Task 创建、Task 指示保义优化、Bot 包装及联动优化。\n\n## 能力边界\n交付配置，不运行新能力；多执行者实际业务由独立 Map 承担。\n\n## 用户参与\n需可用的管理者配置，用户按阶段确认取舍、候选和保存授权。",
+  "input_rule": "新建能力的职责、预期输入输出、验收、操作权限和资源限制；可附材料、命名及执行配置要求。",
+  "output_rule": "已保存并核对的 normal Task、完整绑定 Bot 和交接；包装结果不是最终交付，部分写入如实保留。",
+  "map_file": "create-bot-task-workflow--bc-61ce48b80a4c.json"
+}

@@ -15,6 +15,8 @@ mod retry;
 mod nested_retry;
 #[path = "history/records.rs"]
 mod records;
+#[path = "history/frozen_map.rs"]
+mod frozen_map;
 #[path = "history/integrity.rs"]
 mod integrity;
 #[path = "security/security.rs"]
@@ -33,6 +35,8 @@ mod approval_restart;
 mod map_deletion;
 #[path = "../scheduler/maps/map_title.rs"]
 mod map_title;
+#[path = "../scheduler/maps/map_rules.rs"]
+mod map_rules;
 #[path = "history/history_integrity.rs"]
 mod history_integrity;
 #[path = "scripts/typescript.rs"]
@@ -59,6 +63,8 @@ mod auto_close;
 mod named_inputs;
 #[path = "presets/plan_workflow.rs"]
 mod plan_workflow;
+#[path = "presets/selected_flow.rs"]
+mod selected_flow;
 #[path = "../scheduler/bots/shared_business.rs"]
 mod shared_business;
 #[path = "presets/create_bot_wrapper.rs"]

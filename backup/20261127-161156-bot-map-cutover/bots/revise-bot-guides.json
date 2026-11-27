@@ -1,0 +1,9 @@
+{
+  "id": "revise-bot-guides",
+  "name": "独立修订既有 Bot 能力摘要",
+  "when": "需要独立修订既有 Task 型或 Map 型 Bot 的四字段摘要时选用。",
+  "description": "## 能力职责\n核实同一基线，按字段整理并确认，汇合一次合法保存和完整读回。\n\n## 能力边界\n无需先优化 Task.prompt，不改绑、不修改或运行目标。\n\n## 特殊前提\n需真实管理者配置；各分支确认定稿，保存另核实授权。",
+  "input_rule": "真实 Bot ID、修订范围、要求及授权组成的 request；可选参考材料。",
+  "output_rule": "完整保存读回的 Bot、真实 revision 与 saved／handoff；冲突、授权或禁写条件仍可阻塞。",
+  "map_file": "enhance-existing-bot--bc-301b25d9f8d6.json"
+}

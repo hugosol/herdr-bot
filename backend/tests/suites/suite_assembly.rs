@@ -33,7 +33,7 @@ async fn resource_check_failure(locked: bool) {
     config.tasks.storage_file = root.path().join("tasks.json");
     config.zones.registry_file = root.path().join("zones.json");
     config.suites.definition_file = root.path().join("suites.json");
-    config.suites.mcp_file = root.path().join("mcp.json");
+    config.suites.mcp_directory = root.path().join("mcp");
     config.suites.generated_directory = root.path().join("generated");
     config.herdr.executable = herdr.executable().to_path_buf();
     let entry = root.path().join("entry.ts");
@@ -83,9 +83,7 @@ async fn resource_check_failure(locked: bool) {
 }
 
 fn declaration(id: &str, sentinel: &str) -> Value {
-    json!({"id":id, "name":format!("{id} · OMP"), "harness":"omp", "mcp":[sentinel], "lsp":{
-        "publication-probe":{"command":sentinel, "fileTypes":[".probe"]}
-    }})
+    json!({"id":id, "name":format!("{id} · OMP"), "harness":"omp", "mcp":[sentinel], "lsp":[sentinel]})
 }
 
 async fn save_task(server: &TestServer, suite: &str, name: &str) -> Value {
@@ -135,30 +133,26 @@ async fn dap_launches_deliver_native_manifests_and_recheck_central_references() 
     config.tasks.storage_file = root.path().join("tasks.json");
     config.zones.registry_file = root.path().join("zones.json");
     config.suites.definition_file = root.path().join("suites.json");
-    config.suites.mcp_file = root.path().join("mcp.json");
-    config.suites.dap_file = root.path().join("catalog elsewhere/central.json");
+    config.suites.mcp_directory = root.path().join("mcp");
+    config.suites.dap_directory = root.path().join("catalog elsewhere");
+    config.suites.lsp_directory = root.path().join("language servers");
     config.herdr.executable = herdr.executable().to_path_buf();
     let roots_file = root.path().join("paths.toml");
     fs::write(&roots_file, "[roots]\nadapters = 'owned programs'\n").unwrap();
     config.roots = herdr_bot::paths::Roots::load(&roots_file).unwrap();
-    fs::create_dir(config.suites.dap_file.parent().unwrap()).unwrap();
     let mut rooted = json!({"command":"${roots.adapters}/codelldb.exe", "languages":["rust"],
         "connectMode":"tcp", "args":["--port", "${port}", "./literal"],
         "rootMarkers":["Cargo.toml"], "launchDefaults":{"program":"./target/debug/example.exe"}});
     let relative = json!({"command":"./relative.exe", "fileTypes":[".rs"]});
     let bare = json!({"command":"native-on-path"});
-    let catalog = |rooted: &Value| json!({"adapters":{
-        "rooted":{"name":"Rooted", "description":"Windows x64", "config":rooted},
-        "relative":{"name":"Relative", "description":"Relative path", "config":relative},
-        "bare":{"name":"Bare", "description":"PATH lookup", "config":bare},
-        "unused":{"name":"Unused", "description":"Unused root must not be resolved",
-            "config":{"command":"${roots.unavailable}/unused.exe"}}
-    }}).to_string();
-    fs::write(&config.suites.dap_file, catalog(&rooted)).unwrap();
-    let lsp = json!({"fixture-lsp":{"command":"fixture-lsp"}});
+    let rooted_file = common::write_suite_resource(&config.suites.dap_directory, "rooted", rooted.clone());
+    common::write_suite_resource(&config.suites.dap_directory, "relative", relative);
+    common::write_suite_resource(&config.suites.dap_directory, "bare", bare);
+    common::write_suite_resource(&config.suites.dap_directory, "unused", json!({"command":"${roots.unavailable}/unused.exe"}));
+    common::write_suite_resource(&config.suites.lsp_directory, "fixture-lsp", json!({"command":"fixture-lsp"}));
     fs::write(&config.suites.definition_file, json!({"suites":[
         {"id":"dap-only-omp", "name":"DAP only · OMP", "harness":"omp", "dap":["rooted", "relative", "bare"]},
-        {"id":"dap-lsp-omp", "name":"Both · OMP", "harness":"omp", "dap":["rooted", "relative", "bare"], "lsp":lsp}
+        {"id":"dap-lsp-omp", "name":"Both · OMP", "harness":"omp", "dap":["rooted", "relative", "bare"], "lsp":["fixture-lsp"]}
     ]}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
     assert_eq!(post(&server, "/api/zones", json!({"id":"owned", "path":root.path()})).await.status, 200);
@@ -168,7 +162,9 @@ async fn dap_launches_deliver_native_manifests_and_recheck_central_references() 
         let launch = launch_body(&server, &task).await;
         if index == 1 {
             rooted["command"] = json!("${roots.adapters}/updated.exe");
-            fs::write(&config.suites.dap_file, catalog(&rooted)).unwrap();
+            let definition = json!({"name":"Rooted", "description":"Edited via HTTP", "config":rooted});
+            let response = request_json_over_tcp(server.addr(), "PUT", "/api/suites/resources/dap/rooted", Some(&definition.to_string())).await;
+            assert_eq!(response.status, 200, "{}", response.body);
         }
         let accepted = post(&server, "/api/chats", launch).await;
         assert_eq!(accepted.status, 202, "{}", accepted.body);
@@ -184,7 +180,7 @@ async fn dap_launches_deliver_native_manifests_and_recheck_central_references() 
         assert_eq!(plugin.join("lsp.json").is_file(), index == 1);
         if index == 1 {
             let delivered: Value = serde_json::from_slice(&fs::read(plugin.join("lsp.json")).unwrap()).unwrap();
-            assert_eq!(delivered, json!({"servers":lsp}));
+            assert_eq!(delivered, json!({"servers":{"fixture-lsp":{"command":"fixture-lsp"}}}));
         }
         outputs.push(plugin.join("dap.json"));
     }
@@ -200,13 +196,13 @@ async fn dap_launches_deliver_native_manifests_and_recheck_central_references() 
         }}));
     }
     assert!(!root.path().join("dap.json").exists(), "do not overwrite native project configuration");
-    assert_eq!(fs::read_to_string(&config.suites.dap_file).unwrap(), catalog(&rooted));
+    assert_eq!(serde_json::from_slice::<Value>(&fs::read(&rooted_file).unwrap()).unwrap()["config"], rooted);
 
     let task = save_task(&server, "dap-only-omp", "DAP reference removed after preview").await;
     let launch = launch_body(&server, &task).await;
     let task_bytes = fs::read(&config.tasks.storage_file).unwrap();
     let calls_before = herdr.calls().len();
-    fs::remove_file(&config.suites.dap_file).unwrap();
+    fs::remove_file(&rooted_file).unwrap();
     let update = json!({"name":"Changed", "chatName":"{task.name}", "agent":"omp", "taskType":"normal",
         "model":"default", "thinking":"default", "skill":null, "prompt":"unchanged", "suite":"dap-only-omp"});
     let path = format!("/api/tasks/{}", task.as_str().unwrap());
@@ -287,7 +283,7 @@ async fn windows_true_file_directory_and_cross_volume_links_preserve_targets_on_
     config.tasks.storage_file = root.path().join("tasks.json");
     config.zones.registry_file = root.path().join("zones.json");
     config.suites.definition_file = root.path().join("suites.json");
-    config.suites.mcp_file = root.path().join("mcp.json");
+    config.suites.mcp_directory = root.path().join("mcp");
     config.suites.generated_directory = root.path().join("generated");
     config.herdr.executable = herdr.executable().to_owned();
     let suite = json!({"id":"selected-omp","name":"Selected · OMP","harness":"omp","skills":[{"kind":"collection","path":&volume.0}]});
@@ -369,7 +365,7 @@ fn observe(call: &Value, sentinel: &str, resources: bool) -> std::path::PathBuf 
     if !resources { assert_eq!(skills["skills"]["customDirectories"], json!([])); }
     assert!(!directory.join("skills").exists(), "skills are consumed directly from their sources");
     let lsp: Value = serde_json::from_slice(&fs::read(directory.join("lsp.json")).unwrap()).unwrap();
-    assert_eq!(lsp, json!({"servers":{"publication-probe":{"command":sentinel,"fileTypes":[".probe"]}}}));
+    assert_eq!(lsp, json!({"servers":{(sentinel):{"command":sentinel,"fileTypes":[".probe"]}}}));
     directory
 }
 
@@ -400,13 +396,14 @@ async fn publication_scenarios(resources: bool) {
         config.tasks.storage_file = root.path().join("tasks.json");
         config.zones.registry_file = root.path().join("zones.json");
         config.suites.definition_file = root.path().join("suites.json");
-        config.suites.mcp_file = root.path().join("mcp.json");
+        config.suites.mcp_directory = root.path().join("mcp");
         config.suites.generated_directory = root.path().join("generated");
         config.herdr.executable = herdr.executable().to_owned();
-        fs::write(&config.suites.mcp_file, json!({"mcpServers":{
-            "PUBLICATION-A-193":{"command":"MCP-A-461"},
-            "PUBLICATION-B-827":{"command":"MCP-B-902"}
-        }}).to_string()).unwrap();
+        config.suites.lsp_directory = root.path().join("lsp");
+        for (id, command) in [("PUBLICATION-A-193", "MCP-A-461"), ("PUBLICATION-B-827", "MCP-B-902")] {
+            common::write_suite_resource(&config.suites.mcp_directory, id, json!({"command":command}));
+            common::write_suite_resource(&config.suites.lsp_directory, id, json!({"command":id,"fileTypes":[".probe"]}));
+        }
         let second_suite = if same_suite { "first-omp" } else { "second-omp" };
         let mut first = declaration("first-omp", "PUBLICATION-A-193");
         let mut second = declaration(second_suite, "PUBLICATION-B-827");

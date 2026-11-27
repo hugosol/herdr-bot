@@ -513,6 +513,15 @@ async fn app_resume_locates_the_existing_native_owner_without_creating_another_t
     }
 }
 
+#[tokio::test]
+async fn app_resume_reconciles_retained_owners_without_an_exit_report() {
+    for agent in ["pi", "omp"] {
+        for scenario in ["finished", "live", "query-failed", "missing", "malformed", "wrong-core", "wrong-core-pid", "wrong-address", "wrong-pid"] {
+            app_resume_with_correlated_identity(agent, &format!("retained-{scenario}")).await;
+        }
+    }
+}
+
 // S1 (P29/P30/P52): the report is from the expected core process. A mismatched
 // ID/type or the report's conflicting file header must fail, not time out as
 // if there were no evidence or start a new agent. The positive control retains
@@ -587,7 +596,7 @@ async fn app_resume_with_correlated_identity(agent: &str, scenario: &str) {
             "cwd":cwd, "pid":std::process::id(), "sessionFile":report_file,
         },
     }).to_string()).await;
-    if scenario != "verified" {
+    if matches!(scenario, "wrong-id" | "wrong-type" | "header-conflict") {
         let completed = tokio::time::timeout(Duration::from_secs(4), started).await.expect("reliable conflict must not wait as absent evidence").unwrap();
         assert_eq!(completed.status, 502, "{scenario}: {}", completed.body);
         let result: Value = serde_json::from_str(&completed.body).unwrap();
@@ -607,6 +616,77 @@ async fn app_resume_with_correlated_identity(agent: &str, scenario: &str) {
     assert!(args.iter().filter_map(Value::as_str).any(|arg| arg.ends_with(&format!("{agent}-connect-bot.ts"))));
     assert!(!args.iter().filter_map(Value::as_str).any(|arg| arg.ends_with("not-installed-tui-state.ts")));
     assert!(result["degradations"].as_array().unwrap().iter().all(|item| item["element"] != "extension"), "App must not validate TUI-only entries: {result}");
+
+    if let Some(condition) = scenario.strip_prefix("retained-") {
+        let created_path = app.path().join("app-created.json");
+        let mut created: Value = serde_json::from_slice(&std::fs::read(&created_path).unwrap()).unwrap();
+        created["space"] = json!("space-closed");
+        if condition == "wrong-pid" { created["pid"] = json!(std::process::id() + 1); }
+        std::fs::write(&created_path, created.to_string()).unwrap();
+        let mut behavior = core_behavior(argv.clone(), "tab-real");
+        let mut old = behavior["app_transport"]["get"].clone();
+        old["state"] = json!(if condition == "live" { "live" } else { "finished" });
+        match condition {
+            "query-failed" => old = json!({"fixture_error":"core query unavailable"}),
+            "missing" => old = json!({"fixture_error":"terminal not found"}),
+            "malformed" => old = json!({"state":"finished"}),
+            "wrong-core" => behavior["app_transport"]["server status"]["core"]["id"] = json!("another-core"),
+            "wrong-core-pid" => behavior["app_transport"]["server status"]["pid"] = json!(43125),
+            "wrong-address" => old["address"] = json!("t99"),
+            _ => {}
+        }
+        behavior["app_transport"]["get:t27"] = old;
+        behavior["app_transport"]["get"]["address"] = json!("t28");
+        core.set_behavior(behavior);
+        let mut layout = app_behavior("pane-next", false);
+        layout["app_transport"]["tab.new"] = json!({"space":"space-real","tab":"tab-next","terminal":"t28",
+            "fixture_pane":"pane-next","fixture_pid":std::process::id()});
+        layout["app_transport"]["status"] = json!({"space":"space-real","tab":"tab-next","focused_pane":"pane-next"});
+        app.set_behavior(layout);
+        let offset = app.calls().len();
+        if condition != "finished" {
+            for _ in 0..2 {
+                let response = resume(&server, "app-owner").await;
+                let body: Value = serde_json::from_str(&response.body).unwrap();
+                assert_eq!(response.status, 502, "{scenario}: {body}");
+                assert_eq!(body["stage"], "lookup", "{scenario}: {body}");
+            }
+            assert!(app.calls()[offset..].iter().all(|call| matches!(call["kind"].as_str(), Some("ls" | "status"))), "{scenario}");
+        } else {
+            let mut restoring = tokio::spawn(async move {
+                post_json_over_tcp(address, "/api/chats/resume", r#"{"sessionId":"app-owner"}"#).await
+            });
+            let next = tokio::time::timeout(Duration::from_secs(8), async {
+                loop {
+                    if let Some(call) = app.calls()[offset..].iter().find(|call| call["kind"] == "tab.new") {
+                        break call["data"]["argv"].clone();
+                    }
+                    if restoring.is_finished() { panic!("{scenario}: {}", (&mut restoring).await.unwrap().body); }
+                    tokio::time::sleep(Duration::from_millis(15)).await;
+                }
+            }).await.expect("finished owner permits a new restore");
+            let next = next.as_array().unwrap();
+            let separator = next.iter().position(|arg| arg == "--").unwrap();
+            let report = post_json_over_tcp(address, "/api/sessions/events", &json!({"sessionId":"app-owner","kind":"launch_identity","data":{
+                "launchId":next[separator+3],"targetId":next[separator+4],"agentType":agent,
+                "cwd":cwd,"pid":std::process::id(),"sessionFile":native,
+            }}).to_string()).await;
+            assert_eq!(report.status, 200, "{scenario}: {}", report.body);
+            let response = restoring.await.unwrap();
+            let body: Value = serde_json::from_str(&response.body).unwrap();
+            assert_eq!(response.status, 200, "{scenario}: {body}");
+            assert_eq!(body["outcome"], "restored", "{scenario}: {body}");
+            assert_eq!(body["target"]["tabId"], "tab-next");
+            let located = resume(&server, "app-owner").await;
+            assert_eq!(located.status, 200, "{}", located.body);
+            assert_eq!(serde_json::from_str::<Value>(&located.body).unwrap()["outcome"], "located");
+            assert_eq!(app.calls().iter().filter(|call| call["kind"] == "tab.new").count(), 2);
+        }
+        assert!(core.calls().iter().all(|call| matches!(call["kind"].as_str(), Some("server status" | "get"))), "{scenario}");
+        assert!(common::read_json_lines(&tui.path().join("invocations.jsonl")).is_empty());
+        assert_eq!(std::fs::read_to_string(&config.sessions.history_file).unwrap(), bytes);
+        return;
+    }
 
     for (kind, status, stage, focus_attempted) in [
         ("located", 200, None, true),

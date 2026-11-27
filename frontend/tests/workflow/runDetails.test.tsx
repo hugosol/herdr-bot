@@ -13,7 +13,7 @@ afterEach(() => {
 
 function savedDetail(id: string, name?: string): RunDetail {
   return { id, managed: false, readError: null, startupError: null, reports: [], pendingReports: {}, run: {
-    id, name, map: 'alpha.json', createdAt: 2000, managerTaskId: 'manager', zone: 'zone', workspaceName: 'workspace', userInput: 'request', status: 'completed', manager: null, nodes: {},
+    id, name, map: 'alpha.json', createdAt: 2000, managerTaskId: 'manager', zone: 'zone', workspaceName: 'workspace', mapInput: { runInput: 'request', files: [] }, mapOutput: { files: [] }, status: 'completed', manager: null, nodes: {},
   } }
 }
 
@@ -28,8 +28,8 @@ function renameRequests(patch: (id: string, name: string) => Promise<Response>) 
       return response
     }
     if (url === '/api/workflow/runs') return new Response(JSON.stringify({ pollIntervalSeconds: 86400, runs: Object.values(records) }))
+    if (url === '/api/workflow/runs/first/map' || url === '/api/workflow/runs/second/map') return new Response(JSON.stringify({ title: 'Map title', description: '', nodes: {} }))
     if (url.startsWith('/api/workflow/runs/')) return new Response(JSON.stringify(records[url.split('/').at(-1)!]))
-    if (url.startsWith('/api/scheduler/maps/')) return new Response(JSON.stringify({ title: 'Map title', description: '', nodes: {} }))
     return new Response(JSON.stringify({ message: 'Catalog unavailable' }), { status: 500 })
   })
   vi.stubGlobal('fetch', fetcher)
@@ -46,7 +46,7 @@ describe('Run input preparation', () => {
       const url = String(input)
       if (url === '/api/workflow/runs') return new Response(JSON.stringify({ pollIntervalSeconds: 86400, runs: [detail] }))
       if (url === '/api/workflow/runs/prepared-run') return new Response(JSON.stringify(detail))
-      if (url.startsWith('/api/scheduler/maps/')) return new Response(JSON.stringify({ title: 'Map title', description: '', nodes: {} }))
+      if (url === '/api/workflow/runs/prepared-run/map') return new Response(JSON.stringify({ title: 'Map title', description: '', nodes: {} }))
       return new Response(JSON.stringify({ message: 'Unavailable' }), { status: 500 })
     }))
     render(<RunDetails id="prepared-run" active />)
@@ -61,7 +61,7 @@ describe('Run rename', () => {
       .mockImplementation(async (id: string, name: string) => new Response(JSON.stringify(savedDetail(id, name))))
     renameRequests(patch)
     const { rerender } = render(<RunDetails id="first" active />)
-    await screen.findByRole('button', { name: '重命名' })
+    await screen.findAllByRole('heading', { name: 'Map title' })
     fireEvent.click(screen.getByRole('button', { name: '重命名' }))
     expect(screen.getByRole('textbox', { name: 'name' })).toHaveValue('Map title')
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Discard me' } })

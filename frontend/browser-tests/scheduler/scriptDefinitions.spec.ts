@@ -51,7 +51,7 @@ test.afterEach(async ({ browser }, info) => {
     }
   }
 })
-const guides = { name: '独占脚本能力', when: '', plan_guide: '', node_guide: '' }
+const guides = { name: '独占脚本能力', when: '', description: '', input_rule: '', output_rule: '' }
 
 async function evidence(page: Page, info: TestInfo, name: string, readback: unknown) {
   const http = info.outputPath(`${name}-http.json`), screenshot = info.outputPath(`${name}-page.png`)
@@ -99,7 +99,7 @@ test(`P30 ${capability} is maintained and reloaded without copying Task or Map c
   await page.getByRole('button', { name: 'save', exact: true }).click()
   const preview = page.getByRole('region', { name: 'Bot 预览', exact: true })
   await expect(preview).toContainText(capability)
-  for (const section of ['when', 'plan_guide', 'node_guide']) {
+  for (const section of ['when', 'description', 'input_rule', 'output_rule']) {
     await preview.getByRole('button', { name: section, exact: true }).click()
     await expect(preview.getByRole('region', { name: section, exact: true })).toBeEmpty()
     await expect(preview.getByRole('status')).toHaveText(`当前 ${section}：空文本`)
@@ -224,8 +224,8 @@ test(`P30 ${capability} preflight accepts available materials and explicitly rej
   const bot = { id: 'script-page-only', ...guides, script: capability }, botFile = path.join(bots, 'preflight-script.json')
   fs.writeFileSync(botFile, JSON.stringify(bot))
   fs.writeFileSync(path.join(maps, 'material-target.json'), JSON.stringify({ title: '不执行的材料目标', description: '', nodes: {} }))
-  const inputIds = capability === 'create-blank-bot.ts' ? ['request'] : ['baseline', 'when_text', 'plan_guide_text', 'node_guide_text']
-  const map = { title: '脚本真实预检', description: '', input_files: inputIds.map(id => ({ id, required: true })), nodes: { script: { title: '预检文件业务', bot_id: bot.id, input: '', zone: 'test/script', blocked_by: [], input_rule: inputIds.map(id => ({ id, type: 'run', input_id: id })), output_rule: [{ id: capability === 'create-blank-bot.ts' ? 'baseline' : 'saved' }, { id: 'handoff' }] } } }
+  const inputIds = capability === 'create-blank-bot.ts' ? ['request'] : ['baseline', 'when_text', 'description_text', 'input_rule_text', 'output_rule_text']
+  const map = { title: '脚本真实预检', description: '', map_input_rule: { files: inputIds.map(id => ({ id, required: true })) }, nodes: { script: { title: '预检文件业务', bot_id: bot.id, input: '', zone: 'test/script', blocked_by: [], input_rule: inputIds.map(id => ({ id, type: 'run', run_file_ref: id })), output_rule: [{ id: capability === 'create-blank-bot.ts' ? 'baseline' : 'saved' }, { id: 'handoff' }] } } }
   const mapFile = path.join(maps, 'script-preflight.json')
   fs.writeFileSync(mapFile, JSON.stringify(map))
   const request = { schema_version: 1, kind: 'request', target: { type: 'map', map_file: 'material-target.json' }, bot: { id: 'preflight-target', name: '预检保存目标' }, requirements: '仅创建空白能力，不执行目标', constraints: [], non_goals: [], resource_limits: [] }
@@ -233,13 +233,13 @@ test(`P30 ${capability} preflight accepts available materials and explicitly rej
   if (capability === 'create-blank-bot.ts') {
     fs.writeFileSync(materials.request, JSON.stringify(request))
   } else {
-    const target = { name: '预检保存目标', when: '', plan_guide: '', node_guide: '', map_file: 'material-target.json' }
+    const target = { name: '预检保存目标', when: '', description: '', input_rule: '', output_rule: '', map_file: 'material-target.json' }
     expect((await page.request.post(`${server.baseURL}/api/scheduler/bots/save`, { data: { id: 'preflight-target', revision: null, content: JSON.stringify(target) } })).status()).toBe(200)
     const editResponse = await page.request.post(`${server.baseURL}/api/scheduler/bots/edit`, { data: { id: 'preflight-target' } })
     expect(editResponse.status()).toBe(200)
     const edit = await editResponse.json()
     fs.writeFileSync(materials.baseline, JSON.stringify({ schema_version: 1, kind: 'baseline', bot: JSON.parse(edit.revision.original), revision: edit.revision, target: { ...request.target, configuration: { title: '不执行的材料目标', description: '', nodes: {} } }, request }))
-    for (const field of ['when', 'plan_guide', 'node_guide']) {
+    for (const field of ['when', 'description', 'input_rule', 'output_rule']) {
       const text = `预检独占 ${field} 正文\n`
       fs.writeFileSync(materials[`${field}_text`], text)
     }

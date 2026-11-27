@@ -1,0 +1,11 @@
+{
+  "group": "meta-bot",
+  "id": "create-typescript-script",
+
+  "name": "创建task-script type",
+  "when": "需要将业务需求落实为可供 herdr-bot 使用的 TypeScript 脚本时选用。",
+  "description": "## 能力职责\n在独立 Chat 或流程中设计、编写、按约定验证并保存脚本。\n\n## 能力边界\n不自动创建 Bot／Map 或启动后续业务。\n\n## 用户参与\n实施和验证依赖实际资源、工具与数据权限；用户确认允许写入、验证及副作用。",
+  "input_rule": "需求、输入来源和格式、结果与验收、非目标、资源权限及可选参考材料。",
+  "output_rule": "正式保存的 .ts 脚本、真实绝对位置及合法相对绑定路径，以及实际检查、未验证项及约定材料。",
+  "task_id": "task-18e95895bb36d00c-0"
+}

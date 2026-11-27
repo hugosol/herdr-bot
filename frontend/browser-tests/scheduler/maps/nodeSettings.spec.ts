@@ -99,7 +99,7 @@ test('P4 independent settings merge content and retain invalid raw drafts', asyn
   const closes = page.getByRole('checkbox', { name: 'auto_close', exact: true })
   const manual = page.getByRole('radio', { name: 'manual', exact: true })
   await edit(page, 'A', '旧节点')
-  const content = { title: legacyNode.title, bot_id: legacyNode.bot_id, input: legacyNode.input, blocked_by: [], input_rule: [{ id: 'source', type: 'node', node_id: 'B', output_id: 'result' }], output_rule: [] }
+  const content = { title: legacyNode.title, bot_id: legacyNode.bot_id, input: legacyNode.input, blocked_by: [], input_rule: [{ id: 'source', type: 'node', source_node_ref: 'B', node_output_ref: 'result' }], output_rule: [] }
   expect(JSON.parse(await json.inputValue())).toEqual({ title: legacyNode.title, bot_id: legacyNode.bot_id, input: legacyNode.input, blocked_by: [], input_rule: [], output_rule: [] })
   const raw = '  ' + JSON.stringify(content, null, 3) + '\n'
   await json.fill(raw)
@@ -167,7 +167,7 @@ test('P1 auto_close accepts only booleans through existing definition interfaces
 // execution, or carries its approval into retry. Literal expected facts below
 // distinguish both; only external Herdr is controlled, never Run persistence.
 // HTTP manual submission proves display of the recorded source, not native Yes.
-test('P3 P36 current definition frozen mode and retry approval facts remain distinct', async ({ page }, info) => {
+test('P3 P36 frozen Map mode and retry approval facts remain distinct', async ({ page }, info) => {
   await setup(page)
   const zone = path.join(server!.cwd, 'bot-playground')
   fs.mkdirSync(zone)
@@ -182,7 +182,7 @@ test('P3 P36 current definition frozen mode and retry approval facts remain dist
     const result = await post('/api/tasks', { name: role, taskType: role, agent: 'omp', chatName: '{chat.id}', model: 'default', thinking: 'default', skill: null, prompt: 'APPROVAL PAGE FIXTURE' })
     tasks[role] = result.tasks.find((task: { name: string }) => task.name === role).id
   }
-  fs.writeFileSync(path.join(server!.cwd, 'meta-data/bots/shared.json'), JSON.stringify({ id: 'shared', name: '共享', when: '', plan_guide: '', node_guide: '', task_id: tasks.normal }))
+  fs.writeFileSync(path.join(server!.cwd, 'meta-data/bots/shared.json'), JSON.stringify({ id: 'shared', name: '共享', when: '', description: '', input_rule: '', output_rule: '', task_id: tasks.normal }))
   for (const [id, title, mode] of [['A', '旧节点', 'manual'], ['B', '另一个节点', 'auto'], ['C', '无关节点', 'auto']] as const) {
     await edit(page, id, title)
     await (await openNodeJson(page)).fill(JSON.stringify({ title, bot_id: 'shared', input: 'APPROVAL BUSINESS', blocked_by: id === 'B' ? ['A'] : [], input_rule: [], output_rule: [] }))
@@ -230,9 +230,9 @@ test('P3 P36 current definition frozen mode and retry approval facts remain dist
   expect((await readMap(page)).nodes.A.auto_approved).toBe(true)
   await page.goto(url)
   await expect(field('autoApproved')).toHaveText('false')
-  const definition = page.getByRole('group', { name: '当前节点定义', exact: true })
+  const definition = page.getByRole('group', { name: '冻结节点定义', exact: true })
   await definition.locator('summary').click()
-  await expect(definition.locator('dt').filter({ hasText: /^auto_approved$/ }).locator('+ dd')).toHaveText('true')
+  await expect(definition.locator('dt').filter({ hasText: /^auto_approved$/ }).locator('+ dd')).toHaveText('false')
   await capture('changed-map-frozen-manual')
   await post('/api/workflow/node/approve', { sessionId: 'settings-manual', executionId: oldId, source: 'manual' })
   await page.getByRole('button', { name: '刷新 Run', exact: true }).click()
@@ -242,12 +242,12 @@ test('P3 P36 current definition frozen mode and retry approval facts remain dist
   expect(approved.run.nodes.A.execution).toMatchObject({ autoApproved: false, approved: true, approvalSource: 'manual' })
   expect(approved.reports).toEqual([])
   await post('/api/workflow/manager/fail', { sessionId: 'settings-manager', nodeId: 'A', reason: 'Independent new attempt needed' })
-  native('settings-auto-retry')
+  native('settings-manual-retry')
   const retry = await post('/api/workflow/manager/retry', { sessionId: 'settings-manager', nodeId: 'A', confirmed: true, reason: 'Old effects inspected' })
   const newId = retry.snapshot.nodes.A.execution.id
   expect(newId).not.toBe(oldId)
   await page.getByRole('button', { name: '刷新 Run', exact: true }).click()
-  await expect(field('autoApproved')).toHaveText('true')
+  await expect(field('autoApproved')).toHaveText('false')
   await expect(field('approved')).toHaveText('false · 尚未批准')
   await expect(field('approvalSource')).toHaveText('无')
   const history = page.getByRole('group', { name: '已保存旧执行事实', exact: true })
@@ -256,18 +256,18 @@ test('P3 P36 current definition frozen mode and retry approval facts remain dist
   await expect(history).toContainText('manual · 人工批准')
   const pending = await capture('retry-unapproved-and-old-manual')
   expect(pending.run.nodes.A.previousExecutions[0].execution).toMatchObject({ id: oldId, autoApproved: false, approved: true, approvalSource: 'manual' })
-  expect(pending.run.nodes.A.execution).toMatchObject({ id: newId, autoApproved: true, approved: false, approvalSource: null })
-  await post('/api/workflow/node/approve', { sessionId: 'settings-auto-retry', executionId: newId, source: 'auto' })
+  expect(pending.run.nodes.A.execution).toMatchObject({ id: newId, autoApproved: false, approved: false, approvalSource: null })
+  await post('/api/workflow/node/approve', { sessionId: 'settings-manual-retry', executionId: newId, source: 'manual' })
   await page.getByRole('button', { name: '刷新 Run', exact: true }).click()
-  await expect(field('approvalSource')).toHaveText('auto · 自动批准（非用户 Yes）')
-  const automatic = await capture('retry-auto-approved')
-  expect(automatic.run.nodes.A.status).toBe('running')
-  expect(automatic.run.nodes.B.status).toBe('pending')
-  expect(automatic.reports).toEqual([])
-  await post('/api/workflow/node/report', { sessionId: 'settings-auto-retry', body: 'Progress without sending confirmation', canComplete: false })
+  await expect(field('approvalSource')).toHaveText('manual · 人工批准')
+  const approvedRetry = await capture('retry-manual-approved')
+  expect(approvedRetry.run.nodes.A.status).toBe('running')
+  expect(approvedRetry.run.nodes.B.status).toBe('pending')
+  expect(approvedRetry.reports).toEqual([])
+  await post('/api/workflow/node/report', { sessionId: 'settings-manual-retry', body: 'Progress without sending confirmation', canComplete: false })
   await post('/api/workflow/manager/complete', { sessionId: 'settings-manager', nodeId: 'A', reason: 'Not ready' }, 409)
-  await post('/api/workflow/node/report', { sessionId: 'settings-auto-retry', body: 'Ready result', canComplete: true })
-  await post('/api/workflow/manager/complete', { sessionId: 'settings-auto-retry', nodeId: 'A', reason: 'Wrong actor' }, 403)
+  await post('/api/workflow/node/report', { sessionId: 'settings-manual-retry', body: 'Ready result', canComplete: true })
+  await post('/api/workflow/manager/complete', { sessionId: 'settings-manual-retry', nodeId: 'A', reason: 'Wrong actor' }, 403)
   await post('/api/workflow/manager/complete', { sessionId: 'settings-manager', nodeId: 'A', reason: 'Reviewed latest ready result' })
   await capture('completed-with-reports')
   await expect(page.getByRole('region', { name: '当前执行适用报告', exact: true })).toContainText('Ready result')

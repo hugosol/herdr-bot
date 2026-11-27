@@ -1,0 +1,11 @@
+{
+  "group": "meta-bot",
+  "id": "bot-task-18e89651aa593290-1",
+
+  "name": "Bot 整体分层设计与创建者",
+  "when": "已有确定能力需求与真实目标，需要整体设计并创建 Bot 时选用。",
+  "description": "## 能力职责\n按知识归属设计四字段并保存 Bot；仅在获准且必要时保义优化关联 Task.prompt。\n\n## 能力边界\n不建设、不运行目标；Map／script 配置原样保留。\n\n## 用户参与\n完整候选、绑定、共享影响和保存授权由用户确认。",
+  "input_rule": "真实 normal Task、Map 或脚本目标与业务要求；V2 提供已确认需求和目标原材料。",
+  "output_rule": "完整读回的 Bot、真实 revision 及目标、独立交接说明；部分写入和未验证事项保留。",
+  "task_id": "task-18e89651aa593290-1"
+}

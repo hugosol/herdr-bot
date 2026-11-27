@@ -68,7 +68,7 @@ body {
 }
 .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li,
 .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li + li { border: 0; }
-.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child {
+:is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row) {
   position: relative;
   isolation: isolate;
   min-height: 44px;
@@ -79,7 +79,7 @@ body {
   box-shadow: none;
   transform: none;
 }
-.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child::before {
+:is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row)::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -90,7 +90,7 @@ body {
   transition: transform 200ms linear;
   pointer-events: none;
 }
-.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child::after {
+:is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row)::after {
   content: '';
   position: absolute;
   inset: -8px 0;
@@ -100,15 +100,15 @@ body {
   transition: opacity 200ms linear, transform 200ms linear;
   pointer-events: none;
 }
-.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child:is([aria-pressed='true'], :enabled:focus-visible, :enabled:active) { color: var(--nier-raised); }
-.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child:is([aria-pressed='true'], :enabled:focus-visible, :enabled:active)::before { transform: scaleX(1); }
-.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child:is([aria-pressed='true'], :enabled:focus-visible, :enabled:active)::after { opacity: 1; transform: scaleY(1); }
-.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child :is(small, .scheduler-node-id, .scheduler-node-summary > span) { color: inherit; }
+:is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row):is([aria-pressed='true'], :enabled:focus-visible, :enabled:active) { color: var(--nier-raised); }
+:is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row):is([aria-pressed='true'], :enabled:focus-visible, :enabled:active)::before { transform: scaleX(1); }
+:is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row):is([aria-pressed='true'], :enabled:focus-visible, :enabled:active)::after { opacity: 1; transform: scaleY(1); }
+:is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row) :is(small, .scheduler-node-id, .scheduler-node-summary > span, .suites-list-id, .suites-list-meta) { color: inherit; }
 .scheduler .scheduler-node-list .scheduler-node-id { background: transparent; }
 @media (hover: hover) {
-  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child:enabled:hover { color: var(--nier-raised); }
-  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child:enabled:hover::before { transform: scaleX(1); }
-  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child:enabled:hover::after { opacity: 1; transform: scaleY(1); }
+  :is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row):enabled:hover { color: var(--nier-raised); }
+  :is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row):enabled:hover::before { transform: scaleX(1); }
+  :is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row):enabled:hover::after { opacity: 1; transform: scaleY(1); }
 }
 :where(button, input, select, textarea, summary, [contenteditable='true']):focus-visible { outline: 2px solid var(--nier-info); outline-offset: 3px; }
 :where(input, select, textarea) { accent-color: var(--nier-info); color-scheme: light; }
@@ -126,17 +126,17 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .nier-title-letter, .tabpanel:not([hidden]) { animation: none; }
   :where(button):not(:disabled):not([aria-disabled='true']), .layout-nav-item { transition: none; }
-  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child,
-  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child::before,
-  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child::after { transition: none; }
+  :is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row),
+  :is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row)::before,
+  :is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row)::after { transition: none; }
 }
 @media (forced-colors: active) {
   .scheduler-graph-viewport marker path { fill: CanvasText; }
   body { background-image: none; }
   .layout-content h1 { text-shadow: none; }
-  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child::before { background: Highlight; }
-  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child::after { border-color: Highlight; }
-  .scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child:is([aria-pressed='true'], :focus-visible, :active, :enabled:hover) { color: HighlightText; forced-color-adjust: none; }
+  :is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row)::before { background: Highlight; }
+  :is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row)::after { border-color: Highlight; }
+  :is(.scheduler :is(.scheduler-map-list, .scheduler-node-list) > li > button:first-child, .suites-group .suites-row):is([aria-pressed='true'], :focus-visible, :active, :enabled:hover) { color: HighlightText; forced-color-adjust: none; }
   .layout-nav-item[aria-selected='true'],
   .app-layout[data-layout='compact'] .layout-nav-item[aria-selected='true'] { color: HighlightText; background: Highlight; border-color: Highlight; forced-color-adjust: none; }
   .entity-group-dialog, .entity-group-dialog :is(input, select) { color: CanvasText; background: Canvas; border-color: CanvasText; }

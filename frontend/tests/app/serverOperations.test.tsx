@@ -9,10 +9,11 @@ afterEach(() => {
 })
 
 describe('App（herdr-bot 主界面）', () => {
-  it('渲染标题、两个固定操作与初始反馈', () => {
+  it('渲染标题、两个固定操作与初始反馈', async () => {
     render(<App />)
+    await userEvent.setup().click(screen.getByTestId('server-button'))
 
-    expect(screen.getByRole('heading', { name: 'herdr-bot' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Server' })).toBeVisible()
     expect(screen.getByTestId('start-button')).toBeEnabled()
     expect(screen.getByTestId('stop-button')).toBeEnabled()
     expect(screen.getByTestId('operation-result')).toHaveTextContent('尚未提交操作。')

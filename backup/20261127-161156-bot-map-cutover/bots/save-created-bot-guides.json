@@ -1,0 +1,10 @@
+{
+  "group": "meta-bot",
+  "id": "save-created-bot-guides",
+  "name": "创建流程四字段保存者",
+  "when": "",
+  "description": "",
+  "input_rule": "",
+  "output_rule": "",
+  "script": "save-bot-guides.ts"
+}

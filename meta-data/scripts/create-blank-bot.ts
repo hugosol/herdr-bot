@@ -16,7 +16,7 @@ export default async function script(context: Context) {
     const expected: Bot = {
       id, name: identity.name ?? target.name,
       ...(identity.group === undefined ? {} : { group: identity.group }),
-      when: "", plan_guide: "", node_guide: "",
+      when: "", description: "", input_rule: "", output_rule: "",
       ...(specification.target.type === "task" ? { task_id: specification.target.task_id } : { map_file: specification.target.map_file }),
     };
     const { id: _, ...content } = expected;
@@ -37,7 +37,7 @@ export default async function script(context: Context) {
       schema_version: 1, kind: "handoff", stage: "created", bot_id: id, target: specification.target,
       sources: files.map(file => ({ binding_id: file.id, direction: "input", role: file.id })),
       checks: { bot_read_back: true, target_unchanged: true },
-      unverified: ["仅创建定义；未执行目标业务，也未保存三指南。"],
+      unverified: ["仅创建定义；未执行目标业务，也未保存四字段正文。"],
     });
   });
 }

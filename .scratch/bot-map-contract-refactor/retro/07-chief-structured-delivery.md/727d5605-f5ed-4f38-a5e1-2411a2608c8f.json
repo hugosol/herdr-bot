@@ -1,0 +1,66 @@
+{
+  "feature": "bot-map-contract-refactor",
+  "ticket": "07-chief-structured-delivery.md",
+  "run_id": "727d5605-f5ed-4f38-a5e1-2411a2608c8f",
+  "parent_session_id": "01a219c2-b655-73fe-b79a-9d1f4fbbf05e",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e.jsonl",
+  "workspace": "E:/Developer/myhub/herdr-bot",
+  "tool_call_id": "e78a6a03-4a07-4edb-8d93-fced9dced028",
+  "started_at": "2026-11-27T07:24:15.676Z",
+  "tdd_status": "completed",
+  "retro_status": "completed",
+  "tdd_finished_at": "2026-11-27T07:39:15.938Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "07-chief-structured-deliverymd-e78a6a03-4a07-4ed",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\implementation\\07-chief-structured-delivery.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"bot\",\n    \"branch\": \"hyper/bot-map-contract-refactor/07-chief-structured-delivery-98eff0-f1cebc6ae7d6\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-Ifiw71\"\n  }\n]\n协调仓集成分支：feature/bot-map-contract-refactor\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\implementation\\07-chief-structured-delivery.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"bot\",\n    \"branch\": \"hyper/bot-map-contract-refactor/07-chief-structured-delivery-98eff0-f1cebc6ae7d6\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-Ifiw71\"\n  }\n]\n协调仓集成分支：feature/bot-map-contract-refactor\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement chief structured delivery ticket",
+    "lastIntent": "Committing verified chief delivery",
+    "exitCode": 0,
+    "output": "票 07 已实现并提交：`44a41508a40f9a55cc8ea5d1e3a35a4ca2e61c35`。未合入集成分支，交由独立集成代理接手。\n\n- **P22–P26、P29、P34**：Task／Map 委派在预览、确认、实际提交和持久记录中使用同一份 `outputRule`。Task 报告校验文件；Map 正式报告只取已完成 Run 的公开成果子集，不接受地址覆盖。无文件的中途报告和无文件要求的成功报告不受 finish 门禁；文字说明与 `outputs` 独立保存。\n- **P27–P28**：分别验证真实保存失败和外部通知失败。TUI 分别观察 **46,019 ms**、**46,015 ms**，App／OMP 与 App／Pi 的通知失败也各观察超过 46 秒，未见重投或重新派发。原 chief 不在线时，接替者能按权限读回陌生报告并读取实际文件；人工重发仍沿用原报告与接收去重。\n- **P57**：隔离清理后，原 chief Chat 可恢复并重新登记；旧委派、旧报告职责及旧 Run 管理和 finish 权限均被拒绝。保留的 Chat 历史、实际材料和归档 Run 记录通过字节对照。\n\n最终 `chief_delegation` **32/32**、`chief_authority` **2/2**、定向 `workflow_start` 调用者 **3/3** 通过，前端构建成功。保留了预览、Task 报告、Map 子集三项红灯，以及 P57 初次夹具编译与 Workspace 配置失败；修正后通过，未改产品超时。最终日志中所报告的进程清理均为 `cleanup=[]`。[原始日志](local://ticket-07-chief-verification.log)；P59 对照入口为[交付与现场交接](docs/bot-map-contract-refactor-delivery.md#本轮产品自动证据)。\n\n未执行 11–14 的跨仓原生确认、真实安装或现场切换；本结果不代表整体契约验收通过。",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 899983,
+    "tokens": 283951,
+    "requests": 56,
+    "contextTokens": 237681,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.2-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.2-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.2-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 248915,
+      "output": 35036,
+      "cacheRead": 8758272,
+      "cacheWrite": 0,
+      "totalTokens": 9042223,
+      "reasoningTokens": 9043,
+      "cost": {
+        "input": 0.49783000000000016,
+        "output": 0.35035999999999995,
+        "cacheRead": 0.8758272000000001,
+        "cacheWrite": 0,
+        "total": 1.7240172000000005
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e\\07-chief-structured-deliverymd-e78a6a03-4a07-4ed.md",
+    "outputMeta": {
+      "lineCount": 9,
+      "charCount": 879
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "07-chief-structured-deliverymd-e78a6a03-4a07-4ed",
+  "session_id": "01a21be3-fbf0-7595-9d9b-5cb7e75421a3",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e\\07-chief-structured-deliverymd-e78a6a03-4a07-4ed.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-Ifiw71",
+  "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\retro\\07-chief-structured-delivery.md\\727d5605-f5ed-4f38-a5e1-2411a2608c8f.md",
+  "retro_finished_at": "2026-11-27T07:39:50.073Z"
+}

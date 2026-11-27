@@ -1,0 +1,10 @@
+{
+  "name": "TypeScript Language Server",
+  "description": "提供 TypeScript 和 JavaScript 语言服务。",
+  "config": {
+    "args": ["--stdio"],
+    "command": "typescript-language-server",
+    "fileTypes": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
+    "rootMarkers": ["package.json", "tsconfig.json", "jsconfig.json"]
+  }
+}

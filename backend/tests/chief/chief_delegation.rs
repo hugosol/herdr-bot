@@ -11,6 +11,8 @@ mod map;
 mod reports;
 #[path = "chief_delegation/receipts.rs"]
 mod receipts;
+#[path = "chief_delegation/cutover_cleanup.rs"]
+mod cutover_cleanup;
 #[path = "chief_delegation/role_recovery.rs"]
 mod role_recovery;
 use process::TestServer;
@@ -70,7 +72,7 @@ impl Fixture {
         config.scheduler.map_directory = root.path().join("maps");
         config.scheduler.run_directory = root.path().join("runs");
         config.suites.definition_file = root.path().join("suites.json");
-        config.suites.mcp_file = root.path().join("mcp.json");
+        config.suites.mcp_directory = root.path().join("mcp");
         config.herdr.executable = herdr.executable().to_owned();
         if app {
             fs::write(herdr.path().join("chat-app-mode"), "").unwrap();
@@ -121,7 +123,7 @@ impl Fixture {
                     .clone(),
             );
         }
-        fs::write(root.path().join("bots/worker.json"),json!({"id":"brief-bot","name":"Brief analyst","when":"Summarize a brief","plan_guide":"Use supplied material","node_guide":"Do not invent findings","task_id":tasks[1]["id"]}).to_string()).unwrap();
+        fs::write(root.path().join("bots/worker.json"),json!({"id":"brief-bot","name":"Brief analyst","when":"Summarize a brief","description":"Use supplied material","input_rule":"Do not invent findings","output_rule":"","task_id":tasks[1]["id"]}).to_string()).unwrap();
         let fixture = Self {
             root,
             herdr,
@@ -236,6 +238,18 @@ async fn preview_rejects_incomplete_or_invalid_business_targets_and_materials() 
         .await;
         assert!(response.status >= 400, "{change}: {}", response.body);
     }
+    for output_rule in [Value::Null, json!([["id"]]), json!([{"id":"name","path":"ignored"}])] {
+        let mut request = f.request();
+        request["outputRule"] = output_rule;
+        let response = post_json_over_tcp(f.server.addr(), "/api/chief/delegations/preview", &request.to_string()).await;
+        assert_eq!(body(response, 400)["code"], "invalid-request");
+    }
+    for output_rule in [json!([{"id":"  "}]), json!([{"id":"same"},{"id":"same"}])] {
+        let mut request = f.request();
+        request["outputRule"] = output_rule;
+        let response = post_json_over_tcp(f.server.addr(), "/api/chief/delegations/preview", &request.to_string()).await;
+        assert_eq!(body(response, 409)["code"], "invalid-output-id");
+    }
     for role in ["manager", "chief"] {
         let mut task = f.worker.clone();
         task.as_object_mut().unwrap().remove("id");
@@ -258,7 +272,7 @@ async fn preview_rejects_incomplete_or_invalid_business_targets_and_materials() 
         .await;
         assert_eq!(body(response, 409)["code"], "delegation-task-role");
     }
-    fs::write(f.root.path().join("bots/worker.json"),json!({"id":"brief-bot","name":"Map only","when":"Flow","plan_guide":"Flow","node_guide":"Flow","map_file":"flow.json"}).to_string()).unwrap();
+    fs::write(f.root.path().join("bots/worker.json"),json!({"id":"brief-bot","name":"Map only","when":"Flow","description":"Flow","input_rule":"Flow","output_rule":"","map_file":"flow.json"}).to_string()).unwrap();
     let response = post_json_over_tcp(
         f.server.addr(),
         "/api/chief/delegations/preview",
@@ -269,6 +283,12 @@ async fn preview_rejects_incomplete_or_invalid_business_targets_and_materials() 
         response.status >= 400,
         "Map Bot cannot silently become a Task dispatch"
     );
+    fs::create_dir(f.root.path().join("scripts")).unwrap();
+    fs::write(f.root.path().join("scripts/direct.ts"), "throw new Error('must not be started by chief');").unwrap();
+    fs::write(f.root.path().join("bots/worker.json"), json!({"id":"brief-bot","name":"Script only","when":"","description":"","input_rule":"","output_rule":"","script":"direct.ts"}).to_string()).unwrap();
+    let response = post_json_over_tcp(f.server.addr(), "/api/chief/delegations/preview", &f.request().to_string()).await;
+    assert!(response.status >= 400, "chief cannot delegate a script: {}", response.body);
+    assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["code"], "bot-target-required");
     assert_eq!(f.herdr.calls().len(), before);
 }
 
@@ -691,10 +711,22 @@ async fn approval_rejects_changed_bot_task_or_zone_semantics_before_external_eff
 async fn task_bot_launches_independent_chat_with_previewed_input_and_durable_sender_identity() {
     let f = Fixture::new().await;
     let before = f.herdr.calls().len();
-    let preview = f.preview().await;
-    assert_eq!(f.herdr.calls().len(), before, "preview cannot launch work");
+    let mut request = f.request();
+    request["outputRule"] = json!([]);
+    let empty = post(&f.server, "/api/chief/delegations/preview", request.clone()).await;
+    assert!(empty["facts"]["request"].get("outputRule").is_none());
+    request["outputRule"] = json!([{"id":"brief-result"}]);
+    let unconfirmed = post(&f.server, "/api/chief/delegations/preview", request.clone()).await;
+    let unconfirmed_id = unconfirmed["previewId"].as_str().unwrap();
+    let override_attempt = json!({"sessionId":"chief-a","previewId":unconfirmed_id,"outputRule":[{"id":"unapproved"}]});
+    body(post_json_over_tcp(f.server.addr(), "/api/chief/delegations", &override_attempt.to_string()).await, 400);
+    let cancelled = json!({"sessionId":"chief-a","previewId":unconfirmed_id,"confirmed":false});
+    body(post_json_over_tcp(f.server.addr(), "/api/chief/delegations", &cancelled.to_string()).await, 400);
+    body(get_over_tcp(f.server.addr(), &format!("/api/chief/delegations/{unconfirmed_id}")).await, 404);
+    let preview = post(&f.server, "/api/chief/delegations/preview", request.clone()).await;
+    assert_eq!(f.herdr.calls().len(), before, "preview or cancellation cannot launch work");
     let facts = &preview["facts"];
-    assert_eq!(facts["request"], f.request());
+    assert_eq!(facts["request"], request);
     assert_eq!(facts["bot"]["id"], "brief-bot");
     assert_eq!(facts["task"]["id"], f.worker["id"]);
     assert!(common::same_path(
@@ -714,6 +746,9 @@ async fn task_bot_launches_independent_chat_with_previewed_input_and_durable_sen
     assert!(
         prompt.contains("brief-bot") && prompt.contains("chief-a") && prompt.contains("brief.txt")
     );
+    let output_section = "[Requested file outputs]\n[{\"id\":\"brief-result\"}]\n[/Requested file outputs]";
+    assert!(prompt.contains(output_section), "{prompt}");
+    assert!(prompt.contains("正式交付时按本次要求交接文件成果；Map 的公开文件成果取自已完成 Run。"));
     let accepted = body(
         post_json_over_tcp(
             f.server.addr(),

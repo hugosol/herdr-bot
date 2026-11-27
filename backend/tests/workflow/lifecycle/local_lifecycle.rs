@@ -27,7 +27,7 @@ async fn setup(s: &Scenario) {
         "inside":{"title":"Inside","bot_id":"worker","input":"INSIDE","zone":"node","blocked_by":[]},
         "sibling":{"title":"Sibling","bot_id":"worker","input":"SIBLING","zone":"node","blocked_by":[]}
     }}).to_string()).unwrap();
-    request(s, "/api/scheduler/bots/save", json!({"id":"nested","content":json!({"name":"Nested","when":"","plan_guide":"","node_guide":"","map_file":"inner.json"}).to_string(),"revision":null}), 200).await;
+    request(s, "/api/scheduler/bots/save", json!({"id":"nested","content":json!({"name":"Nested","when":"","description":"","input_rule":"","output_rule":"","map_file":"inner.json"}).to_string(),"revision":null}), 200).await;
     fs::write(s.config.scheduler.map_directory.join("work.json"), json!({"title":"Outer","description":"","nodes":{}}).to_string()).unwrap();
     for (id, content) in [
         ("call", json!({"title":"Call","bot_id":"nested","manager_task_id":s.manager_task,"input":"CALL","zone":"node","blocked_by":[]})),
@@ -106,7 +106,7 @@ async fn parent_pause_rejects_local_dispatch_retry_but_child_work_and_handoff_co
 async fn descendant_host_failure_keeps_ancestors_and_independent_sessions_running() {
     let s = Scenario::new().await;
     setup(&s).await;
-    request(&s, "/api/scheduler/bots/save", json!({"id":"deep","content":json!({"name":"Deep","when":"","plan_guide":"","node_guide":"","map_file":"leaf.json"}).to_string(),"revision":null}), 200).await;
+    request(&s, "/api/scheduler/bots/save", json!({"id":"deep","content":json!({"name":"Deep","when":"","description":"","input_rule":"","output_rule":"","map_file":"leaf.json"}).to_string(),"revision":null}), 200).await;
     fs::write(s.config.scheduler.map_directory.join("leaf.json"), json!({"title":"Leaf","description":"","nodes":{"work":{"title":"Leaf work","bot_id":"worker","input":"LEAF-WORK","zone":"node","blocked_by":[]}}}).to_string()).unwrap();
     fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner","description":"","nodes":{
         "inside":{"title":"Deep call","bot_id":"deep","manager_task_id":s.manager_task,"input":"DEEP","zone":"node","blocked_by":[]},

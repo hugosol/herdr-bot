@@ -17,12 +17,10 @@ async function fixture(condition: 'missing' | 'invalid' | 'mismatch' = 'missing'
   const directory = path.join(server.cwd, '.data/workflow-runs/history-run')
   fs.mkdirSync(directory, { recursive: true })
   if (condition !== 'missing') {
-    const maps = path.join(server.cwd, 'meta-data/workflow-maps')
-    fs.mkdirSync(maps, { recursive: true })
-    fs.writeFileSync(path.join(maps, 'missing.json'), condition === 'invalid' ? '{ invalid current definition' : JSON.stringify({ title: 'Unrelated definition', description: '', nodes: { Z: { title: 'Never map saved A here', bot_id: 'absent-bot', zone: '', input: '', blocked_by: [] } } }))
+    fs.writeFileSync(path.join(directory, 'map.json'), condition === 'invalid' ? '{ invalid frozen definition' : JSON.stringify({ title: 'Unrelated definition', description: '', nodes: { Z: { title: 'Never map saved A here', bot_id: 'absent-bot', zone: '', input: '', blocked_by: [] } } }))
   }
   const manager = reference('manager-native'), current = reference('current-native'), old = reference('old-native')
-  const run = { id: 'history-run', map: 'missing.json', createdAt: 1000, managerTaskId: 'manager-task', zone: server.cwd, workspaceName: 'saved-workspace', userInput: 'KEEP USER INPUT', status: 'running', manager, finished: null, nodes: {
+  const run = { id: 'history-run', map: 'missing.json', createdAt: 1000, managerTaskId: 'manager-task', zone: server.cwd, workspaceName: 'saved-workspace', mapInput: { runInput: 'KEEP USER INPUT', files: [] }, status: 'running', manager, finished: null, nodes: {
     A: { status: 'running', execution: { autoApproved: true, approved: false, approvalSource: null, agent: 'omp', id: 'exec-new', taskId: 'task-new', zone: 'C:/new-zone', chat: current }, failure: null, completion: null, previousExecutions: [{ execution: { autoApproved: true, approved: false, approvalSource: null, agent: 'omp', id: 'exec-old', taskId: 'task-old', zone: 'C:/old-zone', chat: old }, failure: { stage: 'execution', message: 'OLD FAILURE' } }] },
     B: { status: 'pending', execution: null, failure: null, completion: null, previousExecutions: [] },
   } }
@@ -57,6 +55,7 @@ for (const condition of ['missing', 'invalid', 'mismatch'] as const) {
 test(`P52.02 P53.01 P57.02 ${condition} Map retains current and collapsed old history Resume @time-contract`, async ({ page }, info) => {
   const { server, directory } = await fixture(condition)
   const files = ['run.json', 'history.jsonl', 'messages.jsonl']
+  if (condition !== 'missing') files.push('map.json')
   const before = files.map(file => fs.readFileSync(path.join(directory, file), 'utf8'))
   await page.goto(`${server.baseURL}/#workflow/history-run`)
   await expect(page.getByText(/^历史现场 \/ 未接管：/)).toBeVisible()
@@ -134,8 +133,12 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   const nodeTask = (await post('/api/tasks', nodeConfig)).tasks.find((task: { name: string }) => task.name === 'Node source')
   const maps = path.join(host.cwd, 'meta-data/workflow-maps'), bots = path.join(host.cwd, 'meta-data/bots')
   fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
-  fs.writeFileSync(path.join(maps, 'resume.json'), JSON.stringify({ title: 'Resume Map', description: '', nodes: { A: { title: 'Actual dispatch', bot_id: 'worker', input: 'NODE INPUT ONLY', zone, blocked_by: [] } } }))
-  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '', when: '', plan_guide: '', node_guide: '', task_id: nodeTask.id }))
+  const source = path.join(maps, 'resume.json')
+  const definition = { title: 'Resume Map', description: '', map_input_rule: { files: [{ id: 'real-brief', required: true }] }, nodes: { A: { title: 'Actual dispatch', bot_id: 'worker', input: 'NODE INPUT ONLY', zone, blocked_by: [], input_rule: [{ id: 'node-brief', type: 'run', run_file_ref: 'real-brief' }] } } }
+  fs.writeFileSync(source, JSON.stringify(definition))
+  const brief = path.join(host.cwd, 'actual-brief.txt')
+  fs.writeFileSync(brief, 'Named material in a real file')
+  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: '', when: '', description: '', input_rule: '', output_rule: '', task_id: nodeTask.id }))
   const native = (id: string) => {
     const file = path.join(host.cwd, `${id}.jsonl`)
     fs.writeFileSync(file, JSON.stringify({ type: 'session', version: 3, id, cwd: host.cwd }) + '\n')
@@ -144,7 +147,7 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   }
   native('real-dispatch-manager')
   const { id } = await post('/api/scheduler/maps/resume.json/runs', { managerTaskId: managerTask.id, zone, userInput: 'RUN INPUT ONLY' }, 201)
-  await post('/api/workflow/manager/prepare_inputs', { sessionId: 'real-dispatch-manager', fileInputs: [], confirmed: true, reason: 'Reviewed history fixture inputs' })
+  await post('/api/workflow/manager/prepare_inputs', { sessionId: 'real-dispatch-manager', fileInputs: [{ id: 'real-brief', path: brief }], confirmed: true, reason: 'Reviewed history fixture inputs' })
   const sessionFile = native('real-dispatch-node')
   expect((await post('/api/workflow/manager/dispatch', { sessionId: 'real-dispatch-manager', nodes: ['A'] })).results[0].status).toBe('running')
   const initialCalls = host.herdrCalls()
@@ -167,8 +170,28 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   const directory = path.join(host.cwd, '.data/workflow-runs', id)
   const files = ['run.json', 'history.jsonl', 'messages.jsonl']
   const saved = files.map(file => fs.readFileSync(path.join(directory, file), 'utf8'))
+  // P32 / S1,S2: change the valid source after real start and dispatch. Its
+  // graph must not appear; viewing/refreshing must not add even one host call.
+  fs.writeFileSync(source, JSON.stringify({ ...definition, title: 'Replacement live Map', nodes: { A: { ...definition.nodes.A, title: 'Replacement live node' } } }))
   const before = host.herdrCalls().length
+  const verifyFrozen = async () => {
+    const graph = page.getByRole('group', { name: 'Map 依赖图', exact: true })
+    await expect(graph.getByRole('button', { name: 'Actual dispatch A', exact: true })).toBeVisible()
+    await expect(graph).not.toContainText('Replacement live node')
+    await expect(page.getByRole('region', { name: '执行交接快照' })).toContainText(brief)
+  }
   await page.goto(`${host.baseURL}/#workflow/${id}`)
+  await verifyFrozen()
+  await page.locator('.workflow-run-background > summary').click()
+  const bindings = page.getByRole('region', { name: 'Run 文件输入' })
+  await expect(bindings.getByText('real-brief', { exact: true })).toBeVisible()
+  await expect(bindings.getByText(brief, { exact: true })).toBeVisible()
+  const refreshedMap = page.waitForResponse(response => response.url().endsWith(`/api/workflow/runs/${id}/map`) && response.ok())
+  await page.getByRole('button', { name: '刷新 Run', exact: true }).click()
+  expect(await (await refreshedMap).json()).toMatchObject({ title: 'Resume Map' })
+  await verifyFrozen()
+  expect(host.herdrCalls()).toEqual(initialCalls)
+  expect(files.map(file => fs.readFileSync(path.join(directory, file), 'utf8'))).toEqual(saved)
   await expect(page.getByText(/^历史现场 \/ 未接管：/)).toHaveCount(0)
   const scope = page.getByRole('region', { name: '当前执行 Chat', exact: true })
   const restored = await resume(page, scope, 'real-dispatch-node')

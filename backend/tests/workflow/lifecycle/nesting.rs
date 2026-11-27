@@ -16,7 +16,7 @@ async fn detail(s: &Scenario, id: &str) -> Value {
     serde_json::from_str(&response.body).unwrap()
 }
 fn nested(s: &Scenario, task: &str, input: &str) {
-    fs::write(s.config.scheduler.bot_directory.join("nested.json"), json!({"id":"nested","name":"Nested","when":"","plan_guide":"","node_guide":"","map_file":"inner.json"}).to_string()).unwrap();
+    fs::write(s.config.scheduler.bot_directory.join("nested.json"), json!({"id":"nested","name":"Nested","when":"","description":"","input_rule":"","output_rule":"","map_file":"inner.json"}).to_string()).unwrap();
     fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner","description":"","nodes":{"A":{"title":"Internal A","bot_id":"worker","input":"INNER-WORK","zone":"manager","blocked_by":[]}}}).to_string()).unwrap();
     fs::write(s.config.scheduler.map_directory.join("work.json"), json!({"title":"Outer","description":"","nodes":{"A":{"title":"Call","bot_id":"nested","manager_task_id":task,"input":input,"zone":"node","blocked_by":[]},"B":{"title":"Call again","bot_id":"nested","manager_task_id":task,"input":input,"zone":"node","blocked_by":[]}}}).to_string()).unwrap();
 }
@@ -68,7 +68,7 @@ async fn nested_chat_names_use_titles_frozen_at_each_run_creation() {
     let s = Scenario::new().await;
     for (bot, map) in [("build", "build.json"), ("release", "release.json")] {
         fs::write(s.config.scheduler.bot_directory.join(format!("{bot}.json")), json!({
-            "id":bot, "name":bot, "when":"", "plan_guide":"", "node_guide":"", "map_file":map
+            "id":bot, "name":bot, "when":"", "description":"","input_rule":"","output_rule":"", "map_file":map
         }).to_string()).unwrap();
     }
     let maps = &s.config.scheduler.map_directory;
@@ -116,6 +116,55 @@ async fn nested_chat_names_use_titles_frozen_at_each_run_creation() {
             .unwrap_or_else(|| panic!("missing {id} from Chat history: {history}"));
         assert_eq!(session["sessionName"], name, "Chat history for {id}");
     }
+}
+
+// P14 / S1,S4: replacing the child graph and its worker Bot after the
+// parent starts distinguishes own-start freezing from recursive snapshots.
+#[tokio::test]
+async fn child_freezes_its_own_latest_map_without_freezing_referenced_bots() {
+    let s = Scenario::new().await;
+    nested(&s, &s.manager_task, "CHILD-BUSINESS");
+    let maps = &s.config.scheduler.map_directory;
+    let parent_source = fs::read(maps.join("work.json")).unwrap();
+    let initial_child = fs::read(maps.join("inner.json")).unwrap();
+    let parent = s.start("frozen-parent").await;
+    let original_child = maps.join("inner.json");
+    let updated_child = json!({"title":"Child at dispatch","description":"Updated after parent launch","nodes":{
+        "Z":{"title":"Late worker","bot_id":"worker","zone":"manager","input":"LATEST CHILD INPUT","blocked_by":[]}
+    }});
+    fs::write(&original_child, updated_child.to_string()).unwrap();
+    native(&s, "omp", "frozen-child", "node-zone");
+    let dispatched = s.dispatch("frozen-parent", &["A"]).await;
+    assert_eq!(dispatched["results"][0]["status"], "running", "{dispatched}");
+    let child_id = dispatched["snapshot"]["nodes"]["A"]["execution"]["childRunId"].as_str().unwrap();
+    let child = detail(&s, child_id).await;
+    let run_root = &s.config.scheduler.run_directory;
+    let parent_map = run_root.join(parent["id"].as_str().unwrap()).join("map.json");
+    let child_map = run_root.join(child_id).join("map.json");
+    assert_eq!(fs::read(parent_map).unwrap(), parent_source);
+    assert_eq!(fs::read(&child_map).unwrap(), updated_child.to_string().as_bytes());
+    assert_eq!(child["run"]["name"], "[S]Child at dispatch-Outer");
+    assert_eq!(child["run"]["manager"]["sessionId"], "frozen-child");
+    assert_eq!(child["run"]["nodes"]["Z"]["status"], "pending");
+    assert!(child["run"]["nodes"].get("A").is_none());
+
+    fs::write(original_child, initial_child).unwrap();
+    let new_task = role_request(&s, "/api/tasks", json!({"name":"Fresh child worker","taskType":"normal","agent":"omp","chatName":"{chat.id}","model":"default","thinking":"default","prompt":"LIVE BOT TARGET"}), 200).await;
+    let task_id = &new_task["tasks"].as_array().unwrap().iter().find(|task| task["name"] == "Fresh child worker").unwrap()["id"];
+    let worker = s.config.scheduler.bot_directory.join("worker.json");
+    let mut bot: Value = serde_json::from_slice(&fs::read(&worker).unwrap()).unwrap();
+    bot["task_id"] = task_id.clone();
+    fs::write(worker, bot.to_string()).unwrap();
+    native(&s, "omp", "frozen-child-worker", "");
+    let executed = s.dispatch("frozen-child", &["Z"]).await;
+    assert_eq!(executed["results"][0]["status"], "running", "{executed}");
+    assert_eq!(executed["snapshot"]["nodes"]["Z"]["execution"]["taskId"], *task_id);
+    let calls = s.herdr.calls();
+    let mut prompts = calls.iter().filter(|call| call["kind"] == "agent_prompt");
+    let manager_prompt = common::prompt_body(prompts.nth(1).unwrap());
+    assert!(child_map.is_absolute() && manager_prompt.contains(&child_map.display().to_string()));
+    let worker_prompt = common::prompt_body(prompts.next().unwrap());
+    assert!(worker_prompt.contains("LIVE BOT TARGET") && worker_prompt.contains("LATEST CHILD INPUT"));
 }
 
 #[tokio::test]
@@ -307,39 +356,39 @@ async fn invalid_nested_links_and_source_mismatches_are_rejected_without_effects
     role_request(&s, "/api/workflow/manager/status", json!({"sessionId":"auth-child"}), 200).await;
 }
 
-// P10/P11: absence is legal only when the child declaration permits it.
-// A pass-through that fabricates a placeholder or skips child preflight would
-// start the required case. Observe empty bindings, explicit missing ID, and no
-// additional host start or child record after changing only requiredness.
+// Optional and required absence both allow a child manager to start, but only
+// optional absence can pass preparation. Never manufacture an input address.
 #[tokio::test]
-async fn optional_absence_passes_nested_interface_but_cannot_bypass_required_child() {
+async fn missing_required_child_material_does_not_block_manager_but_blocks_work() {
     let s = Scenario::new().await;
     nested(&s, &s.manager_task, "OPTIONAL");
     let maps = &s.config.scheduler.map_directory;
     let mut outer: Value = serde_json::from_slice(&fs::read(maps.join("work.json")).unwrap()).unwrap();
-    outer["input_files"] = json!([{"id":"maybe","required":false}]);
-    for id in ["A","B"] { outer["nodes"][id]["input_rule"] = json!([{"type":"run","id":"material","input_id":"maybe"}]); }
+    outer["map_input_rule"]["files"] = json!([{"id":"maybe","required":false}]);
+    for id in ["A","B"] { outer["nodes"][id]["input_rule"] = json!([{"type":"run","id":"material","run_file_ref":"maybe"}]); }
     fs::write(maps.join("work.json"), outer.to_string()).unwrap();
     let mut inner: Value = serde_json::from_slice(&fs::read(maps.join("inner.json")).unwrap()).unwrap();
-    inner["input_files"] = json!([{"id":"material","required":false}]);
-    inner["nodes"]["A"]["input_rule"] = json!([{"type":"run","id":"local","input_id":"material"}]);
+    inner["map_input_rule"]["files"] = json!([{"id":"material","required":false}]);
+    inner["nodes"]["A"]["input_rule"] = json!([{"type":"run","id":"local","run_file_ref":"material"}]);
     fs::write(maps.join("inner.json"), inner.to_string()).unwrap();
     s.start("optional-root").await;
     native(&s, "omp", "optional-child", "node-zone");
     let first = s.dispatch("optional-root", &["A"]).await;
     let child_id = first["snapshot"]["nodes"]["A"]["execution"]["childRunId"].as_str().unwrap();
-    assert_eq!(detail(&s, child_id).await["run"]["fileInputs"], json!([]));
+    assert_eq!(detail(&s, child_id).await["run"]["mapInput"]["files"], json!([]));
     native(&s, "omp", "optional-worker", "");
     let work = s.dispatch("optional-child", &["A"]).await;
     assert_eq!(work["snapshot"]["nodes"]["A"]["status"], "running");
     assert_eq!(work["snapshot"]["nodes"]["A"]["execution"]["inputs"], json!([]));
-    inner["input_files"][0]["required"] = json!(true);
+    inner["map_input_rule"]["files"][0]["required"] = json!(true);
     fs::write(maps.join("inner.json"), inner.to_string()).unwrap();
     native(&s, "omp", "required-child", "node-zone");
     let started = s.dispatch("optional-root", &["B"]).await;
     assert_eq!(started["results"][0]["status"], "running");
     let child_id = started["snapshot"]["nodes"]["B"]["execution"]["childRunId"].as_str().unwrap();
-    assert_eq!(detail(&s, child_id).await["run"]["inputsReady"], false);
+    let child = detail(&s, child_id).await;
+    assert_eq!(child["run"]["mapInput"]["files"], json!([]));
+    assert_eq!(child["run"]["inputsReady"], false);
     let calls = s.herdr.calls();
     let rejected = role_request(&s, "/api/workflow/manager/prepare_inputs", json!({"sessionId":"required-child","fileInputs":[],"confirmed":true,"reason":"Review cannot supply the absent material"}), 409).await;
     assert!(rejected.to_string().contains("material"));
@@ -361,10 +410,10 @@ async fn upstream_output_uses_parent_local_id_for_the_child_interface() {
     let mut outer: Value = serde_json::from_slice(&fs::read(maps.join("work.json")).unwrap()).unwrap();
     outer["nodes"]["source"] = json!({"title":"Source","bot_id":"worker","input":"Produce","zone":"node","blocked_by":[],"output_rule":[{"id":"upstream-result"}]});
     outer["nodes"]["A"]["blocked_by"] = json!(["source"]);
-    outer["nodes"]["A"]["input_rule"] = json!([{"type":"node","id":"child-material","node_id":"source","output_id":"upstream-result"}]);
+    outer["nodes"]["A"]["input_rule"] = json!([{"type":"node","id":"child-material","source_node_ref":"source","node_output_ref":"upstream-result"}]);
     fs::write(maps.join("work.json"), outer.to_string()).unwrap();
     let mut inner: Value = serde_json::from_slice(&fs::read(maps.join("inner.json")).unwrap()).unwrap();
-    inner["input_files"] = json!([{"id":"child-material","required":true}]);
+    inner["map_input_rule"]["files"] = json!([{"id":"child-material","required":true}]);
     fs::write(maps.join("inner.json"), inner.to_string()).unwrap();
     s.start("mapping-root").await;
     native(&s, "omp", "mapping-source", "node-zone");
@@ -378,7 +427,7 @@ async fn upstream_output_uses_parent_local_id_for_the_child_interface() {
     let dispatched = s.dispatch("mapping-root", &["A"]).await;
     let execution = &dispatched["snapshot"]["nodes"]["A"]["execution"];
     assert_eq!(execution["inputs"], json!([{"id":"child-material","path":path}]));
-    assert_eq!(detail(&s, execution["childRunId"].as_str().unwrap()).await["run"]["fileInputs"], json!([{"id":"child-material","path":path}]));
+    assert_eq!(detail(&s, execution["childRunId"].as_str().unwrap()).await["run"]["mapInput"]["files"], json!([{"id":"child-material","path":path}]));
     assert_eq!(fs::read_to_string(path).unwrap(), "UPSTREAM-REAL-729");
 }
 
@@ -391,22 +440,28 @@ async fn multilevel_local_ids_bind_only_the_owning_run() {
     let s = Scenario::new().await;
     nested(&s, &s.manager_task, "OUTER");
     let maps = &s.config.scheduler.map_directory;
-    fs::write(s.config.scheduler.bot_directory.join("leaf.json"), json!({"id":"leaf","name":"Leaf","when":"","plan_guide":"","node_guide":"","map_file":"leaf.json"}).to_string()).unwrap();
-    fs::write(maps.join("work.json"), json!({"title":"Root","description":"","input_files":[{"id":"outer","required":true}],"nodes":{"A":{"title":"Call","bot_id":"nested","manager_task_id":s.manager_task,"input":"OUTER","zone":"node","blocked_by":[],"input_rule":[{"type":"run","id":"shared","input_id":"outer"}]}}}).to_string()).unwrap();
-    fs::write(maps.join("inner.json"), json!({"title":"Middle","description":"","input_files":[{"id":"shared","required":true}],"nodes":{"A":{"title":"Call leaf","bot_id":"leaf","manager_task_id":s.manager_task,"input":"MIDDLE","zone":"manager","blocked_by":[],"input_rule":[{"type":"run","id":"shared","input_id":"shared"}]}}}).to_string()).unwrap();
-    fs::write(maps.join("leaf.json"), json!({"title":"Leaf","description":"","input_files":[{"id":"shared","required":true}],"nodes":{"A":{"title":"Consume","bot_id":"worker","input":"LEAF","zone":"node","blocked_by":[],"input_rule":[{"type":"run","id":"local","input_id":"shared"}]}}}).to_string()).unwrap();
+    fs::write(&s.config.prompts_file, "nested_probe = 'rendered in the calling node only'\n").unwrap();
+    fs::write(s.config.scheduler.bot_directory.join("leaf.json"), json!({"id":"leaf","name":"Leaf","when":"","description":"","input_rule":"","output_rule":"","map_file":"leaf.json"}).to_string()).unwrap();
+    fs::write(maps.join("work.json"), json!({"title":"Root","description":"","map_input_rule":{"files":[{"id":"outer","required":true}]},"nodes":{"A":{"title":"Call","bot_id":"nested","manager_task_id":s.manager_task,"input":" \tOUTER ${nested_probe}\r\n  ","zone":"node","blocked_by":[],"input_rule":[{"type":"run","id":"shared","run_file_ref":"outer"}]}}}).to_string()).unwrap();
+    fs::write(maps.join("inner.json"), json!({"title":"Middle","description":"","map_input_rule":{"files":[{"id":"shared","required":true}]},"nodes":{"A":{"title":"Call leaf","bot_id":"leaf","manager_task_id":s.manager_task,"input":"MIDDLE","zone":"manager","blocked_by":[],"input_rule":[{"type":"run","id":"shared","run_file_ref":"shared"}]}}}).to_string()).unwrap();
+    fs::write(maps.join("leaf.json"), json!({"title":"Leaf","description":"","map_input_rule":{"files":[{"id":"shared","required":true}]},"nodes":{"A":{"title":"Consume","bot_id":"worker","input":"LEAF","zone":"node","blocked_by":[],"input_rule":[{"type":"run","id":"local","run_file_ref":"shared"}]}}}).to_string()).unwrap();
     let mut children = Vec::new();
     for (root_session, child_session, grand_session, worker_session, file, body) in [("r-one","c-one","g-one","w-one","one.txt","FIRST-418"),("r-two","c-two","g-two","w-two","two.txt","SECOND-905")] {
         let path = s.data.path().join(file);
         fs::write(&path, body).unwrap();
         native(&s, "omp", root_session, "");
-        let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/runs", &json!({"managerTaskId":s.manager_task,"zone":"manager","userInput":"root","fileInputs":[{"id":"outer","path":path}]}).to_string()).await;
+        let root_input = " \t根要求 ${not-a-dictionary-key}\r\n\r\n第二行  ";
+        let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/runs", &json!({"managerTaskId":s.manager_task,"zone":"manager","userInput":root_input,"fileInputs":[{"id":"outer","path":path}]}).to_string()).await;
         assert_eq!(response.status, 201, "{}", response.body);
         native(&s, "omp", child_session, "node-zone");
         let parent = s.dispatch(root_session, &["A"]).await;
         let child_id = parent["snapshot"]["nodes"]["A"]["execution"]["childRunId"].as_str().unwrap();
         let child = detail(&s, child_id).await;
-        assert_eq!(child["run"]["fileInputs"], json!([{"id":"shared","path":path}]));
+        let child_input = concat!(
+            "[父 Run 本次要求]\n \t根要求 ${not-a-dictionary-key}\r\n\r\n第二行  \n[/父 Run 本次要求]\n\n",
+            "[调用节点委托]\n \tOUTER ${nested_probe}\r\n  \n[/调用节点委托]",
+        );
+        assert_eq!(child["run"]["mapInput"], json!({"runInput":child_input,"files":[{"id":"shared","path":path}]}));
         assert_eq!(child["run"]["inputsReady"], false, "parent preparation does not attest the child's business scope");
         let calls = s.herdr.calls();
         let rejected = role_request(&s, "/api/workflow/manager/dispatch", json!({"sessionId":child_session,"nodes":["A"]}), 200).await;
@@ -416,14 +471,39 @@ async fn multilevel_local_ids_bind_only_the_owning_run() {
         native(&s, "omp", grand_session, "");
         let middle = s.dispatch(child_session, &["A"]).await;
         let grand_id = middle["snapshot"]["nodes"]["A"]["execution"]["childRunId"].as_str().unwrap();
-        assert_eq!(detail(&s, grand_id).await["run"]["fileInputs"], json!([{"id":"shared","path":path}]));
+        let grand_input = format!("[父 Run 本次要求]\n{child_input}\n[/父 Run 本次要求]\n\n[调用节点委托]\nMIDDLE\n[/调用节点委托]");
+        assert_eq!(detail(&s, grand_id).await["run"]["mapInput"], json!({"runInput":grand_input,"files":[{"id":"shared","path":path}]}));
         native(&s, "omp", worker_session, "node-zone");
         let leaf = s.dispatch(grand_session, &["A"]).await;
+        assert_eq!(leaf["results"][0]["status"], "running", "{leaf}");
         assert_eq!(leaf["snapshot"]["nodes"]["A"]["execution"]["inputs"], json!([{"id":"local","path":path}]));
+        let calls = s.herdr.calls();
+        let prompt = common::prompt_body(calls.iter().rfind(|call| call["kind"] == "agent_prompt").unwrap());
+        assert!(prompt.contains(&format!("[Run background / runInput]\n{grand_input}\n[/Run background / runInput]")), "{prompt}");
         assert_eq!(fs::read_to_string(&path).unwrap(), body);
         children.push(child_id.to_owned());
     }
     assert_ne!(children[0], children[1]);
+}
+
+#[tokio::test]
+async fn nested_input_keeps_empty_and_single_source_bytes() {
+    let s = Scenario::new().await;
+    nested(&s, &s.manager_task, "");
+    let path = s.config.scheduler.map_directory.join("work.json");
+    let mut map: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let node_only = " \tOnly the node supplied input\r\n  ";
+    map["nodes"]["B"]["input"] = json!(node_only);
+    fs::write(path, map.to_string()).unwrap();
+    native(&s, "omp", "empty-input-root", "");
+    role_request(&s, "/api/scheduler/maps/work.json/runs", json!({"managerTaskId":s.manager_task,"zone":"manager","userInput":""}), 201).await;
+    for (node, session, expected) in [("A", "empty-input-child", ""), ("B", "node-only-input-child", node_only)] {
+        native(&s, "omp", session, "node-zone");
+        let launch = s.dispatch("empty-input-root", &[node]).await;
+        assert_eq!(launch["results"][0]["status"], "running", "{launch}");
+        let child_id = launch["snapshot"]["nodes"][node]["execution"]["childRunId"].as_str().unwrap();
+        assert_eq!(detail(&s, child_id).await["run"]["mapInput"], json!({"runInput":expected,"files":[]}));
+    }
 }
 
 // P04/P05/P06/P10/P21: independent launch literals for both hosts. A launcher
@@ -446,8 +526,9 @@ async fn nested_dispatch_uses_node_manager_business_zone_and_independent_runs() 
         assert_eq!(child["run"]["managerTaskId"], task);
         assert_eq!(child["run"]["managerZoneId"], "node");
         assert_eq!(child["run"]["zone"], json!(s.data.path().join("node-zone")));
-        assert_eq!(child["run"]["userInput"], business);
-        assert_eq!(child["run"]["fileInputs"], json!([]));
+        let expected_input = format!("[父 Run 本次要求]\nMANAGER-USER-SECRET\n[/父 Run 本次要求]\n\n[调用节点委托]\n{business}\n[/调用节点委托]");
+        assert_eq!(child["run"]["mapInput"]["runInput"], expected_input);
+        assert_eq!(child["run"]["mapInput"]["files"], json!([]));
         assert_eq!(child["run"]["parent"], json!({"runId":root["id"],"nodeId":"A","executionId":execution["id"]}));
         assert_eq!(child["run"]["manager"], execution["chat"]);
         assert_eq!(dispatched["snapshot"]["nodes"].as_object().unwrap().len(), 2);
@@ -460,6 +541,11 @@ async fn nested_dispatch_uses_node_manager_business_zone_and_independent_runs() 
         assert!(prompt.contains(business), "{prompt}");
         assert!(prompt.contains(&format!("FIXED-{name}")), "{prompt}");
         assert!(!prompt.contains("MANAGER-FIXED"), "root manager preset must not replace node manager");
+        assert!(prompt.contains("你负责本次 Run 的输入准备、节点编排、通用交接判断与流程收束"));
+        assert!(prompt.contains("你同时承担内部 Run 管理者与父节点执行者职责。内部完成后，再向父层交接整体成果；内部结束不自动完成父节点。"));
+        assert!(prompt.contains("本次成果批准模式为 true。"));
+        assert!(prompt.contains(root["id"].as_str().unwrap()));
+        assert!(prompt.contains(child_id));
         assert_eq!(s.herdr.tabs().last().unwrap()["cwd"], json!(s.data.path().join("node-zone")));
         native(&s, host, &format!("{session}-second"), "node-zone");
         let second = s.dispatch("root-manager", &["B"]).await;

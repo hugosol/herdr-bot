@@ -106,7 +106,7 @@ async fn fixture_with_host(agent: &str, app: bool) -> (TempDir, HerdrFixture, he
                 .to_owned(),
         );
     }
-    fs::write(config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"","plan_guide":"","node_guide":"","task_id":ids[1]}).to_string()).unwrap();
+    fs::write(config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"","description":"","input_rule":"","output_rule":"","task_id":ids[1]}).to_string()).unwrap();
     fs::write(config.scheduler.map_directory.join("work.json"), json!({"title":"map","description":"MAP-BODY-NOT-INJECTED","nodes":{"A":{"title":"A","bot_id":"worker","input":"NODE-INPUT-NOT-INJECTED","zone":zone,"blocked_by":[]}}}).to_string()).unwrap();
     (data, herdr, config, server, zone, ids)
 }
@@ -289,7 +289,7 @@ async fn app_nested_manager_and_end_chat_keep_separate_run_roles() {
     let (data, herdr, config, server, zone, ids) = fixture_with_host("pi", true).await;
     let cwd = data.path().join("alpha");
     fs::write(config.scheduler.bot_directory.join("nested.json"), json!({
-        "id":"nested","name":"Nested","when":"","plan_guide":"","node_guide":"","map_file":"inner.json"
+        "id":"nested","name":"Nested","when":"","description":"","input_rule":"","output_rule":"","map_file":"inner.json"
     }).to_string()).unwrap();
     fs::write(config.scheduler.map_directory.join("work.json"), json!({"title":"Root","description":"","nodes":{
         "N":{"title":"Nested","bot_id":"nested","manager_task_id":ids[0],"input":"Nested business input","zone":zone,"blocked_by":[]}
@@ -394,7 +394,7 @@ async fn app_delegated_map_binds_manager_before_approved_input() {
         }
     }).await.unwrap();
     fs::write(config.scheduler.bot_directory.join("flow.json"), json!({
-        "id":"flow","name":"Delegated workflow","when":"Use the workflow","plan_guide":"Explicit input","node_guide":"Explicit client",
+        "id":"flow","name":"Delegated workflow","when":"Use the workflow","description":"Explicit input","input_rule":"Explicit client","output_rule":"",
         "map_file":"work.json"
     }).to_string()).unwrap();
     let preview = run_reply(post_json_over_tcp(addr, "/api/chief/delegations/preview", &json!({
@@ -654,39 +654,37 @@ async fn named_input_declarations_are_local_and_duplicate_save_preserves_map() {
     let declarations = json!([{"id":"brief","required":true,"description":"Invoice **source** <plain text>\nKeep the original date."},{"id":"appendix","required":false}]);
     let mut submitted = declarations.clone();
     submitted[1]["description"] = json!("");
-    let saved = post_json_over_tcp(server.addr(), route, &json!({"input_files":submitted,"input_requirements":"Review the invoice date and obtain explicit scope approval.","revision":draft["revision"]}).to_string()).await;
+    let saved = post_json_over_tcp(server.addr(), route, &json!({"map_input_rule":{"files":submitted,"description":"Review the invoice date and obtain explicit scope approval."},"revision":draft["revision"]}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let read = get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await;
     assert_eq!(read.status, 200, "{}", read.body);
     let map: Value = serde_json::from_str(&read.body).unwrap();
     let mut expected = original;
-    expected["input_files"] = declarations.clone();
-    expected["input_requirements"] = json!("Review the invoice date and obtain explicit scope approval.");
+    expected["map_input_rule"] = json!({"files":declarations,"description":"Review the invoice date and obtain explicit scope approval."});
     assert_eq!(map, expected);
     assert_eq!(serde_json::from_str::<Value>(&saved.body).unwrap(), expected);
     assert_eq!(serde_json::from_slice::<Value>(&fs::read(config.scheduler.map_directory.join("work.json")).unwrap()).unwrap(), expected);
     let edited = get_over_tcp(server.addr(), route).await;
     assert_eq!(edited.status, 200, "{}", edited.body);
     let draft: Value = serde_json::from_str(&edited.body).unwrap();
-    assert_eq!(draft["input_files"], declarations);
-    assert_eq!(draft["input_requirements"], expected["input_requirements"]);
+    assert_eq!(draft["map_input_rule"], expected["map_input_rule"]);
     let persisted = fs::read(config.scheduler.map_directory.join("work.json")).unwrap();
     for description in [Value::Null, json!(42), json!(true), json!([]), json!({})] {
         let mut invalid = declarations.clone();
         invalid[0]["description"] = description.clone();
-        let rejected = post_json_over_tcp(server.addr(), route, &json!({"input_files":invalid,"input_requirements":"Must not replace general requirements.","revision":draft["revision"]}).to_string()).await;
+        let rejected = post_json_over_tcp(server.addr(), route, &json!({"map_input_rule":{"files":invalid,"description":"Must not replace general requirements."},"revision":draft["revision"]}).to_string()).await;
         assert_eq!(rejected.status, 422, "description {description}: {}", rejected.body);
         assert_eq!(fs::read(config.scheduler.map_directory.join("work.json")).unwrap(), persisted);
         assert_eq!(get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await.body, read.body);
     }
-    let rejected = post_json_over_tcp(server.addr(), route, &json!({"input_files":[{"id":"brief","required":true},{"id":"brief","required":false}],"input_requirements":"Review the invoice date and obtain explicit scope approval.","revision":draft["revision"]}).to_string()).await;
+    let rejected = post_json_over_tcp(server.addr(), route, &json!({"map_input_rule":{"files":[{"id":"brief","required":true},{"id":"brief","required":false}],"description":"Review the invoice date and obtain explicit scope approval."},"revision":draft["revision"]}).to_string()).await;
     assert_eq!(rejected.status, 400, "{}", rejected.body);
     assert!(rejected.body.contains("brief"));
     assert_eq!(get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await.body, read.body);
     fs::write(config.scheduler.map_directory.join("other.json"), serde_json::to_vec(&map).unwrap()).unwrap();
     let other = get_over_tcp(server.addr(), "/api/scheduler/maps/other.json").await;
     assert_eq!(other.status, 200, "{}", other.body);
-    assert_eq!(serde_json::from_str::<Value>(&other.body).unwrap()["input_files"], declarations);
+    assert_eq!(serde_json::from_str::<Value>(&other.body).unwrap()["map_input_rule"]["files"], declarations);
     assert!(herdr.calls().is_empty());
 }
 
@@ -698,7 +696,7 @@ async fn root_runs_preserve_named_bindings_separately_from_business_text() {
     let (data, herdr, config, server, zone, ids) = fixture().await;
     let map_path = config.scheduler.map_directory.join("work.json");
     let mut map: Value = serde_json::from_slice(&fs::read(&map_path).unwrap()).unwrap();
-    map["input_files"] = json!([{"id":"brief","required":true},{"id":"appendix","required":false}]);
+    map["map_input_rule"]["files"] = json!([{"id":"brief","required":true},{"id":"appendix","required":false}]);
     fs::write(&map_path, serde_json::to_vec(&map).unwrap()).unwrap();
     fs::write(config.scheduler.map_directory.join("other.json"), serde_json::to_vec(&map).unwrap()).unwrap();
     let mut expected_runs = Vec::new();
@@ -722,9 +720,9 @@ async fn root_runs_preserve_named_bindings_separately_from_business_text() {
         let detail = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{id}")).await;
         assert_eq!(detail.status, 200, "{}", detail.body);
         let detail: Value = serde_json::from_str(&detail.body).unwrap();
-        assert_eq!(detail["run"]["fileInputs"], bindings);
+        assert_eq!(detail["run"]["mapInput"]["files"], bindings);
         assert_eq!(detail["run"]["inputsReady"], false, "readable startup bindings are not semantic confirmation, including after reload");
-        assert_eq!(detail["run"]["userInput"], business);
+        assert_eq!(detail["run"]["mapInput"]["runInput"], business);
     }
 }
 
@@ -749,17 +747,17 @@ async fn handoff_order_requires_a_declared_map_input_before_manager_preparation(
     let unchanged = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{}", first["id"].as_str().unwrap())).await;
     let unchanged: Value = serde_json::from_str(&unchanged.body).unwrap();
     assert_eq!(unchanged["run"]["inputsReady"], false);
-    assert_eq!(unchanged["run"]["fileInputs"], json!([]));
+    assert_eq!(unchanged["run"]["mapInput"]["files"], json!([]));
 
     let declarations = json!([{"id":"order","required":true,"description":"Original order; discount may be null for discussion."}]);
     let draft = get_over_tcp(server.addr(), "/api/scheduler/maps/work.json/inputs").await;
     let draft: Value = serde_json::from_str(&draft.body).unwrap();
     let saved = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/inputs",
-        &json!({"input_files":declarations,"input_requirements":"Quantity and unit price must be known. Missing discount is the worker's discussion responsibility, not a prerequisite to start.","revision":draft["revision"]}).to_string()).await;
+        &json!({"map_input_rule":{"files":declarations,"description":"Quantity and unit price must be known. Missing discount is the worker's discussion responsibility, not a prerequisite to start."},"revision":draft["revision"]}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let published = get_over_tcp(server.addr(), "/api/scheduler/maps/work.json").await;
     let published: Value = serde_json::from_str(&published.body).unwrap();
-    assert_eq!(published["input_files"], declarations);
+    assert_eq!(published["map_input_rule"]["files"], declarations);
     herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"handoff-input-manager"},"native_cwd":data.path()}));
     let corrected = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/runs",
         &json!({"managerTaskId":ids[0],"zone":zone,"userInput":"Discuss this order; discount is still unknown.","fileInputs":bindings}).to_string()).await;
@@ -771,7 +769,7 @@ async fn handoff_order_requires_a_declared_map_input_before_manager_preparation(
     let detail = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{}", corrected["id"].as_str().unwrap())).await;
     let detail: Value = serde_json::from_str(&detail.body).unwrap();
     assert_eq!(detail["run"]["inputsReady"], true);
-    assert_eq!(detail["run"]["fileInputs"], bindings);
+    assert_eq!(detail["run"]["mapInput"]["files"], bindings);
     assert!(detail["run"]["nodes"]["A"]["execution"].is_null());
     assert_eq!(fs::read(&order).unwrap(), br#"{"quantity":7,"unitPriceCents":1200,"discountPercent":null}"#);
     println!("handoff fixture public HTTP: undeclared order -> 409; declared order -> prepared without discount, dispatch or model");
@@ -785,7 +783,7 @@ async fn invalid_root_input_ids_reject_preflight_and_start_without_host_effects(
     let (data, herdr, config, server, zone, ids) = fixture().await;
     let map_path = config.scheduler.map_directory.join("work.json");
     let mut map: Value = serde_json::from_slice(&fs::read(&map_path).unwrap()).unwrap();
-    map["input_files"] = json!([{"id":"brief","required":true}]);
+    map["map_input_rule"]["files"] = json!([{"id":"brief","required":true}]);
     fs::write(&map_path, serde_json::to_vec(&map).unwrap()).unwrap();
     let file = data.path().join("brief.txt");
     fs::write(&file, "material").unwrap();
@@ -813,7 +811,7 @@ async fn roots_without_files_and_omitted_optional_inputs_start_with_empty_bindin
         let (_data, _herdr, config, server, zone, ids) = fixture().await;
         let map_path = config.scheduler.map_directory.join("work.json");
         let mut map: Value = serde_json::from_slice(&fs::read(&map_path).unwrap()).unwrap();
-        if !declarations.is_null() { map["input_files"] = declarations; }
+        if !declarations.is_null() { map["map_input_rule"]["files"] = declarations; }
         fs::write(&map_path, serde_json::to_vec(&map).unwrap()).unwrap();
         let mut input = json!({"managerTaskId":ids[0],"zone":zone,"userInput":"optional: no file was supplied"});
         if let Some(bindings) = bindings { input["fileInputs"] = bindings; }
@@ -821,7 +819,7 @@ async fn roots_without_files_and_omitted_optional_inputs_start_with_empty_bindin
         assert_eq!(started.status, 201, "{}", started.body);
         let body: Value = serde_json::from_str(&started.body).unwrap();
         let detail = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{}",body["id"].as_str().unwrap())).await;
-        assert_eq!(serde_json::from_str::<Value>(&detail.body).unwrap()["run"]["fileInputs"], json!([]));
+        assert_eq!(serde_json::from_str::<Value>(&detail.body).unwrap()["run"]["mapInput"]["files"], json!([]));
     }
 }
 
@@ -834,7 +832,7 @@ async fn manager_trigger_and_status_follow_committed_identity() {
     // P16 uses distinct nonempty document markers, unlike P2's empty documents.
     fs::write(config.scheduler.bot_directory.join("worker.json"), json!({
         "id":"worker", "name":"worker", "when":"BOT-WHEN-NOT-INJECTED",
-        "plan_guide":"BOT-PLAN-NOT-INJECTED", "node_guide":"BOT-NODE-NOT-INJECTED", "task_id":ids[1]
+        "description":"BOT-PLAN-NOT-INJECTED","input_rule":"BOT-NODE-NOT-INJECTED","output_rule":"", "task_id":ids[1]
     }).to_string()).unwrap();
     let task = json!({"name":"manager","taskType":"manager","agent":"omp","chatName":"{chat.id}","model":"gpt-6.1-sol","thinking":"high","skill":"teach","prompt":"FIXED-ROLE-MARKER"});
     let update = common::request_json_over_tcp(
@@ -879,6 +877,10 @@ async fn manager_trigger_and_status_follow_committed_identity() {
         .into_iter()
         .find(|c| c["kind"] == "agent_start")
         .unwrap();
+    // P11 (S1/S4): the external launch gate is already entered. Deferring the
+    // copy to association or initial prompt would leave no definition here.
+    let frozen_path = root.join("map.json");
+    let frozen_at_launch = fs::read(&frozen_path);
     assert_eq!(
         &start["args"].as_array().unwrap()[..4],
         &[
@@ -902,11 +904,12 @@ async fn manager_trigger_and_status_follow_committed_identity() {
         .find(|c| c["kind"] == "agent_prompt")
         .unwrap();
     let body = common::prompt_body(&prompt);
-    assert!(body.starts_with("/skill:teach FIXED-ROLE-MARKER\n\n"));
+    assert!(body.starts_with("/skill:teach FIXED-ROLE-MARKER\n\n你负责本次 Run 的输入准备、节点编排、通用交接判断与流程收束"));
+    assert!(body.contains("业务执行和成果检查由节点承担，不加载或执行每张 Map 专属的业务验收规则。"));
+    assert!(!body.contains("BOT-WHEN-NOT-INJECTED") && !body.contains("BOT-PLAN-NOT-INJECTED") && !body.contains("BOT-NODE-NOT-INJECTED"));
     assert!(body.ends_with("\n\nLAST-USER-MARKER"));
     assert!(body.contains(original["id"].as_str().unwrap()));
     for required_path in [
-        config.scheduler.map_directory.join("work.json"),
         config.scheduler.run_instructions.clone(),
         root.join("run.json"),
         root.join("history.jsonl"),
@@ -942,6 +945,18 @@ async fn manager_trigger_and_status_follow_committed_identity() {
     assert_eq!(invented.status, 400);
     fs::write(prompt_release, b"release").unwrap();
     assert_eq!(request.await.unwrap().status, 201);
+    let frozen: Value = serde_json::from_slice(&frozen_at_launch.expect("map.json must already exist when Herdr enters agent_start")).unwrap();
+    assert_eq!(frozen["title"], "map");
+    assert_eq!(frozen["description"], "MAP-BODY-NOT-INJECTED");
+    assert_eq!(frozen["nodes"]["A"]["input"], "NODE-INPUT-NOT-INJECTED");
+    assert_eq!(frozen["nodes"]["A"]["bot_id"], "worker");
+    assert_eq!(frozen["nodes"]["A"]["blocked_by"], json!([]));
+    assert!(frozen_path.is_absolute());
+    assert!(body.contains(&frozen_path.display().to_string()));
+    assert!(!body.contains(&config.scheduler.map_directory.join("work.json").display().to_string()));
+    let map = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{}/map", original["id"].as_str().unwrap())).await;
+    let map = run_reply(map, 200);
+    assert_eq!(map["nodes"]["A"]["input"], "NODE-INPUT-NOT-INJECTED");
     let saved = common::get_over_tcp(server.addr(), &format!("/api/tasks/{}", ids[0])).await;
     assert_eq!(
         serde_json::from_str::<Value>(&saved.body).unwrap()["task"]["prompt"],
@@ -1243,7 +1258,12 @@ async fn initialization_and_identity_failures_stop_before_initial_instructions()
         let calls = herdr.calls();
         if stage == "initialize" {
             assert!(calls.is_empty());
+            assert_eq!(detail["startupError"]["effects"]["recordsInitialized"], false);
+            assert_eq!(detail["startupError"]["effects"]["agentStarted"], false);
+            assert!(detail["run"].is_null());
+            assert_eq!(fs::read(&config.scheduler.run_directory).unwrap(), b"not a directory");
         } else {
+            assert_eq!(detail["startupError"]["effects"]["recordsInitialized"], true);
             assert_eq!(
                 calls.iter().filter(|c| c["kind"] == "agent_start").count(),
                 1
@@ -1258,6 +1278,7 @@ async fn initialization_and_identity_failures_stop_before_initial_instructions()
                 .join(detail["id"].as_str().unwrap());
             assert_eq!(fs::read(root.join("history.jsonl")).unwrap(), b"");
             assert_eq!(fs::read(root.join("messages.jsonl")).unwrap(), b"");
+            assert_eq!(fs::read(root.join("map.json")).unwrap(), fs::read(config.scheduler.map_directory.join("work.json")).unwrap());
         }
         let refreshed = get_over_tcp(
             server.addr(),
@@ -1399,14 +1420,14 @@ async fn valid_empty_bot_documents_start_manager_and_preserve_literal_requiremen
         assert_eq!(response.status, 201, "{}", response.body);
         let body: Value = serde_json::from_str(&response.body).unwrap();
         let id = body["run"]["id"].as_str().unwrap();
-        assert_eq!(body["run"]["userInput"], requirements);
+        assert_eq!(body["run"]["mapInput"]["runInput"], requirements);
         assert_eq!(body["run"]["manager"]["sessionId"], "manager-native-04");
         assert_eq!(body["run"]["manager"]["workspaceId"], "w-manager");
         assert_eq!(body["run"]["managerTaskId"], ids[0]);
         let root = config.scheduler.run_directory.join(id);
         let persisted: Value =
             serde_json::from_slice(&fs::read(root.join("run.json")).unwrap()).unwrap();
-        assert_eq!(persisted["userInput"], requirements);
+        assert_eq!(persisted["mapInput"]["runInput"], requirements);
         assert_eq!(fs::read(root.join("messages.jsonl")).unwrap(), b"");
         assert_eq!(fs::read(root.join("history.jsonl")).unwrap(), b"");
         assert_eq!(persisted["nodes"]["A"]["status"], "pending");
@@ -1417,8 +1438,8 @@ async fn valid_empty_bot_documents_start_manager_and_preserve_literal_requiremen
             .rev()
             .find(|c| c["kind"] == "agent_prompt")
             .unwrap());
-        assert!(prompt.starts_with("FIXED-MANAGER-ROLE\n\nRun ID: "));
-        assert!(prompt.contains("work.json"));
+        assert!(prompt.starts_with("FIXED-MANAGER-ROLE\n\n你负责本次 Run 的输入准备"));
+        assert!(prompt.contains(&root.join("map.json").display().to_string()));
         assert!(!prompt.contains("MAP-BODY-NOT-INJECTED"));
         assert!(!prompt.contains("NODE-INPUT-NOT-INJECTED"));
         if requirements.is_empty() {
@@ -1430,7 +1451,7 @@ async fn valid_empty_bot_documents_start_manager_and_preserve_literal_requiremen
         let detail = get_over_tcp(server.addr(), &format!("/api/workflow/runs/{id}")).await;
         assert_eq!(detail.status, 200, "{}", detail.body);
         assert_eq!(
-            serde_json::from_str::<Value>(&detail.body).unwrap()["run"]["userInput"],
+            serde_json::from_str::<Value>(&detail.body).unwrap()["run"]["mapInput"]["runInput"],
             requirements
         );
         assert_eq!(

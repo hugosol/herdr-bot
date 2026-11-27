@@ -1,0 +1,11 @@
+{
+  "group": "meta-bot",
+  "id": "bot-map-create-bot-v2",
+
+  "name": "创建bot-V2",
+  "when": "已有 normal Task、Map 或 TypeScript 脚本，需对齐需求并创建完整 Bot 时选用。",
+  "description": "## 能力职责\n先核实目标和需求，再整体设计能力索引并获准保存。\n\n## 能力边界\n不修订旧 Bot，不创建或试运行目标；仅可按授权保义调整关联 Task.prompt。\n\n## 用户参与\n可用管理者配置；用户确认需求、完整候选、共享影响和写入。",
+  "input_rule": "V2 request（真实目标、业务要求、限制、确认与授权）及可选参考材料。",
+  "output_rule": "已保存并读回的 Bot 与 V2 saved／handoff；交付止于配置及文本，保留实际部分效果。",
+  "map_file": "create-bot-v2.json"
+}

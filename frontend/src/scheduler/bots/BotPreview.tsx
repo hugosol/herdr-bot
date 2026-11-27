@@ -4,8 +4,9 @@ import { EditableTitle } from '../../app/EditableTitle'
 
 const documents = [
   { key: 'when', title: 'when' },
-  { key: 'plan_guide', title: 'plan_guide' },
-  { key: 'node_guide', title: 'node_guide' },
+  { key: 'description', title: 'description' },
+  { key: 'input_rule', title: 'input_rule' },
+  { key: 'output_rule', title: 'output_rule' },
 ] as const
 
 export function BotPreview({ bot, target, active, disabled, onRename }: { bot: Bot; target: ReactNode; active: boolean; disabled?: boolean; onRename: (name: string) => Promise<void> }) {
@@ -24,6 +25,6 @@ export function BotPreview({ bot, target, active, disabled, onRename }: { bot: B
     </section>)}
     {documents.some(({ key }) => section === key && bot[key] === '') && <p role="status">当前 {section}：空文本</p>}
     <div hidden={section !== 'raw'}><pre aria-label="Bot 原始定义">{JSON.stringify(bot, null, 2)}</pre></div>
-    <p className="scheduler-help">三份文档可独立阅读、允许空文本；Markdown 是指引，不是输入校验规则。仅保存定义，不启动 Chat。</p>
+    <p className="scheduler-help">四个字段用于能力选用，允许空文本；输入／输出摘要不是运行校验规则。仅保存定义，不启动 Chat。</p>
   </>
 }

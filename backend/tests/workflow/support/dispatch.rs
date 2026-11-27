@@ -72,8 +72,13 @@ impl Scenario {
         fs::create_dir_all(&config.scheduler.map_directory).unwrap();
         fs::create_dir_all(&config.scheduler.bot_directory).unwrap();
         common::install_bot_scripts(&config.scheduler.bot_directory);
-        let app = herdr_bot::app(&config);
-        let server = TestServer::start_app(app.clone()).await;
+        let sessions = herdr_bot::sessions::SessionsState::with_policy(config.sessions.policy());
+        let (app, state) = herdr_bot::app_with_state(
+            &config,
+            std::sync::Arc::new(herdr_bot::SystemPowerOff),
+            std::sync::Arc::new(sessions),
+        );
+        let server = TestServer::start_with_state(app.clone(), &state).await;
         fs::write(herdr.path().join("launch_endpoint.txt"), server.addr().to_string()).unwrap();
         let node_zone = data.path().join("node-zone");
         fs::create_dir(&node_zone).unwrap();
@@ -88,7 +93,7 @@ impl Scenario {
             let body: Value = serde_json::from_str(&response.body).unwrap();
             ids.push(body["tasks"].as_array().unwrap().iter().find(|t| t["name"] == role).unwrap()["id"].as_str().unwrap().to_owned());
         }
-        fs::write(config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"BOT-WHEN-SECRET","plan_guide":"BOT-PLAN-SECRET","node_guide":"BOT-NODE-SECRET","task_id":ids[1]}).to_string()).unwrap();
+        fs::write(config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"BOT-WHEN-SECRET","description":"BOT-PLAN-SECRET","input_rule":"BOT-NODE-SECRET","output_rule":"BOT-OUTPUT-SECRET","task_id":ids[1]}).to_string()).unwrap();
         fs::write(config.scheduler.map_directory.join("work.json"), json!({"title":"map","description":"MAP-SECRET","nodes":{
             "A":{"title":"Worker A","bot_id":"worker","input":"NODE-INPUT\n第二行","zone":"node","blocked_by":[],"output_rule":[{"id":"A"},{"id":"B"},{"id":"otherVolume"},{"id":"result"},{"id":"brief"},{"id":"shared"}]},
             "B":{"title":"Worker B","bot_id":"worker","input":"B-INPUT","zone":"node","blocked_by":[],"output_rule":[{"id":"A"},{"id":"B"},{"id":"review"},{"id":"summary"}]},
@@ -115,7 +120,7 @@ impl Scenario {
             self.prepared_fixtures.lock().unwrap().insert(identity.to_owned());
             return Some(status["snapshot"].clone());
         }
-        let response = post_json_over_tcp(self.server.addr(), "/api/workflow/manager/prepare_inputs", &json!({"sessionId":identity,"fileInputs":status["snapshot"]["fileInputs"],"confirmed":true,"reason":"Fixture bindings reviewed against this scenario's requirements"}).to_string()).await;
+        let response = post_json_over_tcp(self.server.addr(), "/api/workflow/manager/prepare_inputs", &json!({"sessionId":identity,"fileInputs":status["snapshot"]["mapInput"]["files"],"confirmed":true,"reason":"Fixture bindings reviewed against this scenario's requirements"}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         let snapshot = serde_json::from_str::<Value>(&response.body).unwrap()["snapshot"].clone();
         self.prepared_fixtures.lock().unwrap().insert(identity.to_owned());

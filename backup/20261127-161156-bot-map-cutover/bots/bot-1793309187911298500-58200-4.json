@@ -1,0 +1,9 @@
+{
+  "id": "create-bot",
+  "name": "Bot 创建者",
+  "when": "已有 normal Task，需要将其真实能力登记为可复用 Bot 时选用。",
+  "description": "## 能力职责\n根据目标 Task 核实能力，创建并绑定完整 Bot。\n\n## 能力边界\n不创建、修改或运行目标 Task，不补建资源。\n\n## 用户参与\n用户确认能力意图、边界和绑定。",
+  "input_rule": "真实 normal Task ID、业务需求及已有确认、资源权限和可选交付位置。",
+  "output_rule": "已保存并完整读回的 Bot、绑定 Task 身份、能力摘要、有效约束和未验证项。",
+  "task_id": "task-18e31d347ccbeb4c-4"
+}

@@ -8,7 +8,9 @@ pub(super) async fn declare_inputs(s: &Scenario, inputs: Value) {
     let draft = get_over_tcp(s.server.addr(), route).await;
     assert_eq!(draft.status, 200, "{}", draft.body);
     let draft: Value = serde_json::from_str(&draft.body).unwrap();
-    let saved = post_json_over_tcp(s.server.addr(), route, &json!({"input_files":inputs,"input_requirements":"","revision":draft["revision"]}).to_string()).await;
+    let mut edited = json!({"map_input_rule":{"files":inputs},"revision":draft["revision"]});
+    if let Some(output) = draft.get("map_output_rule") { edited["map_output_rule"] = output.clone(); }
+    let saved = post_json_over_tcp(s.server.addr(), route, &edited.to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
 }
 
@@ -28,7 +30,7 @@ async fn start_inputs(s: &Scenario, manager: &str, files: Value) -> Value {
 async fn run_inputs_are_local_renamed_and_optional_absence_stays_absent() {
     let s = Scenario::new().await;
     declare_inputs(&s, json!([{"id":"brief","required":true},{"id":"extra","required":false}])).await;
-    save_node(&s, "A", json!([{"id":"local","type":"run","input_id":"brief"},{"id":"optional","type":"run","input_id":"extra"}]), json!([])).await;
+    save_node(&s, "A", json!([{"id":"local","type":"run","run_file_ref":"brief"},{"id":"optional","type":"run","run_file_ref":"extra"}]), json!([])).await;
     let first = s.data.path().join("one.txt");
     let second = s.data.path().join("two.txt");
     fs::write(&first, b"ONE").unwrap();
@@ -116,8 +118,8 @@ async fn dispatch_rechecks_direct_report_and_run_file_availability() {
             declare_inputs(&s, json!([{"id":"brief","required":false}])).await;
             let rule = match source {
                 "file" => json!({"id":"local","type":"file","path":"material.txt"}),
-                "node" => json!({"id":"local","type":"node","node_id":"A","output_id":"result"}),
-                _ => json!({"id":"local","type":"run","input_id":"brief"}),
+                "node" => json!({"id":"local","type":"node","source_node_ref":"A","node_output_ref":"result"}),
+                _ => json!({"id":"local","type":"run","run_file_ref":"brief"}),
             };
             save_node(&s, "B", json!([rule]), json!([])).await;
             let run = start_inputs(&s, "availability-manager", json!([{"id":"brief","path":path}])).await;
@@ -146,6 +148,132 @@ async fn dispatch_rechecks_direct_report_and_run_file_availability() {
             drop(lock);
         }
     }
+}
+
+#[tokio::test]
+async fn input_driven_zone_requires_its_file_binding_before_launching_a_batch() {
+    let s = Scenario::new().await;
+    declare_inputs(&s, json!([{"id":"optional-placement","required":false}])).await;
+    let path = s.config.scheduler.map_directory.join("work.json");
+    let mut map: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    map["nodes"]["A"]["zone"] = json!({"type":"dynamic","input_id":"local"});
+    map["nodes"]["A"]["input_rule"] = json!([{"type":"run","id":"local","input_id":"optional-placement"}]);
+    fs::write(path, map.to_string()).unwrap();
+    let manager = "missing-placement-manager";
+    s.start(manager).await;
+    let before = s.herdr.calls();
+    let result = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/dispatch", &json!({"sessionId":manager,"nodes":["B","A"]}).to_string()).await;
+    assert!(result.status >= 400 && result.body.contains("local"), "{}", result.body);
+    assert_eq!(s.herdr.calls(), before);
+    let status = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/status", &json!({"sessionId":manager}).to_string()).await;
+    assert_eq!(status.status, 200, "{}", status.body);
+    let nodes = &serde_json::from_str::<Value>(&status.body).unwrap()["snapshot"]["nodes"];
+    for id in ["A", "B"] {
+        assert_eq!(nodes[id]["status"], "pending");
+        assert!(nodes[id]["execution"].is_null());
+    }
+}
+
+#[tokio::test]
+async fn input_driven_zone_uses_completed_output_and_rereads_it_on_retry() {
+    let s = Scenario::new().await;
+    let material = s.data.path().join("registered.json");
+    let first = s.data.path().join("node-zone");
+    let second = s.data.path().join("next-root");
+    let map_path = s.config.scheduler.map_directory.join("work.json");
+    let mut map: Value = serde_json::from_slice(&fs::read(&map_path).unwrap()).unwrap();
+    map["nodes"]["A"]["output_rule"] = json!([{"id":"result"}]);
+    map["nodes"]["B"]["zone"] = json!({"type":"dynamic","input_id":"placement"});
+    map["nodes"]["B"]["blocked_by"] = json!(["A"]);
+    map["nodes"]["B"]["input_rule"] = json!([{"id":"placement","type":"node","source_node_ref":"A","node_output_ref":"result"}]);
+    fs::write(&map_path, map.to_string()).unwrap();
+    let manager = "placement-manager";
+    let run = s.start(manager).await;
+    let before = s.herdr.calls();
+    let blocked = s.dispatch(manager, &["B"]).await;
+    assert_eq!(blocked["results"][0]["status"], "rejected", "{blocked}");
+    assert_eq!(s.herdr.calls(), before);
+
+    let attempt = |body: Value| {
+        let addr = s.server.addr();
+        async move { post_json_over_tcp(addr, "/api/workflow/manager/dispatch", &body.to_string()).await }
+    };
+    identity(&s, "placement-producer");
+    assert_eq!(s.dispatch(manager, &["A"]).await["results"][0]["status"], "running");
+    fs::write(&material, r#"{"zone_id":"node"}"#).unwrap();
+    report(&s, "placement-producer", Some(json!([{"id":"result","path":material}]))).await;
+    approve_execution(&s, "placement-producer").await;
+    let completed = super::input_resolution::action(&s, "complete", manager, "A").await;
+    assert_eq!(completed["snapshot"]["nodes"]["A"]["status"], "completed");
+
+    let before = s.herdr.calls();
+    let body = json!({"sessionId":manager,"nodes":["B"]});
+    fs::remove_file(&material).unwrap();
+    let missing = attempt(body.clone()).await;
+    assert!(missing.status >= 400 && missing.body.contains("placement"), "{}", missing.body);
+    for contents in ["not JSON", r#"["node"]"#, "{}", r#"{"zone_id":null}"#, r#"{"zone_id":42}"#, r#"{"zone_id":"  "}"#,
+        r#"{"other":{"zone_id":"node"}}"#, r#"{"zone_id":"node","zone_id":"node"}"#, r#"{"zone_id":"not-registered"}"#] {
+        fs::write(&material, contents).unwrap();
+        let rejected = attempt(body.clone()).await;
+        assert!(rejected.status >= 400 && rejected.body.contains("placement"), "{contents}: {}", rejected.body);
+    }
+    fs::write(&material, r#"{"zone_id":"node","other":{"zone_id":"not-registered"}}"#).unwrap();
+    let rejected = attempt(json!({"sessionId":manager,"nodes":["B"],"zoneIds":{"B":"node"}})).await;
+    assert!(rejected.status >= 400, "{}", rejected.body);
+    assert_eq!(s.herdr.calls(), before, "invalid zone material or a manual override must not launch");
+
+    identity(&s, "placement-first");
+    let dispatched = s.dispatch(manager, &["B"]).await;
+    assert_eq!(dispatched["results"][0]["status"], "running", "{dispatched}");
+    let previous = &dispatched["snapshot"]["nodes"]["B"]["execution"];
+    let inputs = json!([{"id":"placement","path":material}]);
+    assert_eq!(previous["zoneId"], "node");
+    assert_eq!(previous["zone"], json!(first));
+    assert_eq!(previous["inputs"], inputs);
+    assert_eq!(named_input(&initial_input(&s)), format!("placement: {}\n", material.display()));
+    let calls = s.herdr.calls();
+    assert!(calls[before.len()..].iter().any(|call| call["kind"] == "tab_create" && call["cwd"] == json!(first)));
+    let failed = post_json_over_tcp(s.server.addr(), "/api/workflow/manager/fail", &json!({"sessionId":manager,"nodeId":"B","reason":"Original partial effects inspected"}).to_string()).await;
+    assert_eq!(failed.status, 200, "{}", failed.body);
+    fs::write(&material, r#"{"zone_id":"next","reused":true}"#).unwrap();
+    let retry = |body: Value| {
+        let addr = s.server.addr();
+        async move { post_json_over_tcp(addr, "/api/workflow/manager/retry", &body.to_string()).await }
+    };
+    let retry_body = json!({"sessionId":manager,"nodeId":"B","confirmed":true,"reason":"Approved another execution"});
+    let mut override_body = retry_body.clone();
+    override_body["zoneId"] = json!("next");
+    let before = s.herdr.calls();
+    let rejected = retry(override_body).await;
+    assert_eq!(rejected.status, 409, "{}", rejected.body);
+    fs::create_dir(&second).unwrap();
+    let register = post_json_over_tcp(s.server.addr(), "/api/zones", &json!({"id":"next","path":second}).to_string()).await;
+    assert_eq!(register.status, 200, "{}", register.body);
+    fs::remove_dir(&second).unwrap();
+    let unavailable = retry(retry_body.clone()).await;
+    assert_eq!(unavailable.status, 409, "{}", unavailable.body);
+    let unchanged: Value = serde_json::from_str(&unavailable.body).unwrap();
+    assert_eq!(unchanged["snapshot"]["nodes"]["B"]["status"], "failed");
+    assert_eq!(&unchanged["snapshot"]["nodes"]["B"]["execution"], previous);
+    assert!(unchanged["snapshot"]["nodes"]["B"]["previousExecutions"].as_array().is_none_or(Vec::is_empty));
+    assert_eq!(s.herdr.calls(), before);
+
+    fs::create_dir(&second).unwrap();
+    s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"placement-retry"},"native_cwd":second}));
+    let retried = retry(retry_body).await;
+    assert_eq!(retried.status, 200, "{}", retried.body);
+    let retried: Value = serde_json::from_str(&retried.body).unwrap();
+    assert_eq!(retried["result"]["status"], "running", "{retried}");
+    let current = &retried["snapshot"]["nodes"]["B"];
+    assert_eq!(current["execution"]["zoneId"], "next");
+    assert_eq!(current["execution"]["zone"], json!(second));
+    assert_eq!(current["execution"]["inputs"], inputs);
+    assert_eq!(&current["previousExecutions"][0]["execution"], previous);
+    assert_ne!(current["execution"]["id"], previous["id"]);
+    assert!(s.herdr.calls()[before.len()..].iter().any(|call| call["kind"] == "tab_create" && call["cwd"] == json!(second)));
+    let detail = get_over_tcp(s.server.addr(), &format!("/api/workflow/runs/{}", run["id"].as_str().unwrap())).await;
+    assert_eq!(detail.status, 200, "{}", detail.body);
+    assert_eq!(&serde_json::from_str::<Value>(&detail.body).unwrap()["run"]["nodes"]["B"], current);
 }
 
 // P15: use a real Windows junction (no symlink privilege required). Both the
@@ -187,7 +315,7 @@ async fn run_sources_reject_undeclared_inputs_and_arbitrary_run_selection() {
     let s = Scenario::new().await;
     declare_inputs(&s, json!([{"id":"brief","required":false}])).await;
     let original = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json").await.body;
-    for rule in [json!({"id":"local","type":"run","input_id":"unknown"}), json!({"id":"local","type":"run","input_id":"brief","run_id":"another-run"})] {
+    for rule in [json!({"id":"local","type":"run","run_file_ref":"unknown"}), json!({"id":"local","type":"run","run_file_ref":"brief","run_id":"another-run"})] {
         let draft = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/edit", &json!({"id":"A"}).to_string()).await;
         let draft: Value = serde_json::from_str(&draft.body).unwrap();
         let mut content = draft["content"].clone();
@@ -213,7 +341,7 @@ async fn dispatched_addresses_stay_fixed_without_content_snapshot_or_repair() {
     fs::write(&old, b"OLD").unwrap();
     fs::write(&new, b"NEW").unwrap();
     fs::write(&other, b"OTHER").unwrap();
-    let rule = json!([{"id":"renamed","type":"node","node_id":"A","output_id":"result"}]);
+    let rule = json!([{"id":"renamed","type":"node","source_node_ref":"A","node_output_ref":"result"}]);
     save_node(&s, "B", rule.clone(), json!([])).await;
     save_node(&s, "C", rule, json!([])).await;
     let one = s.start("fixed-manager-one").await;

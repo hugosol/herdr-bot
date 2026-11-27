@@ -1,6 +1,6 @@
 use axum::{Json, extract::{Path, State}, response::{IntoResponse, Response}};
 use crate::{AppState, suites};
-use super::{extractors::catalog::{SuiteDelete, SuiteInput}, responses::HttpError};
+use super::{extractors::catalog::{ResourceInput, SuiteDelete, SuiteInput}, responses::HttpError};
 
 pub(crate) async fn list(State(state): State<AppState>) -> Response {
     match suites::listing(&state) {
@@ -26,6 +26,14 @@ pub(crate) async fn create(State(state): State<AppState>, SuiteInput(suite): Sui
 
 pub(crate) async fn update(State(state): State<AppState>, Path(id): Path<String>, SuiteInput(suite): SuiteInput) -> Response {
     let result = suites::save(&state, Some(&id), suite);
+    match result {
+        Ok(list) => Json(list).into_response(),
+        Err(error) => HttpError(error).into_response(),
+    }
+}
+
+pub(crate) async fn update_resource(State(state): State<AppState>, Path((kind, id)): Path<(String, String)>, ResourceInput(definition): ResourceInput) -> Response {
+    let result = suites::ResourceKind::parse(&kind).and_then(|kind| suites::update_resource(&state, kind, &id, definition));
     match result {
         Ok(list) => Json(list).into_response(),
         Err(error) => HttpError(error).into_response(),

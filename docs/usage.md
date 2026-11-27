@@ -1,15 +1,56 @@
 # 使用说明
 
-黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
+安装和启动见 [README](../README.md#构建与运行)。本机访问 `http://127.0.0.1:<端口>/`。局域网设备使用服务启动日志中的 `http://herdr-bot.local:<端口>/`；名称无法解析时，使用服务主机的局域网 IPv4 地址。手机上的 `127.0.0.1` 指向手机自身。服务没有身份验证，只在可信局域网使用。
 
-```powershell
-$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
-$BOT = 'E:/Developer/myhub/herdr-bot'
+## 本机根目录与解析规则
+
+首次部署时，将 [`paths.example.toml`](../paths.example.toml) 复制为本机的 `paths.local.toml`，按机器实际位置填写 `[roots]`，不覆盖已有本机配置。`herdr-bot.toml` 的顶层 `paths_file` 指向这个文件，相对路径以服务配置目录为基准。程序不会回退到样例。只用普通路径且不声明 `paths_file` 的隔离配置无需根文件。
+
+- 各根可指向不同磁盘上的绝对目录，也可引用其他根，例如 `data = '${roots.project}/.data'`。`${roots.name}` 只允许作为路径开头，后接可选的 `/相对位置`；不展开环境变量或提示词。根未定义、循环引用、空路径、非法表达式或指定根文件缺失，都会明确失败。
+- 普通相对路径以声明它的配置文件目录为基准。根相对根文件，服务配置路径相对服务 TOML，Task 扩展 `entrypoint` 相对选项目录 TOML。扩展路径交给 agent 前转为绝对路径，不受启动 cwd 或 Chat zone 影响。
+- 服务启动时解析根快照。改根或服务路径后重启。Task 选项目录按使用时重新读取，但仍使用本次启动的根快照。
+- 裸程序名（如 `herdr`）从 `PATH` 查找；显式程序路径按声明文件解析。Git、Windows 工具和语言服务由本机环境提供。交付的集中 `codebase-memory-mcp` 定义用 `${roots.codebase_memory_mcp}/codebase-memory-mcp.exe` 定位程序，不依赖 PATH。若项目另有原生 `.omp/mcp.json`，它可按 OMP 原生优先级覆盖同名定义，不经过 herdr-bot 的根解析。
+- `static_directory` 默认 `backend/static`，`scheduler.run_instructions` 默认 `docs/workflow-runtime.md`。交付配置以 `roots.project` 定位两者。`data_directory` 默认 `.data`，存放内部迁移标记，不隐式覆盖其他持久化路径。交付配置将历史、zone 登记、Run 和标记目录共同指向 `roots.data`。
+
+只读查看根解析结果：`cargo run --quiet --manifest-path backend/Cargo.toml --bin herdr-paths -- --paths paths.local.toml`。它输出 JSON，不启动服务或创建业务目录。隔离验收如何指定依赖位置见[测试指引](agents/testing.md)。
+
+## 本机提示词词典
+
+服务 TOML 的 `prompts_file` 默认 `prompts.local.toml`，相对服务配置目录。将 [`prompts.example.toml`](../prompts.example.toml) 复制为本机文件并填写实际路径和 API URL，不覆盖已有配置。词典只为提示词提供参考信息，不解析程序路径、不设置执行目录，也不修改 Toolkit 扩展的实际连接配置。不要写入不应暴露给 agent 的密钥。
+
+- Task 固定 prompt、Bot 的 `when`、`description`、`input_rule`、`output_rule`、Map 的 `description` 和 node 的 `input` 保存 `${key}` 原文。系统装配每条初始消息时读取一份最新词典快照，同条消息的 Task 固定设定、节点委托及词典说明共用该快照；仅替换一次，不递归解释词典值。`$${key}` 输出字面量 `${key}`；临时输入、Run 本次要求、报告和 agent 产物不替换。改词典不用重启。
+- agent 直接读定义仍会看到标签。只有替换前的 Task 固定 prompt 含未转义、完整闭合的 `${key}` 时，系统发起的 Chat（含流程派发）才收到词典绝对路径和读取说明。其他消息段、替换值、转义或未闭合标签不触发说明。系统不会改写原定义或自动注入 Bot 能力摘要。
+- 词典不完整时允许保存定义。发送时遇到未知标签会报告字段和标签并停止发送。缺失文件视为空词典；非法 TOML 或不可读文件报错，不猜值。
+
+## 定义数据与运行数据
+
+Task、Bot、Map 是可复用的定义。页面与手工编辑都写入这些定义，可按需纳入 Git；系统不自动提交。本机路径、固定指令和业务内容未必适合公开。以下为默认值，路径以服务配置文件目录为基准；交付配置用命名根表达同一布局，修改配置后重启。
+
+```toml
+[tasks]
+storage_file = 'meta-data/tasks.json'
+metadata_file = 'meta-data/task-options.toml'
+
+[scheduler]
+map_directory = 'meta-data/workflow-maps'
+bot_directory = 'meta-data/bots'
+run_directory = '.data/workflow-runs'
 ```
 
-验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+Run、Chat 历史和 zone 登记是本机运行数据，默认在 `.data`。Map 保存[稳定 zone ID 与直接文件引用](#跨-server-使用-zone-与定义)，由执行 server 的本机登记解析。程序根、zone 绑定和提示词词典各自独立；共享定义不意味着同步文件或迁移历史。
 
-本文记录日常操作细节；安装与启动见 [README](../README.md#构建与运行)。
+### 四字段 Bot 定义切换
+
+先停服并按实际服务配置定位在线 Bot／Map 根，以及启动时可能检查的历史布局导入源根（下节只说明默认布局的相对位置）。把尚未迁入的定义放在所有这些范围之外的离线 backup；不要把备份放到在线路径或提供给任何启动导入。历史布局升级不是新格式切换入口，也不能代替受控移动与逐项迁入。服务不搜索离线 backup，不把旧字段解释成新格式，也不自动迁入未选择业务。逐项保留 Bot ID、分组、目标及 Map 文件名；先在实际实现、公共协议及能力摘要之间归好旧知识，再迁入需要的定义。若需隔离使用创建／修订能力，应仅安装所需的新格式定义，不将旧目录问题当作空目录或忽略唯一绑定冲突。实际移动、停服及保留范围另行核实和授权。
+
+### 从旧定义布局升级
+
+1. 停止旧服务并备份。将服务配置放在原布局的根目录，不让新旧服务同时写入定义。旧源位置总是相对服务配置，不随 `roots.data` 迁移。
+2. 当配置指向该目录下的新默认位置时，新版本启动会分别复制 `.data/tasks.json`、`.data/bots/` 和 `.data/workflow-maps/`，保留完整内容和旧源。其他运行数据不搬动，显式配置的其他目标不自动导入旧默认数据。
+3. 启动先检查所有待迁项目的冲突，再复制。新旧同时存在时，目标必须与旧源完整一致，目录增减文件也算冲突；链接、junction、异常文件类型及 I/O 错误都会阻止启动。保持停服，备份并确定权威版本，让目标与旧源一致或移走冲突目标，再启动。不要盲目覆盖。没有跨文件事务；写入中途失败可能已完整复制部分项目，排除错误后可重启确认，不会覆盖已有内容。
+4. 切换成功后在 `data_directory` 记录 `.definition-layout-v1-tasks`、`.definition-layout-v1-bots` 和 `.definition-layout-v1-maps`。此后只读写配置的新位置，旧备份不会重新填入已改动或删除的数据。不要删除标记来刷新定义。升级后核对 task、bot 和 scheduler 列表；原生会话与 Run 历史不改写。
+
+旧 zone 路径引用和旧文件交接格式不在启动时自动转换。先停服、确认实际数据目录并备份。为每个旧 zone 明确分配稳定 ID 和本机路径，更新登记为 `{id,path}`、node `zone` 为 ID、直接文件输入为相对 `path` 和可选 `zone_id`；不根据目录名猜测。交接格式见 [scheduler 文件规则](scheduler.md#文件输入与输出规则)和[运行说明](workflow-runtime.md)。升级到冻结定义前，停服并将旧 Run 完整目录移出在线 `run_directory`，保留所有原始文件，不从新版定义补造历史副本、成果或关联。部署匹配的 Toolkit，不混用新旧 report 参数。
 
 ## 动态 TypeScript 脚本
 
@@ -27,9 +68,9 @@ export default async function (context) {
 }
 ```
 
-Bot 绑定 `"script": "export-result.ts"`，node 声明 `"output_rule": [{"id":"result"}]`。脚本默认导出函数，可同步或异步返回；最小结果是 `{status:"success"}` 或 `{status:"failure"}`。有文件交付时返回 `outputs:[{id,path}]`；path 为本机绝对路径。Rust 校验状态、ID 唯一且已声明、文件实际可读；成功必须交齐 output_rule，失败可以登记有效的部分输出。非零退出、异常或结果格式错误均不能报告成功。handoff、说明正文和 canComplete 不是通用脚本必填字段。
+Bot 绑定 `"script": "export-result.ts"`，node 声明 `"output_rule": [{"id":"result"}]`。脚本默认导出函数，可同步或异步返回；最小结果是 `{status:"success"}` 或 `{status:"failure"}`。有文件交付时返回 `outputs:[{id,path}]`；path 为本机绝对路径。后端校验状态、ID 唯一且已声明、文件实际可读；成功必须交齐 output_rule，失败可以登记有效的部分输出。非零退出、异常或结果格式错误均不能报告成功。handoff、说明正文和 canComplete 不是通用脚本必填字段。
 
-context 提供 runId、executionId、zone（节点工作目录）、input（node.input 原文）、inputs（已解析命名地址）、outputRule 和 outputDirectory（本次 Run/execution 的材料目录）。输入绑定冻结不等于文件内容冻结。每次派发新建 Bun 进程，入口源码按接受时读取的内容执行；相对 import 仍从脚本原目录解析，依赖文件不作历史快照。修改用于之后的派发，不提供恢复旧脚本进程。
+context 提供 runId、executionId、zone（节点工作目录）、input（node.input 原文）、inputs（已解析命名地址）、outputRule、outputDirectory（本次 Run/execution 的材料目录）和 serviceUrl（当前 herdr-bot 的 HTTP origin，无末尾斜杠）。serviceUrl 来自已绑定 listener 的实际地址和端口；IPv4／IPv6 通配监听分别使用 127.0.0.1／[::1]，具体绑定地址保持不变。它不是新增配置项，不读取提示词词典或请求 Host，也不从执行 zone 寻找配置。`register-zone.ts` 使用此地址登记和读回 zone，并在结果材料中记录同一 service_url。输入绑定冻结不等于文件内容冻结。每次派发新建 Bun 进程，入口源码按接受时读取的内容执行；相对 import 仍从脚本原目录解析，依赖文件不作历史快照。修改用于之后的派发，不提供恢复旧脚本进程。
 
 脚本是可信代码，不是沙箱：可以使用 Bun 的文件、网络和进程能力，拥有后端账户权限；外部程序和 npm 依赖需预先准备，执行时禁止 Bun 自动安装包。console 日志与结果协议分离。修改 herdr-bot 系统定义应通过 context.host，而不是直接覆盖内部 JSON。
 
@@ -41,11 +82,13 @@ context 提供 runId、executionId、zone（节点工作目录）、input（node
 
 ## 脚本空白 Bot 创建
 
-发布脚本位于 `meta-data/scripts/create-blank-bot.ts` 与 `save-bot-guides.ts`。Bot 定义使用 `script` 路径，与 `task_id`、`map_file` 互斥，例如 `{"name":"空白创建","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}`。现有创建图已绑定两份 TS 脚本，保留原 Bot 身份及修订 replace-text。V1 保存干净切换为仅 baseline、when_text、plan_guide_text、node_guide_text 四项输入，三份正文按命名原样写入字段；不消费指南 handoff 或批准凭据，不兼容旧七项输入。saved／handoff 输出身份不变。旧部署需手工把 `rust_script: "create_blank_bot"` 改为 `script: "create-blank-bot.ts"`，把 `rust_script: "save_bot_guides"` 改为 `script: "save-bot-guides.ts"`，并部署 scripts 目录；没有旧能力执行回退。历史 Run 不自动重写或重跑。
+发布的 `create-blank-bot` 保留 Bot ID 与 Map 引用，绑定 `meta-data/scripts/create-blank-bot.ts`。旧空白创建来源 Task 已移除，历史 Chat 不改写，不承诺按已移除 Task 恢复环境。包装图的 `save_bot` 使用 `save-created-bot-guides`，绑定 `save-bot-guides.ts`；通用 `replace-text` 保留给修订和独立调用。保存只接收[创建 V1 的五项命名输入](business-materials.md#四字段正文可选业务说明与-saved)，不消费字段 handoff 或批准凭据。
 
-在真实 Map 的 node 中引用它，声明命名 `request` 输入及 `baseline`、`handoff` 输出；`node.input` 可为空，不是业务参数，成果批准模式 `auto_approved` 只能 true，自动关闭只能 false。request 的严格 JSON、普通 Task／Map 目标范围和执行数据约束见[业务材料](business-materials.md#request-与共同-baseline)。从现有 manager 发起 Run、准备输入并 dispatch 后，后台真实创建唯一绑定的三指南空字符串 Bot，保存真实 revision 与完整配置材料，再按原报告／collect 流程交接。manager 显式 complete 前下游仍不准入，报告或执行结束都不自动派发。
+自定义旧部署须手工将 `rust_script: "create_blank_bot"` 改为 `script: "create-blank-bot.ts"`、`rust_script: "save_bot_guides"` 改为 `script: "save-bot-guides.ts"`，并部署 `scripts` 目录与当前 Map 材料绑定。没有旧能力回退，历史 Run 不自动改写或重跑。
 
-真实 Task／Map 的成功与拒绝实例、在途 HTTP 返回和实际文件消费者证据可用[后端隔离回归](agents/testing.md#rust-空白创建公开-http文件回归)重现。记录型外部宿主只证明协议；不等于真实 manager 会话或页面验收。
+在真实 Map 的 node 中引用它，声明命名 `request` 输入及 `baseline`、`handoff` 输出；`node.input` 可为空，不是业务参数，成果批准模式 `auto_approved` 只能 true，自动关闭只能 false。request 的严格 JSON、普通 Task／Map 目标范围和执行数据约束见[业务材料](business-materials.md#request-与共同-baseline)。从现有 manager 发起 Run、准备输入并 dispatch 后，后台真实创建唯一绑定的四字段均为空字符串的 Bot，保存真实 revision 与完整配置材料，再按原报告／collect 流程交接。manager 显式 complete 前下游仍不准入，报告或执行结束都不自动派发。
+
+真实 Task／Map 的成功与拒绝实例、在途 HTTP 返回和实际文件消费者证据可用[后端隔离回归](agents/testing.md#typescript-空白创建公开-http文件回归)重现。记录型外部宿主只证明协议；不等于真实 manager 会话或页面验收。
 
 ## Chief 报告保存与通知
 
@@ -53,7 +96,12 @@ context 提供 runId、executionId、zone（节点工作目录）、input（node
 
 `POST /api/chief/reports` 是同机工具的报告提交入口。请求只接受 `sessionId` 和 `body`；后端按真实委派记录授权独立 Chat 或直接 Map manager，不按 Task 名称、扩展是否加载或调用者提供的 Bot／Run／收件人参数授权。Map 内部节点仍用 `/api/workflow/node/report` 向自己的 manager 报告。
 
-`body` 必须包含 `background`（需求背景）、`execution`（执行对象）、`result`（`success`／`failure`／`blocked`）、`summary`（结果说明）、`deliverables`（交付物字符串数组）和 `pendingDecisions`（待用户判断事项字符串数组）。三个文字说明字段（background／execution／summary）不得为空；无交付物或待判断项时明确传空数组。后端逐字保存内容，自动生成不可变的 `id`、时间 `at`、真实 `delegationId` 和发送方 `from`，不接受指定报告 ID 或覆盖原报告。
+`body` 必须包含 `background`（需求背景）、`execution`（执行对象）、`result`（`success`／`failure`／`blocked`）、`summary`（结果说明）、`deliverables`（交付物字符串数组）和 `pendingDecisions`（待用户判断事项字符串数组）。三个文字说明字段（background／execution／summary）不得为空；无交付物或待判断项时明确传空数组。后端逐字保存这些说明，自动生成不可变的 `id`、时间 `at`、真实 `delegationId` 和发送方 `from`，不接受指定报告 ID 或覆盖原报告。
+
+`body.outputs` 是独立的文件成果数组 `[{id, path}]`，省略提交字段等同于空数组；保存和读回始终包含数组。ID 是本次委派的逻辑标识，路径是实际可读文件的本机绝对地址。文字 `deliverables` 不会被解析为文件或补齐约定。
+
+- **Task 委派**：用 `outputs` 提交文件绑定。每个 ID 必须属于委派时确认的 `outputRule`，且不可重复；地址必须是合法、可读的文件。`success` 必须交齐，`failure`／`blocked` 可省略文件或仅登记有效的部分成果。
+- **Map 委派**：不在报告中填写文件地址。成功报告需要交付本次约定的文件时，后端从已显式结束的关联 Run 的 `mapOutput.files` 读取所需同名子集，拒绝报告覆盖地址。Map 自己仍须交齐全部公开文件才能 finish。未结束时可无文件报告失败／受阻；无文件要求的成功报告也不以 finish 为前提。报告不结束 Run、不自动推进，也不增加 `canComplete` 或进度分类。
 
 后端先将报告保存至历史目录旁的 `*.chief-reports.jsonl`，释放文件协调后才按当前有效 chief 的原生会话身份定位，并只在 `[herdr].backend` 选定的宿主尝试一次通知。TUI 使用匹配的 Pane，App 使用已核对归属的 App Pane 与 core 终端；不会按标题、原分派者或另一个宿主补选目标。没有 chief、定位失败或通知失败都不撤销报告。响应分别包含 `saved`、`report`、`notification.status`／`reason` 和诊断写入状态；通知状态为 `submitted`（Herdr 确认输入提交）、`failed`（明确未提交）、`uncertain`（外部效果不可确认）或 `not-attempted`（未发起通知）。`submitted` 不等于可靠接收、已呈现、用户已读或业务验收。真实保存失败返回非成功状态、`saved:false` 和 `not-attempted`，不发送通知；HTTP 回执丢失时先查询持久事实，不应再次提交而制造另一份报告。
 
@@ -72,28 +120,22 @@ context 提供 runId、executionId、zone（节点工作目录）、input（node
 
 接收记录为 `{reportId, sessionId, claimId, at}`，其中 `at` 为 Unix 毫秒；保存在原报告 journal 旁的 `*.chief-reports.receipts.jsonl`，原报告内容不变。认领及去重持久提交与 chief 授权／撤销串行化；旧 chief 失权后不能取得新接收授权。外部定位等待后再次核实当前 claim 与接收事实；已经授权并进入外部提交的输入不会被 chief 更换物理撤回，返回值保留真实 `submitted`／`failed`／`uncertain`。
 
+接替者无需记得原委派或等待原 chief 在线。需要理解文件成果时，按报告的 `body.outputs` 中的实际地址读取文件；ID 不一定包含业务含义。报告保存路径而非文件副本，不保证文件之后仍可读。
+
 可靠接收不是模型已呈现、用户已读或业务验收。接收后、呈现前崩溃仍保留接收事实，不自动重播；重复 `receive` 的 `process:false` 不是新呈现授权，人工恢复须由用户在当前 chief 明确要求 `view`。存储不可确认返回非成功状态，不能把失败解释为已获处理授权或安全地重新提交业务报告。
 
 实际恢复独立执行者或直接 Map manager 沿用原生 Chat 和持久委派／原报告关联；恢复不新增委派、Run 或重放初始输入，同 Task 的其他 Chat 不获得重发资格。只有修订内容经新的明确批准后，才可通过原提交入口建立新报告 ID。以上 HTTP 行为不代替 OMP／Pi 原生确认与真实模型呈现验收。
 
 ## 界面外观
 
-全站保留原有 NieR 米灰底色、浅骨色面板、深棕文字与方角控件，不切换为白底主题。名称、对象 ID、引用、标题、主要正文和输入内容维持原有中性色层级，不按对象类型整体换色。三种辅助色仅分配给部分小字号信息：孔雀青（`--nier-detail-label: #15534f`）用于 12–13px 配置字段标签、表头；深蓝（`--nier-resource: #254c76`）用于工作目录、扩展入口等小字号路径副行；棕灰（`--nier-description: #564a40`）用于小字号帮助、来源／执行说明和元数据。普通次要文字仍用原有 `--nier-muted`，不整体染色；字号、字重和字体不因配色调整而改变。颜色集中定义在 `frontend/src/app/styles.css` 的 `--nier-*` 变量中；原有链接／焦点／运行状态蓝色、成功绿、等待琥珀和失败红保持不变，选项扫动、反色选中与悬浮保留原高对比文字。状态仍由文字、符号和节点形状共同表达，不仅依赖颜色。Scheduler 的成果批准模式标识中，人工模式使用蓝色，自动模式使用琥珀色；`auto_close` 配色不受此互换影响。
-
-Zone 的 Git 变更文件名保留状态色例外：新增绿（`#0c5423`）、编辑／重命名蓝（`#10468a`）、删除红（`#8f1526`），变更文件行使用 600 字重；选中后仍保留类别色。变更祖先目录仍为蓝色，冲突仍用原警告色。diff 新增／删除内容分别使用浅绿／浅红行底及对应深色文字，手机端的 `+`／`−` 标记随行着色；未变更正文不改色。这套高辨识配色仅作用于文件浏览器，不修改全站成功、运行、失败等状态色。
-
-Chat、Zone、Workflow、Task、Suite、Bot、Scheduler 保留原有标题偏移阴影、背景网格、逐字轻跳显现与切页淡入。标题字符依次错开，最长约 580ms 完成；屏幕阅读器直接读取完整标题。Scheduler 的 Map／节点列表与 Bot 列表保留 200ms 从左向右的背景扫动、上下边线与选中反色，旁边的分组等操作不触发选项动画。明细内部仍通过表面、边框与文字层级区分信息；主操作采用深色反白，次要操作保持中性。Chat 区分会话名、Agent 类型、状态、模型与工作目录，离线卡片保持文字可读。Task 展开配置、Suite 资源声明、Bot 文档和 Scheduler 节点明细区分名称、ID、路径、参数与说明；Workflow 分开呈现状态、当前报告、执行关联和旧执行历史。明细辅助文字不小于 12px；Task 操作固定分成两排：上排为 Bot 跳转与“发起 Chat”，下排为分组、编辑、删除。Task 与 Zone 的“发起 Chat”共用深色实心、方角、左侧方块标记及悬停反色样式，字号、内边距、最小高度与禁用反馈保持一致；Bot 与编辑使用方角描边，Task、Bot 与 Scheduler 的分组操作统一使用叠层图标，不显示“分组”或“group · 名称”按钮文字；保留 44px 点击区域，悬停提示当前分组，并提供含对象名称与当前分组的无障碍名称。分组标题与筛选仍显示名称，删除使用危险色文字；悬停提供反色或浅红反馈。平板与手机端操作区移到概要下方，保持两排，不挤压名称。
-
-展开导航中，Task 使用带播放键的方形执行模块图标，Scheduler 使用三个方形节点与分支连线图标，以轮廓区分单个任务和流程编排；Tab 名称与导航行为保持不变。
-
-正文与自然语言报告使用系统中文字体，代码、JSON、ID 和路径使用等宽字体，不请求外部字体。日期与数值使用等宽数字便于比较。表单、文件浏览、diff、图节点和原有确认流程保持不变；图坐标不随视觉反馈改变。“减少动态效果”关闭非必要过渡，不延迟操作或逐字显示业务状态；不提供旧主题切换。
+状态不能只靠颜色辨认。节点使用形状区分批准模式，Git 变更提供状态说明，diff 保留 `+` 和 `−` 标记。屏幕阅读器可读取完整标题、操作对象和当前分组。正文与代码使用本机字体，不请求外部字体。系统的“减少动态效果”设置关闭非必要过渡，不延迟操作或状态反馈。
 
 ## 页面导航
 
 外侧导航提供两种布局，内部页面与编辑方式相同：
 
-- **紧凑布局**（默认）：顶部只显示一组入口。`chat / zone / workflow` 用于日常工作，`task / suite / bot / scheduler` 用于配置；不额外显示分类标题。两组在横向轨道上按日常工作在左、配置在右排列。仅在导航条内左滑进入配置组，右滑回到日常工作组；整条导航跟随手指移动，松手时拖动距离达到导航可见宽度的三分之一即可切换，否则回弹，不按速度判定，也不循环切换。内容区滑动仍交给当前页面。
-- **展开布局**：点击左上角布局按钮，以窄侧栏同时显示两组七个入口。电脑也可直接展开后点击目标，无需拖动。所有入口（包括 Bot 与 Scheduler）共用同一导航样式；页面内部的响应式布局不改变外侧导航的字号、图标、选中指示线或侧栏布局。
+- **紧凑布局**（默认）：顶部显示一组入口。日常工作组是 `chat / zone / workflow`，配置组是 `task / suite / bot / scheduler`。在导航条内左滑打开配置组，右滑回到日常工作组；内容区滑动不切组。
+- **展开布局**：点击左上角布局按钮，在侧栏同时显示两组入口，直接选择目标。
 
 布局按钮只改变外侧导航，不重新加载页面，不清空当前编辑或筛选状态。地址中的 `?layout=expanded` 指定展开布局，`?layout=compact` 或无参数指定紧凑布局；切换会原地更新地址，不增加浏览器历史记录。返回紧凑布局时显示当前页面所属组；同一页面期间切换分组会记住每组上次访问的入口。
 
@@ -101,7 +143,7 @@ Chat、Zone、Workflow、Task、Suite、Bot、Scheduler 保留原有标题偏移
 
 `bot` 是共享 Bot 管理功能的独立入口。Task 列表右侧与 Scheduler 的 Map 明细标题下方显示关联 Bot：唯一关联时点击即切换到 Bot 入口并打开明细；无关联时显示不可点击的“无关联 Bot”，多个关联时显示不可点击的“关联冲突”，不任意选择，也不新增保存限制。Map 此处只查找执行目标为该 Map 的封装 Bot，不列出其节点使用的 Bot。
 
-Bot 与 Scheduler 列表只保留打开明细的入口，不显示分组操作或关联跳转按钮；分组标题与筛选保持不变，分组操作移至明细页。Task、Bot 与 Scheduler 的关联按钮统一显示“目标类型图标＋目标名称”，不再显示“Bot：”或“执行目标：Task / Map”前缀。图标复用对应 Tab：Bot 为机器人、Task 为带播放键的执行模块、Map 为 Scheduler 节点流程图；悬停提示与无障碍名称明确类型和名称。Bot 明细点击目标按钮即切换到对应入口并打开已保存明细；目标未绑定、不存在或读取失败时不能跳转。关联跳转直接丢弃受影响的未保存修改，不自动保存、不弹离开确认；其他原有离开确认保持不变，单纯切换紧凑／展开布局也不会离开编辑页。
+关联按钮显示目标类型与名称。在 Bot 明细点击目标按钮可打开已保存的 Task 或 Map；未绑定、目标不存在或读取失败时不能跳转。关联跳转会直接丢弃受影响的草稿，不自动保存或弹出离开确认。先保存需要保留的改动。普通离开确认不变，切换导航布局不会离开编辑页。
 
 Task 列表名称、Bot 明细名称和 Scheduler 的 Map 明细标题旁均提供铅笔按钮，可直接修改对应 Task 名称、Bot 名称或 Map 的 `title`。点击后在原位输入，只有按 Enter 才保存去除首尾空白后的名称；输入法选词时的 Enter 不保存。失焦、Escape、切换页面／明细或打开其他编辑／操作弹窗均取消未提交的修改；空名称或与原名相同不发送请求。保存失败会显示错误并退出输入，保留原名称；只有后端成功后才更新显示。Task 原有“编辑”三步流程和 Bot 原有完整编辑入口保留，Scheduler 原“修改显示名称／保存名称”入口移除，统一使用标题旁铅笔。
 
@@ -119,21 +161,17 @@ Zone 列表显示目录名、稳定 ID 和服务器完整路径，可按名称�
 
 ### 跨 server 使用 zone 与定义
 
-在 zone 入口登记稳定 ID 与本机目录。推荐 ID 使用 `namespace/name`，例如 `hugosol/herdr-bot`；没有仓库来源时使用 `default/bot-playground`。命名由用户决定，系统不根据 Git remote 自动改名或克隆目录。一个 ID 在当前 server 上只绑定一个目录，不同 ID 可以共享目录。zone 登记属于各 server 的本机数据，不随 Git 共享；界面不提供重新绑定按钮，需要换目录时取消登记后重新登记。
+在每台 server 准备本地目录，再登记相同的稳定 ID。推荐使用 `namespace/name`，无仓库来源时可用 `default/bot-playground`。登记使用 `{ "id": "team/repository", "path": "D:/work/repository" }`。系统不按 Git remote 猜名称或克隆目录。每个 ID 在同一 server 只绑定一个目录，多个 ID 可共用目录。改绑时按 ID 取消登记再重新登记；不删除目录，只影响新 Run。Map 可在绑定未齐时保存，启动前要补齐，Run 历史不保证可跨 server 恢复。
 
-另一台 server 使用同一张 Map 时，先准备本地目录并登记相同 ID；Map 不保存该机器的绝对执行目录。修改绑定不改变已经启动的 Run，本次 Run 继续使用启动时确定的路径；Run 历史不保证可跨 server 恢复。
-
-直接文件输入保存 zone 内相对路径，`zone_id` 可省略，省略时使用本次 Run 的 **manager zone**，不是 node zone。需要其他目录中的文件时显式指定那个 zone ID，不通过 `..` 绕出根目录；文件必须在派发时存在且可读，系统不自动同步。Run 来源使用 `{id:"本地名",type:"run",input_id:"Map 声明 ID"}`，只取所属 Run 的绑定；未提供可选项不生成地址，已提供但缺失／不可读则拒绝。报告产物与 Run 输入可在所有 zone 外，不复制、不锁定文件；检查仅证明当时可读，之后删改不自动重试或修复。
-
-配置提示词用 `${key}` 引用[本机提示词词典](../README.md#本机提示词词典)。保存与编辑保留占位符；系统发送配置字段时替换一次；仅当替换前的 Task 固定 prompt 含未转义且完整闭合的 `${key}` 时，才追加词典读取说明，便于 agent 直接阅读原始 Map/Bot 文件。用户输入、其他消息段、替换值、`$${key}` 和未闭合写法不触发说明注入。用户临时输入和 agent 产物中的同形字符串不替换。
+直接文件输入使用 zone 内相对路径。省略 `zone_id` 时使用本次 Run 的 manager zone，不是 node zone；文件不自动同步。使用 [scheduler 文件规则](scheduler.md#文件输入与输出规则)声明直接文件、Run 输入或上游输出，按[统一文件交接约定](workflow-runtime.md#统一文件交接约定)核实实际可读性。另按服务器配置[本机提示词词典](#本机提示词词典)，不要用词典代替 zone 登记。
 
 ### chief 委派独立 Task Chat
 
 Task 型 Bot 委派使用公开 HTTP：
 
-1. 当前有效 chief 调用 `POST /api/chief/delegations/preview`，明确提供 `sessionId`、`botId`、`zoneId`、本次业务 `input`，以及 `materials: [{id, zoneId, path}]`。材料的 `path` 为对应已登记 zone 内的相对文件路径；即使与执行 zone 相同，也要显式指定。空业务输入、重复材料 ID、不可读／越界材料、冲突 Bot、没有 Task 目标或目标非普通 Task 均拒绝。
-2. 返回 `previewId` 与完整 `facts`：原始请求、真实 Bot／Task 定义、解析后的执行 cwd、材料地址、Chat 名称和将提交的完整 `prompt`。工具应完整呈现这些事实并取得本次原生批准；此 HTTP 预览不是批准本身，也不会创建 Herdr Tab。原生确认的接线与两宿主真实效果属于 toolkit 和跨仓验收。
-3. 只在批准后调用 `POST /api/chief/delegations`，请求仅含 `{sessionId, previewId}`。预览单次消费，不能附带替换业务输入。提交时重新核对 chief 权威及 Bot／Task、zone／材料绑定、提示词词典产生的完整文本和模型／扩展选择；批准期间含义发生变化则拒绝并要求重新预览确认，不会执行旧目标或替代工作。预览仅在本次后端进程内有效，重启后须重新确认。
+1. 当前有效 chief 调用 `POST /api/chief/delegations/preview`，明确提供 `sessionId`、`botId`、`zoneId`、本次业务 `input`，以及 `materials: [{id, zoneId, path}]`；可提供本次文件要求 `outputRule: [{id}]`（工具参数为 `output_rule`）。输出 ID 必须非空且唯一，空规则省略，不是 Bot 的文字 `output_rule` 或 Task 的静态接口。材料的 `path` 为对应已登记 zone 内的相对文件路径；即使与执行 zone 相同，也要显式指定。空业务输入、重复材料 ID、不可读／越界材料、冲突 Bot、没有 Task 目标或目标非普通 Task 均拒绝。
+2. 返回 `previewId` 与完整 `facts`：原始请求、真实 Bot／Task 定义、解析后的执行 cwd、材料地址、Chat 名称和将提交的完整 `prompt`。工具应完整呈现这些事实（含本次文件要求）并取得本次原生批准；此 HTTP 预览不是批准本身，也不会创建 Herdr Tab。取消或拒绝时工具不提交启动。原生确认的接线与两宿主真实效果属于 toolkit 和跨仓验收。
+3. 只在批准后调用 `POST /api/chief/delegations`，请求仅含 `{sessionId, previewId}`。预览单次消费，不能附带替换业务输入或 `outputRule`。批准的 `outputRule` 随原请求持久保存在委派的 `facts.request`，并给到实际执行 Chat。提交时重新核对 chief 权威及 Bot／Task、zone／材料绑定、提示词词典产生的完整文本和模型／扩展选择；批准期间含义发生变化则拒绝并要求重新预览确认，不会执行旧目标或替代工作。预览仅在本次后端进程内有效，重启后须重新确认。
 4. `202` 回执沿用普通 Chat 创建的形状与 `id`，通过 `GET /api/chats/{id}` 观察启动。只有 Herdr 就绪、真实原生身份及来源历史／委派关联保存、批准文本投递已确认后才是 `succeeded`；它只表示发起成功，**不表示业务完成**，不等待模型完成业务。失败保留现有阶段、类别、Tab／Pane／agent 与投递结果不确定说明，不自动清理或重试。
 
 `GET /api/chief/delegations/{id}` 读取独立于 chief 上下文保存的委派事实、实际 `sessionId` 和最后观察到的创建状态；`GET /api/chief/delegations?sessionId=<真实原生身份>` 精确查询发送方关联。委派记录保存在历史文件旁的 `.delegations.json` 文件，经过统一文件持久化边界。业务完成情况不由启动回执判断；后端意外中断时最后记录的 `starting` 也不是确定未启动，须核查外部现场，不要重新派发冒充恢复。来源 chief、Bot、Task、cwd、业务输入、材料及执行 Chat 不依靠 Task 名称推断，不产生父 Run／node／execution。材料只绑定地址，不复制或冻结文件内容；之后更改内容由实际执行者观察。
@@ -142,41 +180,37 @@ Task 型 Bot 委派使用公开 HTTP：
 
 ### chief 按 Bot 委派 Map Run
 
-Map 型 Bot 使用同一组委派 HTTP 操作，不把它转换成没有 Run 的 manager Chat：
+chief 不直接委派脚本型 Bot。Map 型 Bot 使用同一组委派 HTTP 操作，不把它转换成没有 Run 的 manager Chat：
 
-- 预览请求明确提供 `sessionId`、Map 型 `botId`、本次业务 `input`、manager 的 `zoneId`、`managerTaskId` 和 `materials: [{id, zoneId, path}]`。manager 必须是 manager 类型 Task，不能省略或从名称猜测；Task 型 Bot 则不接受 `managerTaskId`。材料 ID 对应目标 Map 的 `input_files`，必需项必须齐备，可选项可以不提供，不接受未声明的材料 ID。文件解析及预检复用既有 zone／Run 输入规则。
+- 预览请求明确提供 `sessionId`、Map 型 `botId`、本次业务 `input`、manager 的 `zoneId`、`managerTaskId` 和 `materials: [{id, zoneId, path}]`。manager 必须是 manager 类型 Task，不能省略或从名称猜测；Task 型 Bot 则不接受 `managerTaskId`。材料 ID 对应目标 Map 的 `map_input_rule.files`，必需材料可以在启动管理者后准备；不接受未声明的材料 ID 或非法／不可读的实际文件。文件解析及预检复用既有 zone／Run 输入规则。`outputRule` 只接受 `map_output_rule.files` 的同名子集；没有请求的 Map 公开成果仍是该 Map 自己的必交项。
 - `facts.task` 是明确选择的 manager，`facts.map.file` 是 Bot 实际引用的 Map，`facts.map.definitions` 包含所选 Map／嵌套 Map／Bot 定义，`tasks`、`zoneBindings`、`directMaterials` 展示内部执行预设、位置和直接材料。`facts.prompt` 是完整、已组装的 manager 初始输入。预览不创建 Run 或 Chat；必须完整展示后取得本次原生批准。
 - 批准后提交仍只含 `{sessionId, previewId}`。重新检查所选定义闭包及提示词词典解析后的业务含义、manager、内部 Task／zone、材料绑定及材料当前字节；变化或失效返回 `409 delegation-preview-stale`，保留原因并要求重新预览确认，既不悄悄执行更新后的工作，也不重试启动。未关联的定义改动不要求重新确认。这个检查不冻结执行后的文件，之后的改动仍由实际执行者观察。
 - Map 提交复用既有 Run 发起协议，完成启动返回 `201` 的 Run detail（`id`、`run` 等），不是 Task 的 `202` Chat 轮询回执。通过 `GET /api/workflow/runs/{id}` 读取运行事实；启动失败保持既有 `500`、`startupError`／`readError` 和真实外部效果，不声称回滚。Run 记录初始化失败时不启动 manager。
 - 委派记录增加 `runId`，实际 manager 原生身份在业务输入投递前保存为 `sessionId`；`creation` 是最后可靠保存的启动结果，Run detail 保留具体阶段与投递结果。记录、Run manager 和原生 Chat 可互相核对，报告／恢复消费者使用真实 `sessionId` 查询关联。内部 node 不因此获得 chief 委派关联。
 
-该 Run 是根 Run，没有虚构的父 Run／node／execution；manager zone 不覆盖内部 node 各自的 zone。业务输入保持原文，材料作为命名 `fileInputs` 保存。发起成功不代表业务完成，不会替 manager 确认 `inputsReady`、派发内部节点、通过节点完成门禁或代替既有创建流程的阶段审批。恢复与后续报告仍使用原本的管理链；独立原生宿主／模型效果由对应跨仓验收证明。
+该 Run 是根 Run，没有虚构的父 Run／node／execution；manager zone 不覆盖内部 node 各自的 zone。业务原文保存在 `mapInput.runInput`，实际材料地址保存在 `mapInput.files`。发起成功不代表业务完成，不会替 manager 确认 `inputsReady`、派发内部节点、通过节点完成门禁或代替既有创建流程的阶段审批。恢复与后续报告仍使用原本的管理链；独立原生宿主／模型效果由对应跨仓验收证明。
 
 ### Task、Bot 与 Map 分组
 
 三类定义各自使用可选 `group` 字符串归类，没有独立 Group 文件或 ID。同类型对象的分组名称相同即属于同组；名称区分大小写，不允许空字符串或首尾空白。省略 `group` 或使用 `null` 表示未分组。新建对象默认未分组；分组不改变用途、引用、执行或权限，也不会随 Map 引用自动更新。
 
-管理列表按组名排列为可折叠区块，“未分组”最后，组内保留原有顺序。Task、Bot、Map 选择控件对符合原有筛选条件的候选项按组排列。对象的 **group** 按钮可选择同类型已有组、输入新组名或移回“未分组”，保存后更新展示；选择对象的控件不提供归属编辑。没有成员的组自然消失，不提供独立分组管理界面。归属专用接口为 `PATCH /api/tasks/{id}/group`、`PATCH /api/scheduler/bots/{id}/group`、`PATCH /api/scheduler/maps/{filename}/group`，请求必须包含 `{ "group": "组名" }` 或 `{ "group": null }`，只修改最新定义的归属。Task 接口返回最新 Task 列表，Bot／Map 接口返回定义字段及最新 revision。普通 Task 更新和 Bot 保存省略 `group` 时保留原归属，显式 `null` 才清除；node／Map 文件输入编辑保留 Map 归属。直接编辑定义文件或让 Agent 修改 `group` 也可归类；改名须同步修改相关成员，拼写不同会形成不同组。
+管理列表按组名排列为可折叠区块，“未分组”最后，组内保留原有顺序。Task、Bot、Map 选择控件对符合原有筛选条件的候选项按组排列。要修改 Bot 或 Map 的归组，先打开对象明细，再点 **group**；列表中的分组控件只筛选。Task 可用自身的 **group** 操作。选择同类型已有组、输入新组名或移回“未分组”，保存后更新展示；选择对象的控件不编辑归属。没有成员的组自然消失，不提供独立分组管理界面。归属专用接口为 `PATCH /api/tasks/{id}/group`、`PATCH /api/scheduler/bots/{id}/group`、`PATCH /api/scheduler/maps/{filename}/group`，请求必须包含 `{ "group": "组名" }` 或 `{ "group": null }`，只修改最新定义的归属。Task 接口返回最新 Task 列表，Bot／Map 接口返回定义字段及最新 revision。普通 Task 更新和 Bot 保存省略 `group` 时保留原归属，显式 `null` 才清除；node／Map 文件输入编辑保留 Map 归属。直接编辑定义文件或让 Agent 修改 `group` 也可归类；改名须同步修改相关成员，拼写不同会形成不同组。
 
-自举配置已做一次性归类：以“创建task”“创建bot”“创建map”为根，沿 node 的 Bot 引用、Bot 的 Task／Map 目标递归去重，并纳入节点明确引用的管理者 Task；Map、Bot、Task 分别标注 `meta-map`、`meta-bot`、`meta-task`。共享定义只归类一次，不复制对象，也不将反向引用这些能力的其他 Map 纳入。本次归类用于梳理自举定义，不提供初始化打包或安装机制，不意味着 Suite、技能、zone 和本机资源已构成完整发布包。
+自举组 `meta-map`、`meta-bot`、`meta-task` 从创建 Task、Bot 和 Map 的图出发，递归纳入节点使用的 Bot、这些 Bot 的 Map 或 Task 目标，以及节点显式引用的 manager Task。共享定义只归类一次，不纳入反向调用者。这些标签不表示初始化包，不包含 Suite、技能、zone 或本机依赖。
 
-Bot 页面沿用公共导航样式，不覆盖外侧 Tab 的字号、选中标记或阴影；列表样式只作用于 Bot 内容区域。Bot 列表支持组合使用“分组”筛选与名称／ID／组名关键词搜索；显示计数来自当前筛选结果，可一键清除筛选。组标题提供折叠与成员数量，行末“分组”按钮保留移动到已有组、新建组和移回未分组的操作。桌面未选中时使用完整目录，打开 Bot 后并排显示列表与详情；手机和平板一次显示列表或详情，通过“返回 Bot 列表”保留筛选并回到原浏览位置。分组没有成员后仍保留当前筛选的空结果提示，不会自动切到其他组。
+Bot 列表支持同时按分组和名称、ID 或组名搜索。组没有成员时仍保留筛选条件和空结果提示。窄屏使用“返回 Bot 列表”回到原浏览位置，筛选保持不变。
+
+在 scheduler 切换 Map 时仅加载所选 Map，保留目录、筛选与已读取的共享 Bot 目录；加载提示只出现在 Map 内容区。外部修改共享定义后，点击“刷新全部”重新读取 Map 与 Bot 目录。
 
 ### 删除 Map
 
-在 scheduler 选中 Map 后点击“删除 Map”，在同一个弹窗中选择“删除历史”“保留历史”或“取消”。被任意 Bot 的 `map_file` 引用时，两种删除均拒绝并定位引用，不会自动解绑；Bot 定义损坏、不可读或越过链接安全边界时也拒绝，不能视为没有引用。没有 Bot 引用且检查完整时，“保留历史”可只删除 Map 定义；“删除历史”还会检查 Run 父子执行引用，任一方向（含旧 execution 或单向残留）仍有关联就拒绝并定位父 Run／node／execution／child Run，不级联删除或自动解绑。无此关联且检查可靠时，“删除历史”才同时删除 Map 定义和关联 Run 记录，不受 Run 状态或 Chat 在线状态限制，也不会停止 Chat 或删除对话与工作文件。保留的 Run 仍可在 workflow 查看。完整边界与失败处理见[删除 Map 与历史 Run](scheduler.md#删除-map-与历史-run)。
-
-Map 的空 `input_requirements` 与缺省值等价；节点编辑或删除不会为了空输入要求新增该字段，有内容时仍保留。输入声明编辑接口始终返回可编辑的输入要求文本。
+在 scheduler 打开 Map，点击“删除 Map”并核对文件名后确认。只删除静态定义；关联 Run 及其冻结图仍可在 workflow 查看。不停止 Chat、不删除对话或工作文件。Bot 仍引用该 Map 或无法可靠核实引用时拒绝，不自动解绑。详见[删除 Map 与历史 Run](scheduler.md#删除-map-与历史-run)。
 
 ### 成果批准配置与运行事实
 
 在 scheduler 选中 Map 的普通 node，修改“成果批准 · auto_approved”：省略时默认自动，显式自动为 `true`，人工为 `false`。保存后可重开核对；设置与内容 JSON 分开，保存冲突或无效 JSON 保留草稿，不静默覆盖。图中自动模式为圆角矩形、人工为切角矩形；形状表达模式，不表示已经批准。脚本只能自动批准，冲突草稿须显式修正；结束节点显示批准不适用，保留原配置以便取消结束节点后恢复。
 
-workflow 的“当前定义（非执行快照）”显示当前 Map 配置；“当前执行事实”显示本次派发冻结的 `autoApproved`、`approved` 与 `approvalSource`，旧执行历史分别显示各自保存的事实，不从当前 Map 补造。修改 Map 不改变在途执行；合法 retry 采用当前模式，新 execution 从未批准开始，不继承旧批准或报告。自动来源 `auto` 不是用户 Yes，人工来源 `manual` 表示人工批准；模式本身不等于批准。结束节点不显示伪批准或批准等待。
-
-人工模式由用户在节点 Chat 的宿主原生确认中明确 Yes；不是另设浏览器审批页面。报告发送不再要求确认，可随时报告进展、问题或失败。成果批准独立于报告和产物，不通知管理者、不自动完成节点或派发下游；manager 仍须核实最新报告的严格 canComplete:true 与约定交付后显式 complete。打开、轮询、刷新或查看历史均只读，不重派业务。不提供旧运行兼容或批量改写。
-
-节点报告先由后端保存，再向该 Run 自己的 manager 尝试一次通知；嵌套流程内部报告不会改投外层 manager。保存失败时不通知，保存成功后即使通知失败或请求断开，原报告与输出登记仍可从 Run 读回；通知不代表用户已读或节点已完成。外部通知不占用文件协调或 Run 操作锁，也不会触发后台重试、队列或补投。
+在 workflow 中区分“冻结节点定义”和“当前执行事实”。修改原 Map 不会改动现有 Run 的定义或执行；retry 使用该 Run 副本中的批准模式，但不继承旧批准或报告。人工批准在节点 Chat 的原生确认中完成，不在浏览器审批。报告可随时发，与批准、交付和管理者显式完成独立。通知没到时先读 Run 中已保存的报告，不要盲目补发。完整门禁与通知协议见[运行说明](workflow-runtime.md)。
 
 ### 结束节点：交给用户继续
 
@@ -188,17 +222,13 @@ workflow 显示“已交给用户”，而非把结束节点伪标为 completed�
 
 ### workflow 中的脚本执行
 
-脚本节点从已保存 execution 显示 `kind: typescript`、脚本路径 `script`、执行 ID、业务生命周期、冻结规则与实际文件 inputs，不从当前 Bot 重建历史身份。旧 `rust_script` 执行与来源只供历史读取；不能重新执行旧固定能力。node.input 是否消费由用户脚本决定。
-
-业务在途、业务成功／失败结束、报告 `canComplete`、节点状态与下游依赖资格分别显示。自动报告的严格 `canComplete: true` 只表示可交接；manager 仍须显式 `complete`，此前节点仍为 `running`、依赖仍阻塞。失败保留原错误及可得实际效果，不回滚、不自动 retry。manager 核实后显式 fail／retry 产生新的 execution；旧报告与 outputs 只属于旧 execution，不授予新执行完成资格。
-
-当前／旧脚本执行及脚本来源报告没有 Chat Resume，也没有 Chat 关闭动作；manager、真实 Task／Map Chat 的原入口保留。查看、轮询、刷新和导航只读取运行事实，不派发、不重跑、不完成节点，也不调用外部 Chat。资源结束不表示等待启动 Chat；脚本没有人工批准等待。
+workflow 分别显示脚本的业务结果、报告和节点状态。脚本报告成功仍需 manager 显式完成节点；失败可能已有部分效果，先核实再处理。历史根据保存的 execution 显示，不以当前 Bot 重建；旧 `rust_script` 只能读取。脚本执行没有 Chat 可恢复或关闭，真实 Task／Map Chat 仍可 Resume。查看和刷新不执行脚本。派发、失败和重跑规则见[运行说明](workflow-runtime.md)。
 
 ### 完成后的 Tab 清理与诊断
 
-Map node 可选择“完成后自动关闭”；关闭会终止该 Tab 内的终端及相关进程，不删除 Chat 历史。此设置固定在每次派发的执行中，只有管理者合法完成该节点后才尽力清理。workflow 仍显示既有的 `completed` 状态，不显示关闭成功或失败，也不会为关闭弹出通知。
+“完成后自动关闭”在派发时冻结，只有管理者合法完成节点后才尝试关闭关联的 Herdr Tab。关闭会终止 Tab 内的终端及相关进程，不删除 Chat 历史。
 
-Tab 仍存在不代表工作未完成。缺少可靠 Tab 关联时系统直接跳过，不寻找替代目标；Herdr 命令失败、执行不可用或要求额外确认时，完成事实仍有效，后续合法业务照常推进。系统不会自动重试、强制确认或新增确认页面。请按 Run/node/执行 ID（目标已知时还含 Tab ID）在后端输出中查找关闭尝试与结果；只看到尝试不代表已关闭，失败或跳过不能当作成功。确认提示需要在 Herdr 中人工检查，不要通过重复 complete 期待补发关闭。
+workflow 在当前执行事实中显示已保存的自动关闭失败；节点仍为 `completed`，后续合法工作可继续。没有可靠 Tab 关联时跳过，不选择替代目标。Tab 仍存在不代表业务未完成，关闭回执也不证明相关进程都已退出。遇到失败或额外确认时，在 Herdr 中检查准确的 Tab，必要时人工处理。不要重复 complete；系统不自动重试或强制确认。
 
 ### 暂停或恢复 Map Run
 
@@ -220,18 +250,23 @@ TUI 的 Task 固定扩展向对应 Pane 报告 agent 状态；App 的 OMP／Pi �
 
 声音只由当前宿主决定。TUI 使用自己的 `[ui.sound]`，App 使用自己的 `settings.json` 中的 `sounds`；两端各自处理自定义声音和焦点抑制。herdr-bot 不播放声音；初始化 ready、connect-bot 会话状态和报告投递不是播音指令。复现和取证步骤见[原生提醒专项](agents/testing.md#原生提醒专项p47p48)。
 
-代码导航统一从 [`backend/src/herdr/native_status/mod.rs`](../backend/src/herdr/native_status/mod.rs) 开始：这里负责宿主状态扩展选择，并标明两端原生状态路径、声音配置与验收入口；`tui.rs` 集中识别官方 TUI 状态扩展。扩展路径与执行角色适用性仍归 Task 元数据，实际播放仍归外部宿主。各发起／恢复入口在原有位置执行选择，保留原校验顺序及 Resume 降级规则。
-
 ### server 固定操作
 
 在 `server` 内容页点击“启动”或“停止”，调用服务端预先配置的脚本。`[operations.start]`／`[operations.stop]` 可作为两端共享的固定绑定；如果两端需要不同脚本，另外成对声明 `[operations.app.start]`／`[operations.app.stop]`（两段均指定 `script` 与 `working_directory`），仅 App 模式使用该对绑定。
 
-页面仅反馈脚本调用，
-即使退出码为 0，也不代表后台程序已经启动、就绪或彻底停止。请求未结束时两按钮禁用，
-结果区分别说明完成、失败、忙碌拒绝或结果无法确认，不自动重试或排队补做。
-切回 tab 再进入 server 仍可查看本页最近一次调用的反馈。
-手动关机入口也位于 server 内容页，保留确认流程；返回 tab 不是取消关机，
-全局关机提醒在各 tab 和 server 页仍可见，取消必须显式操作并等待服务端确认。
+请求未结束时两个按钮都禁用。返回其他页面再进入 server，仍可查看最近一次反馈。`POST /api/operations/start` 和 `POST /api/operations/stop` 不接受自定义命令、路径或参数。已结束的调用返回 `operation`、`ended:true` 和下列结果：
+
+| 响应 | 含义 |
+| --- | --- |
+| `outcome:"completed"`、`started:true`、`exitCode:0` | 脚本成功退出，无 `failure`。不证明后台程序已启动、就绪或彻底停止。 |
+| `outcome:"failed"`、`failure:"not-started"`、`started:false`、`exitCode:null` | 未创建脚本进程。检查配置目录、脚本路径和 Windows 进程创建错误。 |
+| `outcome:"failed"`、`failure:"failed-exit"`、`started:true` | 脚本进程已创建，但未观察到成功退出。`exitCode` 为非零或 `null`。 |
+| HTTP 409 `operation-in-progress` | 忙碌拒绝，本次没有执行脚本，不排队。 |
+| 无可用回执 | 结果无法确认。先核实现场，不把断线当作未执行。 |
+
+操作失败或结果不明都不会自动重试。手动关机从 server 页确认；手动与监听完成触发共用同一个后端倒计时。监听中的会话离线但登记尚未清除时，仍阻塞自动倒计时。倒计时一旦开始，后续会话变化不会撤销安排；返回 tab、刷新或关闭页面也不会取消。
+
+要取消，使用全局提醒的取消操作，并等待后端明确确认。无响应不表示已经取消，电脑仍可能关机。执行已开始时取消会被拒绝。后端重启会清空尚未执行的安排，不会撤回已发出的关机指令。指令已发出不代表已经观察到断电；失败不会自动重试。参见[后端关机倒计时](adr/0005-backend-authoritative-shutdown-countdown.md)与[会话生命周期](adr/0006-server-authoritative-session-lifecycle.md)。
 
 ## Suite 管理与权威定义
 
@@ -239,20 +274,13 @@ Suite 页面统一展示全局只读的 **Task 固定扩展**，各 Suite 的扩
 
 `connect-bot` 已加入两宿主的固定扩展，分别使用 `${roots.toolkit}/entrypoints/omp-auto/connect-bot.ts` 和 `${roots.toolkit}/entrypoints/pi-auto/connect-bot.ts`；不再是 Suite 可选项。它与其他无角色限定的固定扩展一样适用于普通独立 Chat、manager 与 workflow node，不新增角色例外。auto 入口在新进程第一次主会话启动时异步尝试连接登记，收到有效回执才是已连接；可用 `/connect-bot off` 关闭，失败不会自动重试，新进程恢复不继承旧连接状态。不要同时加载 manual 和 auto 两个入口。
 
-`suite` 默认按 OMP 和 Pi 分组列出工具集，可筛选单一宿主；在筛选结果中创建 Suite 时，表单预选该宿主。每项显示名称、稳定 ID、技能来源与 MCP 数量。全局固定扩展是独立的只读清单，默认折叠；展开可查入口路径和适用角色，不改变加载行为。桌面上选择工具集后可对照目录编辑，手机和平板切换到单栏表单，关闭编辑返回目录。保存与关闭位于编辑区顶部，删除仍需确认；读取失败可重新读取。
+在 `suite` 按 OMP 或 Pi 筛选。打开 Suite 可读资源概览；选择“编辑 Suite”修改并保存。OMP 区分“目录合集”和“单 skill”，Pi 只选单技能目录。在资源项打开“详细”不会改变选择。删除需确认，读取失败可重新读取。
 
-在 `suite` 入口创建、列表查看、编辑或删除场景工具集。Suite ID 由作者指定，使用英文字母、数字、`-`、`_`；保存后不能改 ID。harness 只能选择 Pi 或 OMP，保存后不可切换；需要另一宿主时新建 Suite。ID 非空且全局唯一，不要求 `-pi`／`-omp` 后缀；宿主匹配依据 `harness`。读取权威文件与创建、编辑时均执行通用校验。显示名称仍以 `· Pi`／`· OMP` 结尾。Task 只能选择匹配其 agent 的 Suite；更换 agent 后原选择不兼容时，必须显式重选或取消后才能保存，不自动配对或清空。Skills 和 Prompt templates 按行声明具体资源位置；Extensions 按 OMP／Pi 在文本框逐行填写入口路径，不扫描整个来源目录或导入默认集合；LSP 使用服务名到原生配置对象的 JSON 声明。页面显示声明不表示语言服务或 MCP 已经运行，资源装配与原生消费是另外的启动步骤。
+在 `suite` 入口创建、列表查看、编辑或删除场景工具集。Suite ID 由作者指定，使用英文字母、数字、`-`、`_`；保存后不能改 ID。harness 只能选择 Pi 或 OMP，保存后不可切换；需要另一宿主时新建 Suite。ID 非空且全局唯一，不要求 `-pi`／`-omp` 后缀；宿主匹配依据 `harness`。读取权威文件与创建、编辑时均执行通用校验。显示名称仍以 `· Pi`／`· OMP` 结尾。Task 只能选择匹配其 agent 的 Suite；更换 agent 后原选择不兼容时，必须显式重选或取消后才能保存，不自动配对或清空。Skills 和 Prompt templates 按行声明具体资源位置；Extensions 按 OMP／Pi 在文本框逐行填写入口路径，不扫描整个来源目录或导入默认集合；MCP／LSP／DAP 通过勾选资源选项保存稳定 ID，不提供 Suite 整体 JSON 编辑。页面显示声明不表示语言服务或 MCP 已经运行，资源装配与原生消费是另外的启动步骤。
 
-OMP 发起或以新进程恢复有 Suite 的 Chat 时，会将非空 `lsp` 声明写入本次私有生成目录的原生 `lsp.json`，通过 `--plugin-dir` 增量发现，不覆盖项目或用户的 LSP 文件。保留 OMP bundled defaults、HOME 根配置、插件、用户及项目的原生合并规则；用户／项目配置可覆盖 Suite，Suite 不是排除其他服务的白名单。Pi Suite 不接受 LSP 字段，不使用 Pi 结果证明 OMP 已通过。
+OMP 发起或以新进程恢复有 Suite 的 Chat 时，会按 `lsp` ID 读取集中配置，将非空选择写入本次私有生成目录的原生 `lsp.json`，通过 `--plugin-dir` 增量发现，不覆盖项目或用户的 LSP 文件。保留 OMP bundled defaults、HOME 根配置、插件、用户及项目的原生合并规则；用户／项目配置可覆盖 Suite，Suite 不是排除其他服务的白名单。Pi Suite 不接受 LSP 字段，不使用 Pi 结果证明 OMP 已通过。
 
-批准的四种服务如下（字段名采用 OMP 原生 `command`、`args`、`fileTypes`、`rootMarkers`）：
-
-| 服务名 | command / args | fileTypes | 项目标记（任一） |
-| --- | --- | --- | --- |
-| `rust-analyzer` | `rust-analyzer` / `[]` | `.rs` | `Cargo.toml`, `rust-analyzer.toml` |
-| `typescript-language-server` | `typescript-language-server` / `["--stdio"]` | `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs` | `package.json`, `tsconfig.json`, `jsconfig.json` |
-| `jdtls` | `jdtls` / `[]` | `.java` | `pom.xml`, `build.gradle`, `build.gradle.kts`, `settings.gradle`, `.project` |
-| `pyright` | `pyright-langserver` / `["--stdio"]` | `.py`, `.pyi` | `pyproject.toml`, `pyrightconfig.json`, `setup.py`, `setup.cfg`, `requirements.txt`, `Pipfile` |
+具体命令、文件类型及项目标记以 [`meta-data/lsp/`](../meta-data/lsp/) 为准。
 
 声明本身不是已启用或运行的状态。OMP 根据项目标记、本地／PATH 可执行程序和原生优先级决定可用集合；程序缺失时不会启动。TypeScript 服务还需要兼容的 TypeScript 运行环境，Java 需要兼容 JDK 和完整 JDT LS 安装，Rustup 代理需要既有工具链组件，Python 服务需要相应 Node/Python 环境。Herdr-bot 不安装这些依赖、不修改系统 PATH、不把缺失或初始化失败显示为运行成功。在 Chat 中调用原生 `xd://lsp` 的 `capabilities` 和 `status` 观察初始化及 `ready`；`configured, not started` 仅表示可发现，不能当作运行证据。缺依赖时保留阻塞和未验证结论，专项入口见[测试指引](agents/testing.md#omp-suite-四语言-lsp-真实验收)。
 
@@ -261,7 +289,9 @@ OMP 发起或以新进程恢复有 Suite 的 Chat 时，会将非空 `lsp` 声�
 ```toml
 [suites]
 definition_file = 'meta-data/suites.json'
-mcp_file = 'meta-data/mcp.json'
+mcp_directory = 'meta-data/mcp'
+lsp_directory = 'meta-data/lsp'
+dap_directory = 'meta-data/dap'
 generated_directory = '.data/suites'
 ```
 
@@ -282,7 +312,8 @@ generated_directory = '.data/suites'
       ],
       "extensions": ["${roots.toolkit}/entrypoints/omp-auto/codebase-tools.ts"],
       "mcp": ["catalog-search"],
-      "lsp": {}
+      "lsp": ["rust-analyzer"],
+      "dap": []
     },
     {
       "id": "review-tools-pi",
@@ -318,7 +349,7 @@ OMP Suite 的 `skills` 是 `{ "kind": "collection" | "skill", "path": "…" }` �
 
 发起前检查所选技能及配套资源可读，不生成技能链接目录。每次启动或需要新进程的来源 Task 会话恢复，重新读取当前来源，按 canonical 技能文件路径去重，并由本次选中有效技能的最终名称生成 `includeSkills` 白名单；不同实体同名时拒绝启动，不能因其中一个未启用而绕过冲突检查。集合新增或移除有效技能会改变下一次启动的白名单。
 
-OMP 的 `omp-skills.json` 使用现有全局安装已支持的原生 `--config`，只对 `skills` 做高优先级局部覆盖：集合来源传入原集合目录，单技能来源传入技能目录的父目录；扫描目录按实际路径去重，设置本次选中名称的 `includeSkills`、`ignoredSkills: []`，将已有七个来源开关 `enableCodexUser`、`enableClaudeUser`、`enableClaudeProject`、`enablePiUser`、`enablePiProject`、`enableAgentsUser`、`enableAgentsProject` 均设为 `false`，并按有效名称是否非空设置 `enabled`。不修改 OMP 源码、全局安装或用户／项目配置，也不要求部署新的宿主构建。该覆盖约束的是**原生最终可用技能列表**，不承诺禁止默认目录扫描；默认来源中不在白名单的技能不得成为可用技能，实际名称及来源仍需原生验收核对。单技能来源的同级技能仍会被 OMP 扫描，最终以名称白名单过滤，不是按文件路径过滤；同名问题由使用者按原有规则处理，不新增冲突处理机制。原本属于默认来源的目录若被显式指定，仍可加载。
+OMP 通过原生 `--config` 应用 `omp-skills.json` 的局部覆盖，不改全局或项目配置。OMP 可扫描集合目录与单技能的父目录，但最终可用技能受 `includeSkills` 名称白名单约束，不是禁止目录扫描或按文件路径过滤。同级技能被扫描不表示可用；默认来源中显式选择的技能仍可加载。同名来源依原生规则处理，实际名称和来源须在宿主内核实。
 
 技能列表隔离不改变原生扩展、agent、MCP、LSP 或项目指令，不是文件访问沙箱，也不复制认证或改变模型／会话位置。明确选择空集合或没有有效技能的 Suite 使用空白名单与 `enabled: false`，不回退；**不选 Suite** 则不传技能覆盖，保留原生技能行为。正文及资源按原路径读取；已有会话中的历史正文不会被追溯替换，运行中的进程不保证自动重发现元数据。
 
@@ -334,27 +365,29 @@ OMP 的 `omp-skills.json` 使用现有全局安装已支持的原生 `--config`�
 
 Pi Suite 使用原生 `--no-skills` 和逐项 `--skill`，不关闭 builtin MCP。技能参数直接使用 `skills` 中的原目录，不创建链接；明确空 Suite 与不选 Suite 不同，后者不添加技能／模板覆盖。Pi Suite 的 `extensions` 必须填写具体入口文件；后端逐个传原始源码绝对路径 `--extension`，不解析包的 `pi.extensions`，也不创建包链接。依赖和资产留在原目录，由 Pi 原生加载。Pi 本地模板通过原生 `--prompt-template` 逐项选择，初始化不展开；LSP 不传给 Pi。
 
-交付目录的 `pi-suite` 是固定扩展，无须 Suite 重复声明。`--no-extensions` 同时关闭 builtin 自动发现，因此发起／恢复路径显式保留 `builtin:mcp` 与 `builtin:tool-search`；无 Suite 时还保留 `builtin:codemode`，有 Suite 时由 pi-suite 使用本次明确模式，避免两个 codemode 实例。配置产物为 `generated_directory/<suite-id>/<本次装配>/pi-suite.json`，通过 toolkit **公开工厂期 `--pi-suite-config <绝对路径>`** 通道交付；部署必须包含支持该 flag 的 toolkit，旧的仅环境变量通道不能由 Herdr 的 `agent start` 参数自动替代。配置只含版本、模式和本次引用解析出的 `mcpServers`，不会写全局模式、项目 `mcp.json` 或移动认证、模型、会话存储。MCP 的 `cwd`、带根引用或 `./`／`../` 的 command 以集中 MCP 文件目录解析，裸 command 保持 PATH 查找，args/env/url 保持原生字面语义。
+交付目录的 `pi-suite` 是固定扩展，无须 Suite 重复声明。`--no-extensions` 同时关闭 builtin 自动发现，因此发起／恢复路径显式保留 `builtin:mcp` 与 `builtin:tool-search`；无 Suite 时还保留 `builtin:codemode`，有 Suite 时由 pi-suite 使用本次明确模式，避免两个 codemode 实例。配置产物为 `generated_directory/<suite-id>/<本次装配>/pi-suite.json`，通过 toolkit **公开工厂期 `--pi-suite-config <绝对路径>`** 通道交付；部署必须包含支持该 flag 的 toolkit，旧的仅环境变量通道不能由 Herdr 的 `agent start` 参数自动替代。配置只含版本、模式和本次引用解析出的 `mcpServers`，不会写全局模式、项目 `mcp.json` 或移动认证、模型、会话存储。MCP 的 `cwd`、带根引用或 `./`／`../` 的 command 以对应 MCP 选项文件所在目录解析，裸 command 保持 PATH 查找，args/env/url 保持原生字面语义。
 
 开发真实烟测见[测试指引](agents/testing.md#pi-suite-启动开发烟测)。它不替代 Pi 完整资源／MCP／模式／模板契约矩阵；缺宿主能力或尚未交付的 toolkit flag 时应明确记为未验证，不能以参数或产物存在宣称原生消费通过。
 
-### 宿主适用配置与集中 MCP
+### 宿主适用配置与集中资源选项
 
 Pi Suite 必须明确保存顶层 `codemode: "on"` 或 `"only"`。勾选 **Codemode only** 保存 `only`，取消保存明确的 `on`，不表示关闭 codemode 或继承全局 only。Pi 独有 `prompts` 与 `codemode`，OMP 独有 `lsp` 与 `dap`；另一宿主的字段即使为空也拒绝，不静默跳过。编辑器只显示当前 harness 的配置；不再接受旧 `agents`、宿主键资源对象或嵌套 `pi` 字段。
 
-MCP 连接仍由维护者在集中文件编辑，界面只选择 ID，不新增 MCP 编辑平台或进程 manager。例如 `mcp_file` 内容：
+MCP、LSP、DAP 分别使用 `mcp_directory`、`lsp_directory`、`dap_directory`。每个资源选项是一份 `<id>.json`，文件名（不含 `.json`）是稳定 ID，文件正文为 `{name, description, config}`，其中 `config` 是原生配置对象。例如 `meta-data/mcp/catalog-search.json`：
 
 ```json
-{"mcpServers":{"catalog-search":{"command":"search-server","args":["--stdio"]}}}
+{"name":"目录搜索","description":"通过标准输入输出连接搜索服务。","config":{"command":"search-server","args":["--stdio"]}}
 ```
 
-Suite 的 `mcp` 只保存引用，不保存连接配置副本；空数组表示不追加，不禁用宿主原生 MCP。定义页只读此集中目录，不执行其中的命令。保存 Suite 会重新读取集中目录并拒绝不存在的 MCP ID。外部删除 MCP 定义后，重新读取的 Suite 编辑器仍保留已选 ID，并标出“失效”；不会静默丢弃引用。只有显式取消该失效项或恢复集中定义后才能保存。
+在 Suite 页面打开“配置”，每张卡片默认展示用途说明；选择类别后点击资源旁的 Edit（无障碍名称为“编辑 <名称> 配置”）可编辑已有选项的完整 JSON，“保存配置”只写回该选项的文件；“取消编辑”放弃改动。修改是共享的，引用该 ID 的其他 Suite 也会在后续装配时使用新定义，不会重配已有进程。页面和 HTTP API 不创建或删除资源选项；维护者按需在对应目录手工添加或移除文件。资源编辑不执行配置中的命令。
+
+Suite 的 `mcp`、`lsp`、`dap` 只保存引用，不保存配置副本；空数组表示不追加，不禁用宿主原生资源。保存 Suite 时重新检查资源引用。外部删除某个选项后，重新读取的 Suite 表单仍保留已选 ID 并标出“失效”；须显式取消或恢复定义才能保存。
 
 ### OMP 原生增量 MCP
 
 选择 Suite 发起或新进程恢复 Chat 时，后端把引用的集中定义发布为只含 `.mcp.json` 的独占资源包，通过原生 `--extension` 追加给 OMP。不向项目写入配置，不替换整个 agent 配置目录，也不建立另一套 MCP manager；连接、工具、资源列举／读取、服务器 prompts、通知刷新、instructions 与 `/mcp` 管理交互均由原生 OMP 提供。Suite 本地 prompt templates 的省略不影响 MCP 服务器 prompts。
 
-MCP 的 `command` 支持 `${roots.name}`；`./`、`../` 等路径式命令及 `cwd` 相对 **集中 MCP 文件** 所在目录解析，不随 Chat cwd 或生成位置改变。裸命令仍由 PATH 查找，其余原生连接字段原样交给 OMP；命令参数仍遵循服务器／宿主语义，不逐个猜测为文件路径。
+MCP 的 `command` 支持 `${roots.name}`；`./`、`../` 等路径式命令及 `cwd` 相对 **MCP 选项文件** 所在目录解析，不随 Chat cwd 或生成位置改变。裸命令仍由 PATH 查找，其余原生连接字段原样交给 OMP；命令参数仍遵循服务器／宿主语义，不逐个猜测为文件路径。
 
 不读取或合并用户／项目 MCP 配置；同名胜者、异名等价连接去重、不同参数的独立连接、项目 `enabled: false` 及用户 `disabledServers` 都遵循 OMP 原生规则。合法的覆盖或禁用不是失效引用，不强制 Suite 胜出或重启服务器。空 MCP 清单不生成额外包，用户与项目原生服务器照常可用。
 
@@ -362,13 +395,11 @@ MCP 的 `command` 支持 `${roots.name}`；`./`、`../` 等路径式命令及 `c
 
 ### OMP Suite 调试器（DAP）
 
-集中定义由 `[suites].dap_file` 指定，默认 `meta-data/dap.json`。维护者编辑文件，OMP Suite 仅保存 `dap: ["codelldb"]` 引用；Pi 不接受 `dap`。列表只显示调试器名称，展开详情查看完整语言、说明和原生配置。语言来自 `config.languages`，是适配器声明，不是逐语言实测保证。旧 OMP Suite 省略 `dap` 等同空数组；交付的「代码实现 · OMP」（`code-implementation-omp`）选择 CodeLLDB，使用前需配置本机 `roots.codelldb`。其他 Suite 不自动勾选。
+例如 `meta-data/dap/codelldb.json` 定义 CodeLLDB；OMP Suite 用 `dap: ["codelldb"]` 引用，Pi 不接受 `dap`。`config.languages` 是适配器声明，不是逐语言实测保证。OMP Suite 省略 `dap` 等同空数组；交付的「代码实现 · OMP」（`code-implementation-omp`）选择 CodeLLDB，使用前需配置本机 `roots.codelldb`。
 
-```json
-{"adapters":{"codelldb":{"name":"CodeLLDB","description":"Windows x64 Rust；PDB 下 enum 显示有限。","config":{"command":"${roots.codelldb}/extension/adapter/codelldb.exe","args":[],"connectMode":"stdio","languages":["c","cpp","rust","zig"],"launchDefaults":{"stopOnEntry":true,"sourceLanguages":["rust"]}}}}}
-```
+使用交付的 [CodeLLDB 配置](../meta-data/dap/codelldb.json)，其中包括 stdio 连接与 `launchDefaults.terminal: "console"`。
 
-`name`、`description` 是目录展示信息，只有 `config` 进入 OMP 原生 `dap.json`。适配器 `command` 支持 `${roots.*}`，带 `./`、`../`、`.\\`、`..\\` 的路径以**集中 DAP 文件父目录**解析；绝对路径保持原意，裸命令由 PATH 查找。参数及 launch/attach defaults 保持原生语义，不猜测哪些字符串是路径，也不展开原生 `${port}`。使用绝对路径或明确根引用可避免 Chat cwd 改变带来的歧义。
+`name`、`description` 是目录展示信息，只有 `config` 进入 OMP 原生 `dap.json`。适配器 `command` 支持 `${roots.*}`，带 `./`、`../`、`.\\`、`..\\` 的路径以**DAP 选项文件所在目录**解析；绝对路径保持原意，裸命令由 PATH 查找。参数及 launch/attach defaults 保持原生语义，不猜测哪些字符串是路径，也不展开原生 `${port}`。使用绝对路径或明确根引用可避免 Chat cwd 改变带来的歧义。
 
 每次发起或需要新进程的来源 Task 恢复重新装配所选定义，在本次独占目录生成 `dap.json`，通过 `--plugin-dir` 注入；没有 LSP 声明时也生效。有 LSP 时共用同一插件目录。不会写入项目或用户配置，不修改原生覆盖优先级，也不是调试器白名单。集中定义删除后保留失效引用供显式修正；保存、选用与装配重新校验，不静默丢弃。
 
@@ -389,21 +420,21 @@ MCP 的 `command` 支持 `${roots.name}`；`./`、`../` 等路径式命令及 `c
 
 Task 编辑第二步提供 **Suite（至多一个）** 单选，只提供当前 agent 兼容的 Suite 和“不选 Suite”。多个 Task 可以引用同一个 Suite；引用保存为 Task 的可选 `suite` 字符串（稳定 Suite ID），不复制 Suite 内容。`null` 或省略表示明确不选，数组、多选、不存在的 ID、空字符串或不兼容的选择会被直接 HTTP 拒绝。
 
-- Task 列表与编辑器重新读取当前权威定义和集中 MCP 目录；失效引用仍显示原 ID 及原因。切换 agent 不会偷偷清空或改选 Suite，不兼容的原选择保留为不可用项，必须显式修正。
-- Task 保存及发起 Chat 前均重新验证 Suite 存在、宿主兼容和集中 MCP 引用。发起后新进程恢复与 workflow manager/node 启动也验证来源 Task 的 Suite 引用。验证失败会明确拒绝，不以空环境继续，不删除引用；原生 MCP 的运行期连接状态仍由宿主处理，不新增“所有 MCP 已就绪”门禁。
+- Task 列表与编辑器重新读取当前 Suite 权威定义；失效引用仍显示原 ID 及原因。切换 agent 不会偷偷清空或改选 Suite，不兼容的原选择保留为不可用项，必须显式修正。
+- Task 保存及发起 Chat 前均重新验证 Suite 存在、宿主兼容和集中资源引用。发起后新进程恢复与 workflow manager/node 启动也验证来源 Task 的 Suite 引用。验证失败会明确拒绝，不以空环境继续，不删除引用；原生 MCP 的运行期连接状态仍由宿主处理，不新增“所有 MCP 已就绪”门禁。
 - Suite 不替换 Task 的初始 Skill、固定 prompt、模型、思考级别或命名规则。修改定义不会主动重配已运行的 Chat。
 - 删除仍被引用的 Suite 返回 `409 suite-in-use`，界面列出引用它的 Task 名称与稳定 ID。先显式编辑或删除这些 Task，再删除 Suite；拒绝后 Suite 和所有 Task 引用保持不变。读取 Task 失败时也不会冒险删除 Suite。
 - 同一进程内新增／修改 Task 引用与删除 Suite 共用既有文件协调范围，不能同时成功留下悬空引用。手工编辑在下一次读取／保存／启动时重新检查；不承诺跨文件事务或多进程写入协议。
 
 `GET /api/tasks` 的 `options.suites` 提供当前 Suite 定义，`options.mcp` 提供集中 ID 清单；Task POST/PUT 的 `suite` 字段与读取字段一致。引用校验失败返回 `400 task-suite-invalid` 和具体原因。读取失效 Task 本身仍成功，以便保留并显式修正引用。
 
-公开 HTTP 入口：`GET /api/suites` 返回 `{suites, mcp, dap, fixedExtensions}`（`mcp` 为集中 ID 清单，`dap` 为调试器详情数组，每项含 `id`、`name`、`description`、原生 `config`；`fixedExtensions` 为只读固定目录，条目含 `id`、`label`、`agent`、`kind: "fixed"`、解析后的 `entrypoint` 和 `roles`，角色值为 `standalone`／`manager`／`node`）；`POST /api/suites` 创建；`GET /api/suites/{id}` 返回 `{suite}`；`PUT /api/suites/{id}` 修改同一 ID；`DELETE /api/suites/{id}` 删除。创建、更新与删除成功均返回相同的 `{suites, mcp, dap, fixedExtensions}` 列表形状。保存请求体使用上例的单个 Suite 对象，不接受查询参数或未知字段，删除不接受请求体。错误以 JSON `code` / `message` 返回；只有成功写入权威文件才显示已保存。
+公开 HTTP 入口：`GET /api/suites` 返回 `{suites, mcp, lsp, dap, fixedExtensions}`。`mcp`、`lsp`、`dap` 均为资源选项数组，每项含 `id`、`name`、`description`、原生 `config`；`fixedExtensions` 仍为全局只读目录，条目含 `id`、`label`、`agent`、`kind: "fixed"`、解析后的 `entrypoint` 和 `roles`。`POST /api/suites` 创建 Suite，`GET /api/suites/{id}` 返回 `{suite}`，`PUT /api/suites/{id}` 修改同一 Suite，`DELETE /api/suites/{id}` 删除 Suite。创建、更新、删除 Suite 成功均返回与列表相同的结构。Suite 保存请求体使用上例的单个 Suite 对象，不接受查询参数或未知字段；删除不接受请求体。`PUT /api/suites/resources/{kind}/{id}` 仅编辑对应类别（`mcp`、`lsp`、`dap`）中已有的资源文件，请求体与文件正文相同（`{name, description, config}`，不含 `id`），成功返回更新后的列表。错误以 JSON `code` / `message` 返回；只有成功写入权威文件才显示已保存。
 
-定义管理的可复跑隔离验收为 `cargo test --manifest-path backend/Cargo.toml --test suites` 与 `npm --prefix frontend run test:browser:build -- suites.spec.ts --workers=1`。Task 引用完整性验收为 `cargo test --manifest-path backend/Cargo.toml --test suite_references` 与 `npm --prefix frontend run test:browser:build -- suiteReferences.spec.ts --workers=1`，覆盖单选及复用、集中引用失效后的读回／保存／启动拒绝、删除保护及受控并发请求；启动负例使用独占 Herdr 记录夹具确认没有外部启动调用，不宣称原生资源消费通过。浏览器用例独占临时配置、声明、动态回环端口和后端进程，真实操作页面并独立读取文件；包含外部修改及实际进程重启，不需要用户凭据或原生 agent 启动。它们证明定义管理和模式持久化，不证明原生 agent 已消费资源。
+产品定向入口为 `cargo test --manifest-path backend/Cargo.toml --test suites --test suite_references`，页面用例见 `suites.spec.ts` 和 `suiteReferences.spec.ts`。隔离配置见[测试指引](agents/testing.md)。这些检查证明定义和引用管理，不证明原生资源消费。
 
 ### 当前交付定义与旧格式更新
 
-交付的 `meta-data/suites.json` 和 `meta-data/mcp.json` 是当前默认权威定义，Task 通过稳定 ID 引用 Suite。当前清单为：
+交付的 `meta-data/suites.json` 与 `meta-data/mcp/`、`meta-data/lsp/`、`meta-data/dap/` 是默认权威定义。Task 通过稳定 ID 引用 Suite。升级自聚合文件的自定义部署应先备份并停止服务写入：将旧 MCP 和 DAP 聚合定义拆为每项一个文件，将 OMP Suite 的内嵌 LSP 配置移入 LSP 目录并改为 ID 数组，再切换到三个目录配置键；旧 `mcp_file`／`dap_file` 不再受理。含相对路径命令或 `cwd` 的既有 MCP／DAP 配置，移动文件后须确保仍解析到原目标。Pi Suite 本身无须改写。当前常用 Suite 包括：
 
 | Suite ID | harness | 资源职责 |
 | --- | --- | --- |
@@ -411,14 +442,48 @@ Task 编辑第二步提供 **Suite（至多一个）** 单选，只提供当前 
 | `codebase-exploration-pi` | Pi | 逐技能探索、扩展、集中 MCP，codemode 为 on |
 | `code-implementation-omp` | OMP | 实现技能集合、扩展、四语言 LSP 与集中 MCP |
 | `web-access-pi` | Pi | 独立网页访问扩展，codemode 为 on |
+| `scrapling-pi` | Pi | 官方 Scrapling MCP，codemode 为 on |
 | `pstack-omp` | OMP | pstack 生成技能集合、持续模式入口及 persona 生成目录 |
 | `pi-codemode-pi` | Pi | codemode only |
 
 OMP 集合新增有效直接子技能会参与后续发现，不承诺固定技能数量。探索的两种 Suite 独立选择同一集中 `codebase-memory-mcp` 定义；Pi 不含 LSP。实际资源发现与命令消费仍须对应宿主验收，不能从声明或迁移成功推断。
 
-`pstack-omp` 不叠加探索／实现 Suite，也不替代 Task 固定扩展或项目指令。将 `[roots].toolkit` 指向含 `pstack-suite` 交付资源的 toolkit，Task 选择该 Suite 后发起 Chat。更新生成资源前先结束使用同一包的 pstack 会话，按 toolkit 的 `pstack-suite/README.md` 操作；发起不负责生成或更新资源。
+`pstack-omp` 是 OMP 专用 Suite，不叠加探索／实现 Suite 或其他场景技能集合，也不替代 Task 固定扩展、模型、初始指示或项目指令。将 `[roots].toolkit` 指向包含 `pstack-suite` 交付资源的 Toolkit，再用选中此 Suite 的 Task 发起 Chat。herdr-bot 加载已生成的技能、持续模式入口和 OMP persona 目录，不生成资源，不写全局角色模型，不热更新已有进程。维护、角色绑定和待迁移专题见 Toolkit 的 `pstack-suite/README.md`。
 
-`web-access-pi` 与 `codebase-exploration-pi` 的 `extensions` 均直接声明 `${roots.pi_extensions}/pi-web-access/index.ts`，能力不是某个 Suite 专属的开关，不从包 manifest 推导入口。依赖须事先准备，启动不执行 npm 安装或更新。网页访问 Suite 的技能、模板、集中 MCP 选择为空，仍保留 Task 固定扩展与原生 MCP 合并行为，不改变 Task 模型、思考级别或初始提示词。`pi-web-access` 源码包 `0.41.0` 的工具指引和内部模型提示由扩展提供；注册不证明工具全部 active、搜索服务或凭据可用。源码入口与发布包 `./dist` 不可直接互换。
+新 pstack 会话默认启用持续模式，`/poteto-mode` 切换并保存会话状态；`/skill:poteto-mode` 只调用一次技能。并行委派使用 OMP 原生子代理，不创建 herdr Map。Suite 和模式开关不授予宿主、外部工具、合并或部署权限。工作树隔离不是权限沙箱，也不代表有云执行、外部事件唤醒或会话退出后的持久调度。
+
+`web-access-pi` 与 `codebase-exploration-pi` 的 `extensions` 均直接声明 `${roots.pi_extensions}/pi-web-access/index.ts`，能力不是某个 Suite 专属的开关，不从包 manifest 推导入口。依赖须事先准备，启动不执行 npm 安装或更新。网页访问 Suite 的技能、模板、集中 MCP 选择为空，仍保留 Task 固定扩展与原生 MCP 合并行为，不改变 Task 模型、思考级别或初始提示词。工具指引和模型提示由 `pi-web-access` 扩展提供；注册不证明工具、搜索服务或凭据可用。源码入口与发布包 `./dist` 不可直接互换。
+
+### Scrapling MCP 安装与更新
+
+`scrapling-pi` 只选择集中 `scrapling` MCP，使用 `codemode: "on"`，不附加可选技能、扩展或模板。它不会修改现有 Task 的 Suite 选择。
+
+通过 uv 安装官方 PyPI 包并准备浏览器依赖：
+
+```powershell
+uv tool install "scrapling[ai]"
+scrapling install
+```
+
+集中定义使用 `command: "scrapling-mcp"`，不依赖源码目录、根路径配置或 exe 绝对路径。运行 herdr-bot 与 Pi 的进程必须能通过 PATH 找到 uv 的工具入口目录；可用 `uv tool dir --bin` 查看。安装不代表已有服务进程已获得更新后的 PATH。
+
+更新前结束使用 Scrapling 的 Chat，再执行：
+
+```powershell
+uv tool upgrade scrapling
+scrapling install --force
+```
+
+Scrapling 0.5.1 的安装器下载 Playwright Chromium，但浏览器 MCP 工具使用 Patchright；两者版本不一致时还需安装 Patchright 对应的 Chromium。首次安装和升级后，在 Windows 上执行：
+
+```powershell
+$ScraplingPython = Join-Path (uv tool dir) 'scrapling/Scripts/python.exe'
+& $ScraplingPython -m patchright install chromium
+```
+
+此命令从 uv 查询环境位置，不把本机绝对路径写入 MCP 定义。
+
+重新发起选择该 Suite 的 Task。uv 管理包环境，浏览器使用安装器的默认存储位置；启动 Chat 不自动安装或升级。官方说明见 [Scrapling MCP](https://scrapling.readthedocs.io/en/latest/ai/mcp-server.html)。
 
 ### 从多宿主 Suite 一次性切换
 
@@ -440,9 +505,7 @@ Task 页以紧凑清单展示名称、用途、Agent、模型／思考级别与 
 
 新增与编辑仍经过“Task 预设 → 扩展配置 → 确认保存”三步，只有明确保存并收到后端成功响应才更新共享定义。编辑器自动聚焦显示名、限制键盘焦点在弹窗内，未保存时按 Escape 等同取消，关闭后焦点回到原入口；保存期间不能取消。底部操作保持可达。Task、Suite 与其他入口共用统一导航：`layout=expanded` 保持侧栏，切换页面不改变其他 Tab 的字号、图标边框或导航布局；手机上也可使用全局布局按钮切换至紧凑导航。
 
-Task 的 Codex 模型选项包含 `GPT-6.1-sol`、`GPT-6-luna` 和 `GPT-6-astra`；
-思考级别按所选 agent 与模型的能力提供，Pi 的 Luna 支持 `off`，Astra 不支持。
-模型目录修改后下次打开编辑、保存或发起 Chat 时重新读取，无需重启。
+模型和可用思考级别以当前 [Task 选项目录](../meta-data/task-options.toml)为准。`default` 沿用 agent 默认值，不显式指定思考级别。修改选项目录后，下次打开编辑、保存或发起 Chat 时重新读取，无需重启。
 删除 Task 时先询问是否删除，取消不发出删除请求；删除不影响已经发起的 Chat。
 
 ## 从 zone 或 Task 发起 Chat
@@ -457,6 +520,8 @@ Task 发起时，当前容器按 zone 根目录名匹配，默认容器按 `[her
 
 只有宿主明确证明在写入前因 blocked 拒绝初始指示时，后端才会重试。每次从收到该拒绝起等待至少 1 秒，并在重试前核对原 Tab、进程和原生会话仍匹配；最多重试 5 次（含首次提交共 6 次尝试）。页面在等待时显示本次拒绝的原因，刷新不会重新发起 Chat；目标退出或更换会话／进程时取消，不创建替代 Tab。若第 6 次仍明确被拒绝，则保留现场与最后一次拒绝的原因，不再发送。超时、断线、部分输入、响应不明确或 `started:false` 都可能已经产生输入效果，只显示投递结果未确认，不自动重发。恢复与报告通知不使用此重试规则。
 
+App 的已保留启动归属由同一目标查找入口核实。原 core 的身份和进程 PID、终端地址及根进程 PID 均匹配，且 core 明确返回终端 `state: finished` 时，后端清理旧归属；Resume 随后按正常历史恢复流程启动。Tab 消失、心跳超时、终端查无记录、core 更换、查询失败或畸形回执均不视为已结束，不据此重复启动。归属清理不依赖 agent 成功送达退出上报，也不删除 Chat 历史。
+
 ## chief bot 入口
 
 页头 `server` 左侧的 `chief bot` 按钮每次点击都读取后端当前 chief，不使用浏览器本地选择。有当前 chief 的原生身份时，经现有 Resume 路径定位或恢复该 Chat；仍在启动、结果不确定或查询失败时显示反馈，不另建 Chat。
@@ -467,7 +532,9 @@ Task 发起时，当前容器按 zone 根目录名匹配，默认容器按 `[her
 
 交付选项目录为两宿主声明 `omp-chief-chat`／`pi-chief-chat` 固定入口，按 chief 执行角色装配；普通与 manager Task 不加载该角色。chief 未选 Suite 时也适用，公开发起及新进程恢复都从当前来源 Task 和选项目录取得环境；固定加载本身不授予当前 chief 权限。原生只读 `chief_definitions` 查询及角色指引是否实际消费，由跨仓入口专项分别验证，不由扩展清单或启动成功推断。
 
-默认 chief-bot 没有固定 prompt 或初始 Skill，可直接留空 input 发起。对任何 Task，最终初始指示为空时，agent 就绪后显示“创建成功，等待用户输入”，公开创建结果为 `inputSubmitted: false`；不向 Herdr 提交空消息、不补造用户指令。存在固定 prompt、Skill 或本次 input 时仍按原规则提交并确认，之后才显示初始指示已提交。
+chief 先呈现已核实的复用方案。用户拒绝复用时，由用户决定是否另行创建能力或停止；同意创建不等于授权执行原业务。启动委派后，chief 不阻塞等待业务完成，也不把启动回执当作交付；收到报告后呈现结果，不自动发起下一项工作。
+
+默认 chief-bot 没有固定 prompt 或初始 Skill，可直接留空 input 发起。已关联的 chief Chat 仍会收到通用 chief 流程说明；该消息确认提交后，页面显示“创建成功，初始指示已提交”，公开创建结果为 `inputSubmitted: true`。空白 input 不补造用户指令。若合成后的初始指示为空（如无指示的独立普通 Task），则不向 Herdr 提交空消息，agent 就绪后显示“创建成功，等待用户输入”。
 
 ## 当前 chief 的后端权威
 
@@ -497,9 +564,9 @@ chief Task 经既有 `POST /api/chats` 发起，也经既有 `POST /api/chats/re
 
 ### 共享 Bot 指南业务
 
-空白 Bot 创建、三份指南编写、通用提示词优化和通用文本替换共用[共同业务材料契约](business-materials.md)。目标可为真实 normal Task 或 Map；共同基线由执行者自行通过公开接口核实，用户只需明确目标、业务要求、授权和可选材料。baseline 单份直接交给每个必要消费者，text 是唯一完整正文，handoff 仅记录确认、来源、语义限制和未验证项。独立 Chat 不加载 node 角色也负责授权、配置冲突、真实 revision、运行禁写、非目标保持、安全落盘与完整读回。旧独立 create-bot／create-bot-task 不改变职责；源码交付不自动覆盖用户部署。
+空白 Bot 创建、四字段正文编写、通用提示词优化和通用文本替换共用[共同业务材料契约](business-materials.md)。目标可为真实 normal Task 或 Map；共同基线由执行者自行通过公开接口核实，用户只需明确目标、业务要求、授权和可选材料。baseline 单份直接交给每个必要消费者，text 是唯一完整正文，handoff 仅记录确认、来源、语义限制和未验证项。独立 Chat 不加载 node 角色也负责授权、配置冲突、真实 revision、运行禁写、非目标保持、安全落盘与完整读回。旧独立 create-bot／create-bot-task 不改变职责；源码交付不自动覆盖用户部署。
 
-既有 Task 型或 Map 型 Bot 可直接使用 `revise-bot-guides`，不必先优化 Task.prompt：只读核实共同基线，三路独立修订并确认，在同一 Chat 整理表达，最终汇合一次合法保存和完整读回。请求文件、可选材料、子管理者及 saved／handoff 交接见[独立修订指南](revise-bot-guides.md)。该能力原位替换原 enhance-existing-bot Map 的强制 Task 优化前置，不修改旧独立入口、真实目标或无关 Map；配置交付不是目标能力已验证。
+既有 Task 型或 Map 型 Bot 可直接使用 `revise-bot-guides`，不必先优化 Task.prompt：只读核实共同基线，四路独立修订并确认，在同一 Chat 整理表达，最终汇合一次合法保存和完整读回。请求文件、可选材料、子管理者及 saved／handoff 交接见[独立修订指南](revise-bot-guides.md)。该能力原位替换原 enhance-existing-bot Map 的强制 Task 优化前置，不修改旧独立入口、真实目标或无关 Map；配置交付不是目标能力已验证。
 
 ### 数据格式要求
 
@@ -509,7 +576,7 @@ Suite 专项离线迁移不会补齐更早的数据类型升级；请先使用�
 
 ## Task 配置与原生存储
 
-Task 预设默认保存于 `meta-data/tasks.json`，选项目录仍为 `meta-data/task-options.toml`；均可通过配置指定其他路径。Task、Bot、Map 作为定义数据允许纳入 Git，页面编辑会修改这些文件；旧数据切换与冲突处理见 [定义布局升级](../README.md#从旧定义布局升级)。
+Task 预设和选项目录的位置见[定义数据与运行数据](#定义数据与运行数据)。旧部署按[定义布局升级](#从旧定义布局升级)切换。
 
 Task 配置分为两组：
 
@@ -519,6 +586,14 @@ Task 配置分为两组：
 初始 Skill 调用是随初始消息提交的动作，不是加载型 Skill；Task 固定 prompt 与本次 input 都属于用户输入，不是系统提示词注入。Task 自身不单独选择加载型 Skill 或系统提示词；加载型资源由所选 Suite 声明提供。
 
 原生会话文件和附属记录由 agent 管理，herdr-bot 不搬动文件或修改 agent 原生配置。发起 Chat 不保证新建原生对话；agent 自身的自动续接设置不属于 herdr-bot 的功能。
+
+### Task 公开创建接口
+
+创建 normal Task 前，用 `GET /api/tasks` 读取已有 `tasks` 与当前 `options`，按本次需求选择合法执行配置。
+
+`POST /api/tasks` 接收 `name`、`chatName`、`agent`、`taskType`、`model`、`thinking`、`skill`、`prompt`、`suite`，可选 `group`；创建普通 Task 时 `taskType` 为 `normal`，无初始 Skill 或 Suite 时对应值为 null。ID 由服务分配，不提交 `id` 或已退役的 `extensions`。字段校验以当前 `backend/src/tasks/mod.rs` 的 `TaskInput` 为准。
+
+创建成功返回保存后的 `tasks/options`，不是单个 Task。核实新增对象的真实 ID，再以 `GET /api/tasks/{URL编码ID}` 从响应 `task` 完整读回；配置由服务持久化，不绕过接口写底层配置文件。此接口只创建定义，不启动 Chat 或执行目标业务。
 
 ### 仅修改 Task.prompt
 
@@ -554,22 +629,15 @@ Task 配置分为两组：
 
 历史记录支持多行纯文本备忘，电脑与手机共享；备忘不会发送给 agent 或修改原生聊天记录。
 
-若页面显示“启动结果未确认”，外部目标仍可能已经启动。先检查页面提供的目标信息，不要把超时当作未执行；服务不会自动清理或重试。
+App 的运行目标关联仅保存在本次 herdr-bot 服务器内存中。发起 Chat（包括 Run／chief 发起）与 Resume 共用启动及身份核验流程；取得可靠原生身份后保留目标关联，不以初始输入提交成功为前提。因此，初始输入失败但 Chat 已进入历史列表时，Resume 可以定位仍然有效的原目标，不重发初始输入。明确确认目标结束后才重新启动；查询失败或目标归属无法核实时不会当作目标不存在。会话登记过期不表示运行目标已结束，服务器重启则不保留这些关联。
 
-## Rust script cross repository acceptance
+若页面显示“启动结果未确认”，外部目标仍可能已经启动。先检查页面提供的目标信息，不要把超时当作未执行；服务不会自动清理或重试。未取得原生身份的启动不保留待确认记录；无来源 Task 等原生默认发现路径也不保证建立 App 身份关联。这些情况下再次手动 Resume 可能另建 Tab／进程加载同一 Chat，并不意味着创建了不同的原生 Chat。此机制不保证发现服务器运行前或外部启动的所有 Chat，也不能仅凭终端存活证明同进程切换原生会话后的当前身份。
 
-从显式参与 herdr-bot worktree 根运行；这是普通实施票的专项，不增加全局最终 gate，不改变全局票序或 first-merge 依赖调度。两仓的完整检查仍分别执行，不能用专项或人工项冲抵失败回归。
+## 动态脚本验收
+
+产品内的 HTTP 和文件回归见[脚本测试指引](agents/testing.md#typescript-空白创建公开-http文件回归)。外部验证项目保留 `accept-rust-script-bots` 入口名；按[隔离与授权规则](agents/testing.md)设置 `$TESTER`、`$BOT`，并从对应产品 worktree 构建页面、`herdr-bot`、`herdr-fixture`、`herdr-paths` 和 `safe_shutdown_shell`，使用独占的绝对 `CARGO_TARGET_DIR`。Toolkit 也须使用本次指定 worktree 的已准备依赖和 OMP dock。
 
 ```powershell
-$TOOLKIT_WT = 'D:/worktrees/toolkit'
-$ISOLATION_JSON = 'D:/acceptance/rust-script-installations.json'
-$NEW_EVIDENCE_DIR = 'D:/acceptance/rust-script-evidence-new'
-$env:CARGO_TARGET_DIR = Join-Path $BOT '.scratch/cargo-target'
-$env:CARGO_BUILD_JOBS = '1'
-Set-Location $BOT
-# 依赖先各自在所属根按 frozen lock 安装；Bun 1.4.4。
-npm --prefix frontend run build
-cargo build --locked --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --bin herdr-paths --example safe_shutdown_shell
 python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-rust-script-bots `
   --toolkit-worktree $TOOLKIT_WT `
   --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
@@ -578,35 +646,13 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-rust-script-bots `
   --isolation-config $ISOLATION_JSON --evidence-dir $NEW_EVIDENCE_DIR
 ```
 
-所有参数为绝对路径；证据目录必须不存在。`ISOLATION_JSON` 必须包含 `externalMode:"controlled-protocol-only"`，以及绝对安装路径 `bun`、`node`、`piCli`、`piNode`、`ompBaselineRecordRoot`、`chrome`。`piCli` 指实际安装 Pi 的 CLI JS，不是自动发现认证的启动器；`piNode` 为满足该安装 engines 的已安装 Node（Windows 已有 Node 22.19.0 可用于规避高版本退出竞态）。`ompBaselineRecordRoot` 只解析既有 baseline 的只读源码锚点，不替换本 worktree 扩展源码。先为本 toolkit worktree 准备其既有精确 OMP dock 安装，不能使用另一 worktree 的遗留产物。配置不含模型密钥，不发现用户认证、不联系正常服务；受控 provider 不是实际模型理解证据。
-
-入口拒绝错误 worktree、原生入口、静态页、缺失或过期产物及 Cargo depfile 来源不匹配；保留源码／锁文件、页面、后端／fixture／安全壳／resolver、安装宿主身份和完整参数。依次执行原 owner 03 的 P15、P23 真实页面专项、10 的 `bun test tests/harness-dock/manager-script-protocol.test.ts`，再执行两宿主生产后端业务组合。每阶段独立记录命令、cwd、stdout、stderr、退出码，不因前一阶段失败略去其余可运行阶段；旧证据不覆盖。在 PowerShell 中设置 `$env:HERDR_BOT_WORKTREE = $BOT` 和 `$env:RUST_SCRIPT_TOOLKIT = $TOOLKIT_WT`，再运行 `python "$TESTER/scripts/accept-rust-script-bots.test.py"`。该自测只验证入口安全，不证明业务。
-
-业务组合保持交付八节点 Map 的节点、依赖和材料规则，只隔离 zone 和外部编写者的 Task 绑定。实际 Rust 创建和保存均由生产 `herdr-bot` 执行；没有运行时业务解释器或独立业务 exe。manager 使用正常 OMP/Pi auto 入口、实际 run／collect／read，外部编写者只提供明确标记的受控 `abc`／`hello`／空串材料；真实 Rust 保存、完整 Bot／目标、revision、baseline／saved／handoff、execution、报告、完成记录和原生读取结果均独立读回。它不证明三编写者真实模型遵从，不能替代其既有原生验收。
-
-部分失败组合先真实保存成功，再用独占文件碰撞阻止 handoff，观察 saved 仍可读、false 报告、write/readBack=succeeded、complete 拒绝。只解除碰撞，实际 manager 原生工具显式 fail 和 confirmed retry；新 execution 仍使用原 baseline，必须 revision-conflict，旧报告、旧 outputs、原保存效果保持。此为 05 通路上的组合演示，不复制 03 或 05 的业务／通用门禁测试。原 owner 03 的 P15 另行直接运行。
-
-每例独占 HOME/APPDATA/XDG、原生目录、定义、Run、文件和数值回环服务，日志持续消费。保留原始错误与 cleanupErrors，先等待原生宿主和后端／fixture 的退出确认再清理；证据副本保留，临时活目录删除。脚本没有关机调用，生产后端不运行关机回归；两仓全局 dock 的 `HERDR_BOT_BINARY` 始终指本次 `safe_shutdown_shell.exe`，`HERDR_BOT_METADATA` 指本次 `meta-data/task-options.toml`。
+路径须为绝对路径，证据目录必须尚不存在。隔离 JSON 指定 `externalMode:"controlled-protocol-only"` 和 `bun`、`node`、`piCli`、`piNode`、`ompBaselineRecordRoot`、`chrome` 的绝对安装位置。`piCli` 是安装版 Pi 的 CLI JS，`piNode` 须满足该安装要求；OMP baseline 仅供只读定位。不要使用用户认证、现有会话或 daemon。外部 runner 的输入参数不证明它已验证当前发布定义；按实际结果检查 TS/Bun 执行、真实 OMP／Pi 管理者工具及实际文件。受控编写者的 `abc`、`hello`、空串只能证明字节原样保存和交接机制，不证明模型理解或指南质量。
 
 ### H1／H2：只由用户确认
 
-自动化全部完成后才能开始最终人工判断；缺少真实宿主／模型授权不妨碍实现、机械验收及证据准备，但 H1/P34、H2/P35 始终保持 unverified。自动化入口返回 0 只表示 automatedPassed，不表示这两项通过。不要把 Rust 确定性检查转成模型重新审核三段文本的任务。
+自动化不代签人工验收。使用明确授权的真实 Herdr、管理者会话和模型、当前生产后端和完整发布图，另备隔离定义、文件根、会话存储和数值回环服务。只授权创建和修改本例的 Bot，不运行目标业务，不使用受控 provider 或 fixture 冒充真宿主。
 
-授权前准备独占真实 Herdr Workspace、manager Task／会话、隔离后端配置、文件根、HOME/APPDATA/XDG 和数字回环 endpoint；用户明确提供真实 Herdr 安装、只读 paths、manager 的模型配置与许可边界。不得沿用自动化的 `herdr-fixture`、controlled provider 或删除过的临时路径；不得自动发现用户凭据／正常 Chat。使用参与 worktree 的生产后端和完整交付定义，按既有配置将所有可写路径放入新根，`static_directory` 指本次静态页，manager-chat 配置只指该 endpoint。保存实际配置／文件和构建哈希；工具预算沿用交付配置，记录观察预算，不延长产品门禁。没有明确授权时，将这些具体缺项写入人工记录，不伪造会话已建立。
+- **H1 正常交接。** 分别派发 `create_blank` 与 `save_bot`，核对派发回执、当前 execution、真实通知、`collect` 和管理者原生读取的 `baseline`／`handoff`、`saved`／`handoff`。通知与读回分别取证，不以 `collect` 冒充收到消息。两脚本均无 Chat 或 Tab；成功报告不自动完成，仍须管理者显式 `complete`。完整读回 Bot、真实 revision、未变目标和完成记录。由用户判断管理者是否准确解释派发、报告和交接。
+- **H2 部分保存与重跑。** 在另一个独占 Run 用本例拥有的 `handoff.json` 碰撞造成保存后的材料失败。核对真实 `canComplete:false`、可读的 `saved`、已变 revision、`write`／`readBack` 成功与 `complete` 拒绝；不得自动失败、重跑、回滚或刷新 baseline。只解除本例碰撞，经管理者显式 `fail` 和用户确认 `retry`。新 execution 使用原 baseline 时须报 `revision-conflict`，即使四段正文相同；旧报告和输出不授予新执行完成资格。确需继续时另取授权建立有效基线，保留原错误、新旧 execution 和原始文件。由用户判断管理者是否正确解释部分效果及重跑边界。
 
-H1 操作顺序：
-
-1. 用户在真实 manager 中授权只在隔离定义创建一个既有 normal Task／Map 的 Bot，不授权执行目标业务；由交付创建 Map 正常发起真实 Run。保留完整 request、目标、manager 身份及真实原生工具入参与结果。
-2. 真实 manager 调用原 `run action=dispatch nodes=["create_blank"]`。观察返回只表示派发，未把脚本成功说成已 complete。保存派发返回、执行在途／结束读回、Herdr Tab 清单；无脚本 Chat／Tab，manager Chat 正常存在。
-3. 观察该 execution 的后端真实报告到达 manager；保留原消息、报告 ID／来源／canComplete／outputs、collect 返回以及原生 read 对命名 baseline／handoff 的读取。缺通知时 collect 读回事实不能冒充已收到通知。
-4. 对当前 true 报告显式 complete；按原流程完成真实三路正文确认和表达优化，最终显式派发 save_bot。对第二能力重复派发返回、报告接收、collect、命名 saved／handoff 读取和显式 complete。以公开完整 Bot／revision／目标和 Run 完成记录交叉核对；不运行创建的目标业务、不新增脚本接收工具。
-5. 用户评价真实 manager 是否准确解释派发、报告、部分限制和交接；保留原生历史、截图、工具结果和用户结论。自动化机械事实不要求模型二次语义验收。
-
-H2 操作顺序：
-
-1. 在另一个独占 Run 重复创建和三路材料准备。用已有 `scriptFileGate` 的真实文件门闩暂停保存前读取；取得当前 save_bot execution ID 后，在 `<run.zone>/.manager-zone/.workflow/<run.id>/<execution.id>/handoff.json` 写入本例拥有的碰撞文件，然后释放门闩。不得损坏用户文件。自动化同名 partial-save-retry 场景提供可重复机制、完整请求和结果对照。
-2. 真实 manager 接收 false 报告，公开完整读回确认 Bot 已保存、revision 已变化、saved output 可消费；材料失败不是未写入，也不能 complete。保存真实工具拒绝，观察没有自动 fail、retry、回滚或刷新 baseline。
-3. 用户只删除本例碰撞文件；真实 manager 显式 `run action=fail nodeId="save_bot" reason=...`，再经用户确认 `run action=retry nodeId="save_bot" confirmed=true reason=...`。保留新旧 execution、报告、outputs、完整 Bot 和 baseline 字节。相同正文不豁免旧 baseline：新执行必须 revision-conflict，旧报告不能完成新执行。
-4. 若要继续真正修复，在用户另行授权的新流程建立新的有效基线，不覆盖原失败证据、不自动推断回滚许可；保留真实修复后的独立执行与报告、显式 complete 结果。用户最终确认真实 manager 对失败及重跑的理解。
-
-人工证据最少包含：实际宿主／模型／构建身份、完整隔离配置与授权边界、原始工具输入／结果和通知、完整公开定义及 revision、真实文件内容／绑定、当前和旧 execution／报告／outputs、完成／拒绝记录、无脚本 Chat／Tab 的实际观察、截图、预算、所属进程退出确认与独立清理错误。不能以受控原生协议或全局回归代签 H1／H2。
+保留实际身份、授权、原生工具结果和通知、公开完整配置与 revision、原始材料字节和真实绑定、当前与旧执行事实、拒绝和完成记录。记录实际观察窗口，区分业务失败与清理错误；缺真实授权或证据保持未验证。

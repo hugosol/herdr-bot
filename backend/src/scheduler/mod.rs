@@ -2,7 +2,7 @@
 pub(crate) mod bots;
 pub(crate) mod maps;
 use bots::{Bot, read_bots};
-use maps::{InputRule, OutputRule, read_map, map_error};
+use maps::{InputRule, OutputRule, read_map};
 use crate::files::{FileAccess, FileStore};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::{Path, PathBuf}};
@@ -36,11 +36,11 @@ pub(crate) fn object_array<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>
 pub(crate) fn optional_object_array<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(deserializer: D) -> Result<Option<Vec<T>>, D::Error> {
     Option::<Vec<JsonObject<T>>>::deserialize(deserializer).map(|values| values.map(|values| values.into_iter().map(|value| value.0).collect()))
 }
-pub(crate) struct DispatchTarget {
-    pub title: String,
-    pub input: String,
-    pub input_rule: Vec<InputRule>,
-    pub output_rule: Vec<OutputRule>,
+pub(crate) struct DispatchTarget<'a> {
+    pub title: &'a str,
+    pub input: &'a str,
+    pub input_rule: &'a [InputRule],
+    pub output_rule: &'a [OutputRule],
     pub auto_approved: bool,
     pub auto_close: bool,
     pub end_node: bool,
@@ -51,15 +51,11 @@ pub(crate) struct DispatchTarget {
     pub script: Option<String>,
 }
 
-pub(crate) async fn dispatch_target(state: &crate::AppState, run: &crate::runs::Run, id: &str, resolved_zone: Option<(String, String)>) -> Result<DispatchTarget, String> {
-    let map = &run.map;
-    let (node, bots) = with_definitions(
-        &[state.map_directory.clone(), state.bot_directory.clone()], "map-read-failed", |access| {
-            let mut definition = read_map(access, &state.map_directory, map)?;
-            let node = definition.nodes.remove(id).ok_or_else(|| map_error("node 不在当前 Map 中"))?.0;
-            Ok((node, read_bots(access, &state.bot_directory)?))
-        },
-    ).map_err(|e| e.message)?;
+pub(crate) async fn dispatch_target<'a>(state: &crate::AppState, run: &crate::runs::Run, map: &'a maps::WorkflowMap, id: &str, resolved_zone: Option<(String, String)>) -> Result<DispatchTarget<'a>, String> {
+    let node = &map.nodes.get(id).ok_or("node 不在本次 Run 的 Map 中")?.0;
+    let bots = with_definitions(&[state.bot_directory.clone()], "bot-read-failed", |access| {
+        read_bots(access, &state.bot_directory)
+    }).map_err(|e| e.message)?;
     let (zone_id, zone) = match resolved_zone {
         Some(zone) => zone,
         None => dispatch_zone(state, run, &node.zone, None).await?,
@@ -75,7 +71,7 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, run: &crate::runs::
         if node.manager_task_id.is_some() || !node.auto_approved || node.auto_close {
             return Err("脚本节点仅允许自动批准、无自动关闭且不指定 manager Task。".into());
         }
-        return Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, auto_approved: node.auto_approved, auto_close: false, end_node: false, zone_id, zone, task: None, map: None, script: Some(script.clone()) });
+        return Ok(DispatchTarget { title: &node.title, input: &node.input, input_rule: &node.input_rule, output_rule: &node.output_rule, auto_approved: node.auto_approved, auto_close: false, end_node: false, zone_id, zone, task: None, map: None, script: Some(script.clone()) });
     }
     let (task_id, required_role) = match (bot.task_id.as_deref(), bot.map_file.as_deref()) {
         (Some(task), None) if node.manager_task_id.is_none() => (task, crate::tasks::TaskType::Normal),
@@ -86,31 +82,52 @@ pub(crate) async fn dispatch_target(state: &crate::AppState, run: &crate::runs::
     if task.task_type != required_role {
         return Err("node 的执行 Task 类型与目标不一致".into());
     }
-    Ok(DispatchTarget { title: node.title, input: node.input, input_rule: node.input_rule, output_rule: node.output_rule, auto_approved: node.auto_approved, auto_close: node.auto_close && !node.end_node, end_node: node.end_node, zone_id, zone, task: Some(task), map: bot.map_file.clone(), script: None })
+    Ok(DispatchTarget { title: &node.title, input: &node.input, input_rule: &node.input_rule, output_rule: &node.output_rule, auto_approved: node.auto_approved, auto_close: node.auto_close && !node.end_node, end_node: node.end_node, zone_id, zone, task: Some(task), map: bot.map_file.clone(), script: None })
 }
 
 async fn dispatch_zone(state: &crate::AppState, run: &crate::runs::Run, declaration: &maps::NodeZone, selected_zone: Option<&str>) -> Result<(String, String), String> {
-    let (zone_id, zone) = match declaration.fixed() {
-        Some(id) => {
-            if selected_zone.is_some() { return Err(format!("固定 zone node {id} 不接受 zone 覆盖")); }
-            let root = run.zone_bindings.get(id).ok_or_else(|| format!("zone {id} 不在本次 Run 启动快照中；请启动新 Run"))?;
-            (id.to_owned(), root.clone())
-        }
-        None => {
-            let id = selected_zone.filter(|id| !id.trim().is_empty()).ok_or("动态 zone node 必须显式选择已登记的 zone ID")?;
-            let zones = state.zones.list().await.map_err(|error| error.message())?;
-            let root = zones.iter().find(|zone| zone.id == id).ok_or_else(|| format!("zone {id} 未登记"))?;
-            (id.to_owned(), root.path.clone())
-        }
-    };
-    if declaration.fixed().is_none() {
-        crate::zones::browse::checked_root(&zone).map_err(|error| error.message())?;
+    if let Some(id) = declaration.fixed() {
+        if selected_zone.is_some() { return Err(format!("固定 zone node {id} 不接受 zone 覆盖")); }
+        let root = run.zone_bindings.get(id).ok_or_else(|| format!("zone {id} 不在本次 Run 启动快照中；请启动新 Run"))?;
+        return Ok((id.to_owned(), root.clone()));
     }
-    Ok((zone_id, zone))
+    if let Some(id) = declaration.input_id() {
+        return Err(format!("必须通过节点输入 {id} 解析 zone，不接受手动覆盖"));
+    }
+    let id = selected_zone.filter(|id| !id.trim().is_empty()).ok_or("动态 zone node 必须显式选择已登记的 zone ID")?;
+    Ok((id.to_owned(), registered_dispatch_root(state, id).await?))
 }
 
-pub(crate) async fn validate_zone_selections(state: &crate::AppState, run: &crate::runs::Run, selected: &[String], overrides: &BTreeMap<String, String>) -> Result<BTreeMap<String, (String, String)>, String> {
-    let map = with_definitions(&[state.map_directory.clone()], "map-read-failed", |access| read_map(access, &state.map_directory, &run.map)).map_err(|error| error.message)?;
+async fn registered_dispatch_root(state: &crate::AppState, id: &str) -> Result<String, String> {
+    let zones = state.zones.list().await.map_err(|error| error.message())?;
+    let zone = zones.into_iter().find(|zone| zone.id == id).ok_or_else(|| format!("zone {id} 未登记"))?;
+    crate::zones::browse::checked_root(&zone.path).map_err(|error| error.message())?;
+    Ok(zone.path)
+}
+
+pub(crate) async fn input_dispatch_zone(state: &crate::AppState, file: &maps::ResolvedFile) -> Result<(String, String), String> {
+    #[derive(Deserialize)]
+    struct ZoneMaterial { zone_id: String }
+
+    let failed = |message| format!("zone 输入 {}：{message}", file.id);
+    let source = std::fs::File::open(&file.path).map_err(|error| failed(error.to_string()))?;
+    let JsonObject(ZoneMaterial { zone_id }) = serde_json::from_reader(std::io::BufReader::new(source))
+        .map_err(|error| failed(format!("必须是含非空字符串 zone_id 的 JSON 对象：{error}")))?;
+    if zone_id.trim().is_empty() {
+        return Err(failed("zone_id 不能为空".into()));
+    }
+    let root = registered_dispatch_root(state, &zone_id).await.map_err(failed)?;
+    Ok((zone_id, root))
+}
+
+pub(crate) async fn validate_zone_selection(state: &crate::AppState, run: &crate::runs::Run, node: &maps::MapNode, selected_zone: Option<&str>) -> Result<Option<(String, String)>, String> {
+    if selected_zone.is_some() || (node.zone.fixed().is_none() && node.zone.input_id().is_none()) {
+        return dispatch_zone(state, run, &node.zone, selected_zone).await.map(Some);
+    }
+    Ok(None)
+}
+
+pub(crate) async fn validate_zone_selections<'a>(state: &crate::AppState, run: &crate::runs::Run, map: &maps::WorkflowMap, selected: &'a [String], overrides: &BTreeMap<String, String>) -> Result<BTreeMap<&'a str, (String, String)>, String> {
     for id in overrides.keys() {
         if !selected.contains(id) || !run.nodes.contains_key(id) || !map.nodes.contains_key(id) {
             return Err(format!("zoneIds 的 node {id} 未选择或不在本次 Run 中"));
@@ -119,9 +136,8 @@ pub(crate) async fn validate_zone_selections(state: &crate::AppState, run: &crat
     let mut resolved = BTreeMap::new();
     for id in selected {
         if let Some(node) = map.nodes.get(id) {
-            if overrides.contains_key(id) || node.0.zone.fixed().is_none() {
-                let zone = dispatch_zone(state, run, &node.0.zone, overrides.get(id).map(String::as_str)).await?;
-                resolved.insert(id.clone(), zone);
+            if let Some(zone) = validate_zone_selection(state, run, &node.0, overrides.get(id).map(String::as_str)).await? {
+                resolved.insert(id.as_str(), zone);
             }
         }
     }
@@ -176,8 +192,9 @@ pub(crate) fn delegation_map_definition(
                 let mut meanings = BTreeMap::new();
                 for (key, field, source) in [
                     ("when", crate::prompts::Field::BotWhen, &bot.when),
-                    ("plan_guide", crate::prompts::Field::BotPlanGuide, &bot.plan_guide),
-                    ("node_guide", crate::prompts::Field::BotNodeGuide, &bot.node_guide),
+                    ("description", crate::prompts::Field::BotDescription, &bot.description),
+                    ("input_rule", crate::prompts::Field::BotInputRule, &bot.input_rule),
+                    ("output_rule", crate::prompts::Field::BotOutputRule, &bot.output_rule),
                 ] {
                     meanings.insert(key, prompts.render(field, source).map_err(|error| edit_error("prompt-dictionary-invalid", error.to_string()))?);
                 }

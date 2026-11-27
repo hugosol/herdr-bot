@@ -7,7 +7,7 @@ import { startServer, type E2EServer } from '../support/support'
 test.use({ launchOptions: process.env.RUST_SCRIPT_CHROME ? { executablePath: process.env.RUST_SCRIPT_CHROME } : {} })
 
 // Approved P23 page partition: delivered page + public complete definitions.
-// Oracle: shipped creator keeps its identity/guides, dedicated saver has three
+// Oracle: shipped creator keeps its identity, dedicated saver has four
 // empty strings; create and revise Maps must reference different save abilities.
 // A page showing a stale Task target or a globally migrated replace-text fails.
 test('P23 migrated creator and dedicated saver match complete public definitions and create/revise references', async ({ page, browser }, info) => {
@@ -20,7 +20,11 @@ test('P23 migrated creator and dedicated saver match complete public definitions
   try {
     for (const key of keys) { process.env[key] = path.join(home, key); fs.mkdirSync(process.env[key]!) }
     server = await startServer({ separateCwd: true, herdr: {} })
-    for (const tree of ['bots', 'workflow-maps', 'scripts']) fs.cpSync(path.join(root, 'meta-data', tree), path.join(server.cwd, 'meta-data', tree), { recursive: true })
+    for (const tree of ['bots', 'scripts']) fs.cpSync(path.join(root, 'meta-data', tree), path.join(server.cwd, 'meta-data', tree), { recursive: true })
+    const mapFiles = ['create-bot-wrapper.json', 'enhance-existing-bot--bc-301b25d9f8d6.json']
+    const mapDir = path.join(server.cwd, 'meta-data', 'workflow-maps')
+    fs.mkdirSync(mapDir, { recursive: true })
+    for (const file of mapFiles) fs.copyFileSync(path.join(root, 'meta-data', 'workflow-maps', file), path.join(mapDir, file))
     const expected: Record<string, unknown> = {}
     for (const [file, id, capability] of [
       ['bot-1793348060748020300-25960-2.json', 'create-blank-bot', 'create-blank-bot.ts'],
@@ -31,7 +35,7 @@ test('P23 migrated creator and dedicated saver match complete public definitions
       expect(shipped.script).toBe(capability)
       expect(shipped.task_id).toBeUndefined()
       expect(shipped.map_file).toBeUndefined()
-      if (id === 'save-created-bot-guides') for (const field of ['when', 'plan_guide', 'node_guide']) expect(shipped[field]).toBe('')
+      if (id === 'save-created-bot-guides') for (const field of ['when', 'description', 'input_rule', 'output_rule']) expect(shipped[field]).toBe('')
       const response = await page.request.post(`${server.baseURL}/api/scheduler/bots/edit`, { data: { id } })
       expect(response.status()).toBe(200)
       const actual = await response.json()
@@ -44,7 +48,7 @@ test('P23 migrated creator and dedicated saver match complete public definitions
       await page.getByRole('button', { name: `${shipped.name} · ${id}`, exact: true }).click()
       const preview = page.getByRole('region', { name: 'Bot 预览', exact: true })
       await expect(preview).toContainText(capability)
-      for (const field of ['when', 'plan_guide', 'node_guide']) {
+      for (const field of ['when', 'description', 'input_rule', 'output_rule']) {
         await preview.getByRole('button', { name: field, exact: true }).click()
         await expect(preview.getByRole('region', { name: field, exact: true })).toHaveText(shipped[field])
       }
@@ -55,13 +59,11 @@ test('P23 migrated creator and dedicated saver match complete public definitions
       expect(JSON.parse(await page.getByLabel('Bot 内容 JSON', { exact: true }).inputValue())).toEqual(editable)
     }
     const maps: Record<string, unknown> = {}
-    for (const file of ['create-bot-wrapper.json', 'enhance-existing-bot--bc-301b25d9f8d6.json']) {
+    for (const file of mapFiles) {
       const response = await page.request.get(`${server.baseURL}/api/scheduler/maps/${file}`)
       expect(response.status()).toBe(200)
       const actual = await response.json()
       const shippedMap = JSON.parse(fs.readFileSync(path.join(root, 'meta-data/workflow-maps', file), 'utf8'))
-      // Public Map serialization omits the optional empty input requirements.
-      if (shippedMap.input_requirements === '') delete shippedMap.input_requirements
       for (const node of Object.values(shippedMap.nodes) as Record<string, unknown>[]) node.end_node ??= false
       expect(actual).toEqual(shippedMap)
       const references = Object.values(actual.nodes).map(node => {

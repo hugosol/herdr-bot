@@ -1,13 +1,6 @@
 # 共享文件 → 双消费者 → 业务汇总的真实验收
 
-黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
-
-```powershell
-$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
-$BOT = 'E:/Developer/myhub/herdr-bot'
-```
-
-验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+按[测试指引](agents/testing.md)设置 `$TESTER`、`$BOT`，并遵守通用隔离和取证规则。
 
 本场景覆盖文件交接协议的 P23/P24：真实 Herdr、Pi 原生 Chat、实际模型和两个参与 worktree。受控 HTTP 回归、已有旧版 A/B→C 示例、准备好的文件或最终 completed 状态都不能替代本场景。角色工具与门禁另见[测试指引](agents/testing.md#文件交接真实角色自动验收)；本入口复用其隔离部署和真实模型传输，不复制旧例中“manager 默认读材料验收”的职责。
 
@@ -28,7 +21,9 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-file-handoff `
 
 `--paths-file` 必须是专用依赖根 TOML，不是用户业务或 agent 全局配置。所需根为 `herdr`、`pi_package`、`pi_agent`（只读加载 `extensions/herdr-agent-state.ts`）和 `workflow_model`（专用 `model.json`）。模型声明、命名凭据环境变量、可选 `--model-config` 以及公开 `completion` 薄传输的完整格式见上述测试指引。使用薄传输时将示例的 `--scenario roles` 改为 `--scenario fan-in`；真实模型自行选择工具，传输不替它决定读取、计算、登记或派发。该方式不宣称原生 OpenAI provider wire 合规，也不将 Pi 的真实模型结果外推为 OMP。
 
-入口自动执行 report 参数/persistence 的 OMP/Pi dock；dock 中的受控 provider/Herdr 只验证该参数契约，不计作本场景真实业务模型证据。独立观察窗口默认 300 秒（`--timeout 1..900`），不重试业务或模型选择；超时、错误选择、缺依赖或清理失败都非零退出，不降级成替身。
+入口自动执行 OMP／Pi 的 report 参数与持久化 dock。受控 dock 不计作真实业务模型证据。独立观察窗口默认 300 秒（`--timeout 1..900`），不重试业务或模型决定；超时、错误选择、缺依赖或清理失败均非零。
+
+验证项目当前的 `fan-in` 驱动仍要求 report 而未纳入 `approve`，原生调用检查也排除了 `approve`。保留上面的复跑命令；在驱动按下列批准判据取证前，不用其结果认证当前完整契约，也不使用直接 HTTP 批准补格。
 
 ## 固定字节和 Map
 
@@ -42,9 +37,10 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-file-handoff `
 两份 Map 均在任一 Run 启动之前保存：
 
 - `source` 无依赖；其命名文件输入 seed 指向验收方固定的外部业务种子。真实 source Chat 用原生 read 读取种子、write 创建此前不存在的业务文件，然后用实际 `report` 登记 `outputs` 数组中 `id=result` 的地址。种子是已记录的验收方业务输入，不是伪造的运行记录或预先准备的最终产物；不依赖宿主 Bash 能否执行 Windows Python。
-- `left`、`right` 都 `blocked_by: [source]`；两者的 `input_rule` 都包含 `{id: shared, type: node, node_id: source, output_id: result}`；各提供方的 `output_rule` 均预先声明 `id=result`。初始化只带原始登记地址，不带正文或答案。left 读取后计算 `subtotal=units*unit_price`；right 独立读取同一文件后计算 `fee=units*fee_per_unit`。分别写独立文件并登记各自的 `outputs` 数组中 `id=result` 的地址。
+- `left`、`right` 都 `blocked_by: [source]`；两者的 `input_rule` 都包含 `{id: shared, type: node, source_node_ref: source, node_output_ref: result}`；各提供方的 `output_rule` 均预先声明 `id=result`。初始化只带原始登记地址，不带正文或答案。left 读取后计算 `subtotal=units*unit_price`；right 独立读取同一文件后计算 `fee=units*fee_per_unit`。分别写独立文件并登记各自的 `outputs` 数组中 `id=result` 的地址。
 - `summary` 依赖 left/right，命名输入分别引用两者当前 execution 的 `result`。真实 summary Chat 必须实际读取两份文件，核对 item，再合并、相加并写最终文件。业务合并和内容检查属于这个明确安排的 node，不是框架动作。
-- manager 只用真实 `run`/`collect` 编排：显式 dispatch source → true report 后 complete source → 显式 dispatch left/right → 两者各自 true 后 complete → 显式 dispatch summary → true 后 complete、finish。manager 不读业务正文做默认验收；验收器只观察，不替 manager 发动作或中途改运行记录。
+- `source`、`left`、`right` 和 `summary` 完成成果后，各自调用实际原生 `approve`，再发送成果 `report`。批准遵守当前 execution 冻结的模式；人工模式用真实原生确认。报告可先用于进度，但 `true` 不代替批准。逐节点留存原生批准回执、公开批准来源、当前 execution 的最新 `true` 报告和约定输出登记。
+- manager 只用真实 `run`／`collect` 编排。显式 dispatch source；批准、最新 `true` 报告和约定交付均成立后显式 complete。再 dispatch left／right、分别 complete；最后 dispatch summary，满足门禁后 complete 并显式 finish。manager 不默认读正文。验收器不代发批准、报告、complete 或 dispatch，也不改运行记录。
 
 ## 目录和隔离
 
@@ -60,7 +56,7 @@ stdout 返回 `passed` 和 `evidence.json` 路径。失败仍保存已获得的�
 
 - **P23**：`runs[].nativeHistories` 的真实 Session、Run、execution 关联；`reads` 中以 toolCall ID 配对的原生 `read` 参数与成功 toolResult；两个消费者必须读取同一源地址，summary 必须读取两份独立结果。`files` 保留全部实际原始字节的 hex 和 SHA-256，逐字节比对固定预期。只有最终文件正确但缺任一实际读取，仍失败。
 - **P24**：`runs[].zones` 和原生会话头的真实 cwd；Run 各自的 `materials` 指引；report HTTP 中原始外部地址、消费者初始化与原生读取地址一致；检查 zone 中没有同名业务产物。两个 Run 的输入与预期不同，避免把旧 Run 的文件冒充本次结果。
-- **职责及可归因性**：保存运行前 Map/hash、所有验收方协调输入、参与源码 revision/status/diff、锁文件与后端哈希、依赖版本、实际模型请求/响应、原生历史、report 登记、manager complete/dispatch/finish 请求与时间顺序、只读运行记录副本。manager 原生轨迹只能含 run/collect；complete 的响应仍显示下游 pending，再有后续显式 dispatch，排除框架暗中派发。
+- **职责及可归因性**：保存运行前 Map/hash、所有验收方协调输入、参与源码 revision/status/diff、锁文件与后端哈希、依赖版本、实际模型请求／响应、原生历史、逐 execution 的 approve 回执与公开批准来源、report 及命名输出登记、manager complete／dispatch／finish 请求和时序、只读运行记录副本。manager 原生轨迹只能含 run/collect；complete 的响应仍显示下游 pending，再有后续显式 dispatch，排除框架暗中派发。
 
 常规检查须分别在两个参与源码根执行并记录命令、退出码和范围：
 

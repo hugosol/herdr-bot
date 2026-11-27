@@ -7,10 +7,10 @@ Issues and specs for this repo live as markdown files in `.scratch/`.
 - One feature per directory: `.scratch/<feature-slug>/`
 - The spec is `.scratch/<feature-slug>/spec.md`
 - **Decision tickets** (planning): `.scratch/<feature-slug>/decision/<NN>-<slug>.md`, numbered from `01`
-  → Produced by `/wayfinder`; see Wayfinding operations below.
+  Created by `/wayfinder`.
 - **Implementation tickets**: `.scratch/<feature-slug>/implementation/<NN>-<slug>.md`, numbered from `01`
-  → Produced by `/to-tickets`. Use Implementation ticket statuses from `triage-labels.md`.
-- Record a `Status:` line near the top of each ticket. Decision tickets use the lifecycle below; only implementation tickets use triage roles from `triage-labels.md`.
+  Created by `/to-tickets`.
+- Record a `Status:` line near the top of each ticket. For decision tickets, see [Wayfinding operations](#wayfinding-operations). For implementation tickets, use [Triage Labels](triage-labels.md).
 - Comments and conversation history append to the bottom of the file under a `## Comments` heading
 
 ## When a skill says "publish to the issue tracker"

@@ -31,6 +31,7 @@ impl LaunchFixture {
         host.set_behavior(behavior);
         let clock = Arc::new(ManualClock::new());
         let mut config = config_with(&host, &storage);
+        config.sessions.history_file = storage.path().join("history.json");
         if app {
             fs::write(host.path().join("chat-app-mode"), "").unwrap();
             config.herdr.backend = herdr_bot::config::HerdrBackend::App;
@@ -189,6 +190,50 @@ async fn initial_retry_in_app_uses_the_same_core_terminal_and_writes_only_once()
     assert!(!wait_until(Duration::from_millis(250), || f.attempts().len() > 6).await);
     assert_eq!(f.external_input(), vec![json!({"terminal":"t1","text":INPUT})]);
     f.assert_one_creation();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn app_resume_locates_confirmed_launch_after_initial_input_rejection() {
+    let mut f = LaunchFixture::start(true, "pi", json!({"block_prompt":true})).await;
+    let cwd = f.report["data"]["cwd"].clone();
+    let native = Path::new(cwd.as_str().unwrap()).join("native.jsonl");
+    fs::write(&native, format!("{}\n", json!({"type":"session","id":SESSION,"cwd":cwd}))).unwrap();
+    f.report["data"]["sessionFile"] = json!(native);
+    f.ready().await;
+
+    // Exhaust the confirmed pre-write refusals without waiting on the wall clock.
+    for attempt in 2..=6 {
+        let waiting = f.stage("retrying").await;
+        assert_eq!(waiting["inputOutcome"], "not-submitted");
+        f.clock.advance(Duration::from_secs(1));
+        assert!(wait_until(Duration::from_secs(5), || f.attempts().len() == attempt).await);
+    }
+    let failed = f.stage("failed").await;
+    assert_eq!(failed["inputOutcome"], "not-submitted");
+    assert!(f.external_input().is_empty());
+
+    // Connect-bot registration supplies history independently of the failed creation.
+    let address = f.server.addr();
+    let registration = post_json_over_tcp(address, "/api/sessions/events", &json!({
+        "sessionId":SESSION,"kind":"register","data":{"cwd":cwd,"agentType":"pi","sessionFile":native}
+    }).to_string()).await;
+    assert_eq!(registration.status, 200, "{}", registration.body);
+    let history = get_over_tcp(address, "/api/sessions/history").await;
+    assert_eq!(history.status, 200, "{}", history.body);
+    let history: Value = serde_json::from_str(&history.body).unwrap();
+    assert_eq!(history["sessions"][0]["sessionId"], SESSION);
+
+    let request = json!({"sessionId":SESSION}).to_string();
+    let response = tokio::time::timeout(
+        Duration::from_secs(8),
+        post_json_over_tcp(address, "/api/chats/resume", &request),
+    ).await.expect("Resume should locate the live target without starting another agent");
+    assert_eq!(response.status, 200, "{}", response.body);
+    let resumed: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(resumed["outcome"], "located", "{resumed}");
+    assert_eq!(resumed["target"], json!({"workspaceId":"space-default","tabId":"tab-1","paneId":"pane-1"}));
+    f.assert_one_creation();
+    assert_eq!(f.attempts().len(), 6, "Resume must not replay the initial input");
 }
 
 #[tokio::test(flavor = "multi_thread")]

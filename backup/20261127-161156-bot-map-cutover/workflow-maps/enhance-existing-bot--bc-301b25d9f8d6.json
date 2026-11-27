@@ -1,0 +1,236 @@
+{
+  "title": "独立修订既有 Bot 四字段摘要",
+  "description": "核实既有 Task 型或 Map 型 Bot 与真实目标，生成共同基线；四路独立修订、整理并确认，再汇合一次合法保存且完整读回。不先修改 Task.prompt、不新建或修改执行目标，不新增表达优化阶段。业务确认、保存授权和报告发送确认独立。配置交付不证明业务能力已验证。",
+  "map_input_rule": {
+    "description": "",
+    "files": [
+      {
+        "id": "request",
+        "description": "四字段摘要修订委托：包含目标 Bot ID、修订需求及需保留的业务约束。",
+        "required": true
+      },
+      {
+        "id": "materials",
+        "description": "参考材料：注明用途。",
+        "required": false
+      }
+    ]
+  },
+  "nodes": {
+    "w1": {
+      "title": "W1 核实既有 Bot 与目标并交付共同基线",
+      "bot_id": "prepare-bot-revision",
+      "input": "按 request 核实既有 Bot、目标及修订范围，交付 baseline 与 handoff 文件，供各编写者及保存者共同核实。",
+      "input_rule": [
+        {
+          "id": "request",
+          "type": "run",
+          "input_id": "request"
+        },
+        {
+          "id": "materials",
+          "type": "run",
+          "input_id": "materials"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "baseline"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "blocked_by": [],
+      "auto_approved": true,
+      "auto_close": false,
+      "zone": "hugosol/herdr-bot"
+    },
+    "w2": {
+      "title": "独立修订并确认 Bot.when",
+      "bot_id": "write-bot-when",
+      "input": "依据 baseline 中的既有 when、修订需求和授权范围修订本字段。本次采用同一 Chat 内整理表达并确认全文的修订方式，交付 text 与 handoff 文件，供最终保存者使用。",
+      "input_rule": [
+        {
+          "id": "baseline",
+          "type": "node",
+          "node_id": "w1",
+          "output_id": "baseline"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "text"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "blocked_by": [
+        "w1"
+      ],
+      "auto_approved": false,
+      "auto_close": false,
+      "zone": "hugosol/herdr-bot"
+    },
+    "w3": {
+      "title": "独立修订并确认 Bot.description",
+      "bot_id": "write-bot-plan-guide",
+      "input": "依据 baseline 中的既有 description、修订需求和授权范围修订本字段。本次采用同一 Chat 内整理表达并确认全文的修订方式，交付 text 与 handoff 文件，供最终保存者使用。",
+      "input_rule": [
+        {
+          "id": "baseline",
+          "type": "node",
+          "node_id": "w1",
+          "output_id": "baseline"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "text"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "blocked_by": [
+        "w1"
+      ],
+      "auto_approved": false,
+      "auto_close": false,
+      "zone": "hugosol/herdr-bot"
+    },
+    "w4": {
+      "title": "独立修订并确认 Bot.input_rule",
+      "bot_id": "write-bot-node-guide",
+      "input": "依据 baseline 中的既有 input_rule、修订需求和授权范围修订本字段。本次采用同一 Chat 内整理表达并确认全文的修订方式，交付 text 与 handoff 文件，供最终保存者使用。",
+      "input_rule": [
+        {
+          "id": "baseline",
+          "type": "node",
+          "node_id": "w1",
+          "output_id": "baseline"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "text"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "blocked_by": [
+        "w1"
+      ],
+      "auto_approved": false,
+      "auto_close": false,
+      "zone": "hugosol/herdr-bot"
+    },
+    "w5": {
+      "title": "W5 汇合四份定稿并一次保存完整读回",
+      "bot_id": "replace-text",
+      "input": "本次替换目标为 baseline 标识的既有 Bot，仅替换 when、description、input_rule、output_rule 四字段。配置服务：${herdr-bot-api-url}；接口与保存约束见 ${herdr-bot-path}/docs/scheduler.md。\n来源对应关系：when_text → when，description_text → description，input_rule_text → input_rule，output_rule_text → output_rule；各同名前缀的 handoff 提供所属定稿的批准依据和语义限制，baseline 提供共同配置基线及本次保存授权范围。\n本次按 ${herdr-bot-path}/docs/business-materials.md 的“一次合法保存与失败核实”和“文件与独立 Chat”完成整批替换与材料交付。交付 saved 与 handoff 文件，供调用方核验保存结果。",
+      "input_rule": [
+        {
+          "id": "baseline",
+          "type": "node",
+          "node_id": "w1",
+          "output_id": "baseline"
+        },
+        {
+          "id": "when_text",
+          "type": "node",
+          "node_id": "w2",
+          "output_id": "text"
+        },
+        {
+          "id": "when_handoff",
+          "type": "node",
+          "node_id": "w2",
+          "output_id": "handoff"
+        },
+        {
+          "id": "description_text",
+          "type": "node",
+          "node_id": "w3",
+          "output_id": "text"
+        },
+        {
+          "id": "description_handoff",
+          "type": "node",
+          "node_id": "w3",
+          "output_id": "handoff"
+        },
+        {
+          "id": "input_rule_text",
+          "type": "node",
+          "node_id": "w4",
+          "output_id": "text"
+        },
+        {
+          "id": "input_rule_handoff",
+          "type": "node",
+          "node_id": "w4",
+          "output_id": "handoff"
+        },
+        {
+          "id": "output_rule_text",
+          "type": "node",
+          "node_id": "w6",
+          "output_id": "text"
+        },
+        {
+          "id": "output_rule_handoff",
+          "type": "node",
+          "node_id": "w6",
+          "output_id": "handoff"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "saved"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "blocked_by": [
+        "w2",
+        "w3",
+        "w4",
+        "w6"
+      ],
+      "auto_approved": true,
+      "auto_close": false,
+      "zone": "hugosol/herdr-bot"
+    },
+    "w6": {
+      "title": "独立修订并确认 Bot.output_rule",
+      "bot_id": "write-bot-output-rule",
+      "input": "依据 baseline 中的既有 output_rule、修订需求和授权范围修订本字段。本次采用同一 Chat 内整理表达并确认全文的修订方式，交付 text 与 handoff 文件，供最终保存者使用。",
+      "input_rule": [
+        {
+          "id": "baseline",
+          "type": "node",
+          "node_id": "w1",
+          "output_id": "baseline"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "text"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "blocked_by": [
+        "w1"
+      ],
+      "auto_approved": false,
+      "auto_close": false,
+      "zone": "hugosol/herdr-bot"
+    }
+  }
+}

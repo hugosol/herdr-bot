@@ -196,18 +196,23 @@ test('P2 P3 P4 repeated legal launches reuse chief-bot and other browsers open t
       await page.getByRole('button', { name: 'chief bot', exact: true }).click()
       const dialog = page.getByTestId('chat-creation-dialog')
       await expect(dialog.getByTestId('chat-name-preview')).toHaveText('chat with chief bot')
-      // Default chief has no fixed prompt or Skill. Opening its Chat must
-      // leave the ready agent waiting, not submit an empty or invented turn.
+      // The preset has no fixed prompt or Skill. Blank input still submits
+      // the approved chief role once, without inventing a user instruction.
       await expect(dialog.getByTestId('chat-input')).toHaveValue('')
       const accepted = page.waitForResponse(response => response.url().endsWith('/api/chats') && response.request().method() === 'POST')
       await dialog.getByTestId('chat-create-submit').click()
       const response = await accepted
       expect(response.status()).toBe(202)
       expect(response.request().postDataJSON()).toMatchObject({ taskId: 'chief-bot', zone: 'default/bot-playground', expectedName: 'chat with chief bot' })
-      await expect(dialog.getByTestId('chat-create-success')).toHaveText('创建成功，等待用户输入')
+      await expect(dialog.getByTestId('chat-create-success')).toHaveText('创建成功，初始指示已提交')
       const started = await (await fetch(`${server!.baseURL}/api/chats/${(await response.json()).id}`)).json()
-      expect(started).toMatchObject({ stage: 'succeeded', inputSubmitted: false })
-      expect(server!.herdrCalls().filter(call => call.kind === 'agent_prompt')).toEqual([])
+      expect(started).toMatchObject({ stage: 'succeeded', inputSubmitted: true })
+      const prompts = server!.herdrCalls().filter(call => call.kind === 'agent_prompt')
+      expect(prompts).toHaveLength(number)
+      const role = prompts.at(-1)?.text
+      expect(role).toEqual(expect.stringContaining('Bot 能力摘要'))
+      expect(role).toEqual(expect.stringContaining('委派'))
+      expect(role).not.toContain('/skill:')
       expect(server!.herdrTabs().at(-1)).toMatchObject({ label: 'chat with chief bot', cwd })
       await dialog.getByTestId('chat-create-close').click()
       await post('/api/sessions/events', { sessionId, kind: 'register', data: { cwd, agentType: 'omp', sessionName: 'chat with chief bot', sessionFile: native } })

@@ -10,5 +10,5 @@
 - `.bat` 必须为纯 ASCII，PowerShell 脚本为 UTF-8 with BOM，均使用 CRLF。Windows cmd／PowerShell 5.1 的默认代码页可能将其他编码误解析为命令。
 - 夹具只能依赖自身目录与系统工具，不得调用或修改用户的实际启动／停止脚本。
 
-执行行为由 `backend/tests/fixture_behavior.rs`、`execution_result.rs` 等集成测试覆盖；
+集成测试见 [fixture_behavior](../backend/tests/infrastructure/fixture_behavior.rs) 与 [execution_result](../backend/tests/server/execution_result.rs)。
 夹具实现与记录字段以 `operations/`、`lib/` 为准，不在文档中复制一套规格。

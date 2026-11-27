@@ -1,0 +1,82 @@
+{
+  "title": "创建task-script type",
+  "group": "meta-map",
+  "description": "通过对话创建、按当次授权验证并正式保存 TypeScript 脚本，再复用创建bot-V2，为该脚本新建四字段摘要完整的 Bot。交付正式脚本、最终 Bot 配置与交接说明；脚本阶段的实际验证与 Bot 阶段的配置交付分别说明，不将配置保存视为业务验证。",
+  "map_input_rule": {
+    "description": "通过本次要求说明待创建脚本的业务目标、输入输出、结果状态、失败处理、验收、非目标、约束、资源与权限，以及 Script＋Bot 创建委托。这是未来业务需求，不是创建本 Map 的规划需求。实现与验证方式按当次用户指令确定，不限静态检查；具体写入、运行副作用、安装、凭据写入和权限变化分别取得授权。说明已有确认及范围、可选材料用途与读取授权、材料新建授权和正式交付位置、命名、格式及要求；不要求预制 request。未知脚本与四字段摘要正文、身份绑定和保存范围在对应阶段确认，不提前批准。W2 只创建获准新 Bot 和材料，保持脚本不变且不运行目标；必要业务决定或授权由用户补齐。",
+    "files": [
+      {
+        "id": "materials",
+        "required": false,
+        "description": "可选需求、规范、输入输出样例或其他原始参考；说明内容、格式、用途与读取授权。供脚本创建及创建bot-V2 使用；缺席合法，已提供须可读。"
+      }
+    ]
+  },
+  "nodes": {
+    "create_bot_v2": {
+      "title": "调用创建bot-V2绑定脚本",
+      "bot_id": "bot-map-create-bot-v2",
+      "manager_task_id": "task-18e2c2827c484128-0",
+      "input": "## 本次委托\n按 request 为刚创建的真实 TypeScript Script 新建绑定它的完整 Bot。request 是唯一创建委托；materials 是可选原始参考，沿用 request 记录的用途与读取授权。\n\n## 本次范围与权限\n沿用有效确认，需求对齐只处理缺项、冲突与新增取舍，不重做完整访谈。在创建bot-V2 既有阶段完成四字段摘要与 Bot 创建，不增加优化或材料转换节点。\n\n仅创建获准的新 Bot 和交接材料；Script 全目标及既有配置保持不变，不创建 Task 或优化 Task.prompt。完整候选、身份绑定、共享影响及保存授权在对应阶段确认，初始委托不提前批准未知正文。派发内部节点前，核实 request 已明确本次范围、权限、非目标和正式交付要求；缺项由用户补齐。需求对齐阶段将这些约束保留到 bot_requirements，必要参考原文纳入 target_materials，供设计创建者直接消费。\n\n本阶段不修改或运行脚本，不启动生成能力、补建能力、安装、写凭据、扩权、停服、关机或删除资源；Task、Map、Skill、共享文档和运行记录保持不变。脚本能力不符时报告差异并交用户决定，不自行修补。\n\n## 最终交付与验收\n生成或验收成果时，读取 ${herdr-bot-path}/docs/contracts/create-bot-v2-materials.md「通用格式与目标定位」「saved 与 handoff」，按 V2 协议交付独立 saved、handoff JSON。沿用 request 中的材料写入授权、正式位置、命名、格式及额外验收要求；Script 全目标不变，task_prompt_changed=false，不引入虚构 Task 配置。\n\n最终对象以本阶段 saved 为准，脚本创建阶段 handoff 仅作阶段证据。验收全部获准创建已合法保存、完整读回，非目标保持且材料符合契约，无未处理冲突或部分失败；失败或效果不明时按子图固定职责核实现场，保留原错误与实际效果，不自动重试、回滚、删除或重复创建。\n\n父子交接遵循运行说明「子流程交付与父层验收」，内部 finish 后将最终 saved／handoff 作为父执行同名输出，由父管理者独立验收。注明“文本／定义优化完成，行为未验证”，仅指本阶段未运行目标，与脚本创建阶段实际取得的验证证据分别说明。",
+      "input_rule": [
+        {
+          "type": "node",
+          "id": "request",
+          "node_id": "create_script",
+          "output_id": "request"
+        },
+        {
+          "type": "run",
+          "id": "materials",
+          "input_id": "materials"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "saved"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "auto_approved": true,
+      "auto_close": true,
+      "end_node": false,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "create_script"
+      ]
+    },
+    "create_script": {
+      "title": "对话创建脚本并准备 V2 委托",
+      "bot_id": "create-typescript-script",
+      "input": "## 本次目标\n依据本次业务 userInput，通过对话创建并正式保存可供 herdr-bot 使用的 TypeScript 脚本。materials 为可选原始参考，按已说明的用途与读取授权使用。澄清、方案确认、实现、按当次授权验证及安全保存读回由 Task 固定职责承担；实现与验证不限于静态检查。本 Map 的规划确认不授予未来脚本写入、验证运行、外部效果、安装、凭据或权限变化的授权。\n\n## 下游委托 request\n生成前读取 material_contract「通用格式与目标定位」「request 与 materials」，按 V2 协议交付独立 UTF-8 JSON。target 指向本次正式保存的真实 Script，使用合法相对 script 路径；authorization.optimize_task_prompt=false。\n\nrequest 自包含下游 Bot 创建所需的需求、输入输出、约束、非目标、资源与依赖限制、参考材料的内容／格式／用途及读取授权、已有确认、真实委托授权和正式交付要求。明确下游仅新建绑定该脚本的完整 Bot，保持脚本不变且不运行，不创建 Task 或优化 Task.prompt；能力差异交用户决定。授权及确认只记录真实事实，完整四字段摘要、身份绑定及保存范围留在对应阶段确认，不提前批准未知正文。下游不接收本阶段 handoff，必要委托不得只留在 handoff、聊天或未声明材料中。\n\n## 阶段交付\n- 正式 .ts：保存于执行时核实的服务 scripts 根内，交付真实绝对位置及合法相对绑定路径；交接材料不能替代正式脚本。\n- handoff：独立 UTF-8 Markdown，供父层验收。记录脚本身份与位置、需求、确认和权限、输入输出、必要依赖及资源、实际验收结果、未验证项、后续 Bot 委托及正式交付要求。\n- request：上述自包含 V2 委托，供创建bot-V2 消费。\n\n材料按本次授权安全保存，保留用户指定的正式位置、格式与命名。完成条件：正式脚本和两份材料均完整读回一致，约定验收通过，脚本身份与 request 一致。未来四字段摘要全文批准不作为本阶段门槛；未满足时按固定职责报告阻塞或部分效果。",
+      "input_rule": [
+        {
+          "type": "run",
+          "id": "materials",
+          "input_id": "materials"
+        },
+        {
+          "type": "file",
+          "id": "material_contract",
+          "path": "docs/contracts/create-bot-v2-materials.md",
+          "zone_id": "hugosol/herdr-bot"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "handoff"
+        },
+        {
+          "id": "request"
+        }
+      ],
+      "auto_approved": false,
+      "auto_close": true,
+      "end_node": false,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": []
+    }
+  }
+}

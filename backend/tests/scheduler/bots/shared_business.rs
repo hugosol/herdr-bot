@@ -25,7 +25,7 @@ async fn shared_business_batch_save_preserves_target_and_rejects_stale_baseline(
     let map_before = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json").await;
     assert_eq!(map_before.status, 200, "{}", map_before.body);
     for (id, binding) in [("shared-task", json!({"task_id":task_id})), ("shared-map", json!({"map_file":"work.json"}))] {
-        let mut blank = json!({"name":"Unchanged business identity","when":"","plan_guide":"","node_guide":""});
+        let mut blank = json!({"name":"Unchanged business identity","when":"","description":"","input_rule":"","output_rule":""});
         blank.as_object_mut().unwrap().extend(binding.as_object().unwrap().clone());
         let created = save_bot(&s, id, &blank, &Value::Null).await;
         assert_eq!(created.status, 200, "{}", created.body);
@@ -34,8 +34,9 @@ async fn shared_business_batch_save_preserves_target_and_rejects_stale_baseline(
         assert!(baseline["revision"]["original"].is_string());
         let mut candidate = blank.clone();
         candidate["when"] = json!("查找发票差异时使用。");
-        candidate["plan_guide"] = json!("先取得已授权的发票清单，再安排差异核对。\n只交付差异报告。");
-        candidate["node_guide"] = json!("提供本次清单、核对范围及报告保存授权。");
+        candidate["description"] = json!("核对发票差异，不修改原始凭据。");
+        candidate["input_rule"] = json!("已授权的发票清单与核对范围。");
+        candidate["output_rule"] = json!("差异报告和未确认事项。");
         let saved = save_bot(&s, id, &candidate, &baseline["revision"]).await;
         assert_eq!(saved.status, 200, "{}", saved.body);
         let final_state = edit_bot(&s, id).await;
@@ -95,7 +96,7 @@ async fn shared_business_direct_materials_survive_save_preflight_and_dispatch() 
     for (id, name) in [("baseline", "baseline.md"), ("text", "text.txt"), ("handoff", "handoff.md")] {
         assert!(prompt.contains(&format!("{id}: {}", zone.join(name).display())), "{prompt}");
     }
-    for excluded in ["BASELINE-PRIVATE-573", "TEXT-PRIVATE-914", "CONFIRMATION-PRIVATE-628", "BOT-WHEN-SECRET", "BOT-PLAN-SECRET", "BOT-NODE-SECRET"] {
+    for excluded in ["BASELINE-PRIVATE-573", "TEXT-PRIVATE-914", "CONFIRMATION-PRIVATE-628", "BOT-WHEN-SECRET", "BOT-PLAN-SECRET", "BOT-NODE-SECRET", "BOT-OUTPUT-SECRET"] {
         assert!(!prompt.contains(excluded), "body/guide was injected: {excluded}");
     }
     fs::write(zone.join("text.txt"), "Changed in place; bound address is not a snapshot").unwrap();

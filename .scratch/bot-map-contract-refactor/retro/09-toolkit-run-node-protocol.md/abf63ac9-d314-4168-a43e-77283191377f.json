@@ -1,0 +1,66 @@
+{
+  "feature": "bot-map-contract-refactor",
+  "ticket": "09-toolkit-run-node-protocol.md",
+  "run_id": "abf63ac9-d314-4168-a43e-77283191377f",
+  "parent_session_id": "01a219c2-b655-73fe-b79a-9d1f4fbbf05e",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e.jsonl",
+  "workspace": "E:/Developer/myhub/herdr-bot",
+  "tool_call_id": "cec8f933-0d72-491b-802c-150e35b907c1",
+  "started_at": "2026-11-27T05:25:44.507Z",
+  "tdd_status": "completed",
+  "retro_status": "completed",
+  "tdd_finished_at": "2026-11-27T05:40:07.937Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "09-toolkit-run-node-protocolmd-cec8f933-0d72-491",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\implementation\\09-toolkit-run-node-protocol.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"toolkit\",\n    \"branch\": \"hyper/bot-map-contract-refactor/09-toolkit-run-node-protocol-442aef-5cc6b68a2d7e\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-iVJKr1\"\n  }\n]\n协调仓集成分支：feature/bot-map-contract-refactor\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\implementation\\09-toolkit-run-node-protocol.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"toolkit\",\n    \"branch\": \"hyper/bot-map-contract-refactor/09-toolkit-run-node-protocol-442aef-5cc6b68a2d7e\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-iVJKr1\"\n  }\n]\n协调仓集成分支：feature/bot-map-contract-refactor\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement toolkit run node protocol ticket",
+    "lastIntent": "Providing isolated overlay commit input",
+    "exitCode": 0,
+    "output": "票据 09 已提交：`3034210d4b97c8f2912a9ebd963676341f89c29b`。未合入集成分支。\n\n- OMP/Pi 的 `run` 支持通过 `finish.map_output.files` 一次提交公开成果；`prepare_inputs.fileInputs` 仍整批替换，公开读回保留 `mapInput` 和 `mapOutput`。\n- 节点工具区分普通 Task 文件登记、子 Map 公开成果交接和无文件中途报告。批准、报告保存、通知、`complete` 与 `finish` 保持独立；后端拒绝原样保留。\n- 根与子管理者共享工具指引，子管理者另有父节点交接职责。管理者复用票 10 所负责的 chief 报告指引来源，未复制正文。使用及运维文档已同步。\n\n**验证通过：** `bun run typecheck`、`bun run check:integrations`；workflow-chat **71** 项、OMP/Pi 受控 dock **22** 项、同一基线构建的安全壳 dock **8** 项。日志和构建哈希保存在 `C:/Users/hugos/AppData/Local/Temp/tmp.didytDaySj/.scratch/bot-map-contract-refactor/evidence/ticket-09`。\n\n新协议的跨仓验收（包括结束节点实际装配）仍归票 11；真实安装验收仍归票 12/13。以上结果不替代这些验收。",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 863293,
+    "tokens": 274032,
+    "requests": 45,
+    "contextTokens": 234310,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.2-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.2-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.2-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 243695,
+      "output": 30337,
+      "cacheRead": 6917888,
+      "cacheWrite": 0,
+      "totalTokens": 7191920,
+      "reasoningTokens": 6588,
+      "cost": {
+        "input": 0.48739000000000005,
+        "output": 0.3033699999999999,
+        "cacheRead": 0.6917888000000001,
+        "cacheWrite": 0,
+        "total": 1.4825488
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e\\09-toolkit-run-node-protocolmd-cec8f933-0d72-491.md",
+    "outputMeta": {
+      "lineCount": 9,
+      "charCount": 656
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "09-toolkit-run-node-protocolmd-cec8f933-0d72-491",
+  "session_id": "01a21b77-79e4-7255-8e54-2c763c1dc87d",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e\\09-toolkit-run-node-protocolmd-cec8f933-0d72-491.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-iVJKr1",
+  "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\retro\\09-toolkit-run-node-protocol.md\\abf63ac9-d314-4168-a43e-77283191377f.md",
+  "retro_finished_at": "2026-11-27T05:40:40.859Z"
+}

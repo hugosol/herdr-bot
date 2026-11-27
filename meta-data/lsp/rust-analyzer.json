@@ -1,0 +1,10 @@
+{
+  "name": "rust-analyzer",
+  "description": "提供 Rust 语言服务。",
+  "config": {
+    "args": [],
+    "command": "rust-analyzer",
+    "fileTypes": [".rs"],
+    "rootMarkers": ["Cargo.toml", "rust-analyzer.toml"]
+  }
+}
