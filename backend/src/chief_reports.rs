@@ -1,9 +1,10 @@
 //! Immutable chief reports. Delegation provenance grants sender eligibility;
 //! current chief authority chooses the recipient, independently of the report.
 use crate::{AppState, files::FileStore, report_delivery::{Notification, NotificationTarget, SavedReport, SubmitError, save_and_notify}};
+use crate::scheduler::{maps::{OutputRule, ResolvedFile}, object_array};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{io, net::IpAddr, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
+use std::{collections::BTreeSet, io, net::IpAddr, path::{Path, PathBuf}, time::{SystemTime, UNIX_EPOCH}};
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -14,6 +15,8 @@ struct Content {
     summary: String,
     deliverables: Vec<String>,
     pending_decisions: Vec<String>,
+    #[serde(default, deserialize_with = "object_array")]
+    outputs: Vec<ResolvedFile>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -88,7 +91,69 @@ impl Reports {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Submission { session_id: String, body: Content }
 
-pub(crate) async fn submit(state: AppState, input: Submission) -> Result<serde_json::Value, Error> {
+fn check_output_file(file: &ResolvedFile) -> Result<(), Error> {
+    if file.path.contains('\0') || !Path::new(&file.path).is_absolute() {
+        return Err(Error::Invalid("invalid-output-path", format!("输出 {} 必须使用本机绝对文件地址。", file.id)));
+    }
+    crate::runs::preflight::check_input_file(&file.path)
+        .map_err(|error| Error::Invalid("output-unreadable", format!("输出 {}：{error}", file.id)))
+}
+
+fn check_task_outputs(rules: &[OutputRule], body: &Content) -> Result<(), Error> {
+    let mut ids = BTreeSet::new();
+    for file in &body.outputs {
+        if file.id.trim().is_empty() || !ids.insert(file.id.as_str()) {
+            return Err(Error::Invalid("invalid-output-id", "输出 ID 必须非空且不得重复。".into()));
+        }
+        if !rules.iter().any(|rule| rule.id == file.id) {
+            return Err(Error::Invalid("undeclared-output", format!("本次委派未要求文件输出 {}。", file.id)));
+        }
+        check_output_file(file)?;
+    }
+    if matches!(body.result, Outcome::Success) {
+        if let Some(missing) = rules.iter().find(|rule| !ids.contains(rule.id.as_str())) {
+            return Err(Error::Invalid("output-missing", format!("缺少本次委派要求的文件输出 {}。", missing.id)));
+        }
+    }
+    Ok(())
+}
+
+async fn map_outputs(
+    state: &AppState,
+    run_id: &str,
+    rules: &[OutputRule],
+    input: &Submission,
+) -> Result<Vec<ResolvedFile>, Error> {
+    if !input.body.outputs.is_empty() {
+        return Err(Error::Invalid("map-output-override", "Map 文件成果由已结束 Run 的 mapOutput 提供，不接受报告填入地址。".into()));
+    }
+    // Reporting a failure, or a success without a file handoff, does not end
+    // the Run or require it to be ended.
+    if rules.is_empty() || !matches!(input.body.result, Outcome::Success) {
+        return Ok(Vec::new());
+    }
+    crate::runs::validate_id(run_id).map_err(|_| Error::Internal("map-run-association-invalid", "委派记录中的 Run ID 无效。".into()))?;
+    let run = state.runs.read(state, run_id).await
+        .map_err(|message| Error::Internal("map-run-read-failed", message))?;
+    if run.parent.is_some() || !run.manager.as_ref().is_some_and(|manager| manager.session_id == input.session_id) {
+        return Err(Error::Internal("map-run-association-invalid", "委派记录与 Run 的真实管理者关联不一致。".into()));
+    }
+    if run.status != "completed" || run.finished.is_none() {
+        return Err(Error::Invalid("map-run-not-finished", "交付公开文件成果前须显式 finish 本次 Map Run。".into()));
+    }
+    let mut files = run.map_output.files;
+    let mut outputs = Vec::with_capacity(rules.len());
+    for rule in rules {
+        let index = files.iter().position(|file| file.id == rule.id)
+            .ok_or_else(|| Error::Invalid("output-missing", format!("Run 未保存本次委派所需的公开文件输出 {}。", rule.id)))?;
+        let file = files.swap_remove(index);
+        check_output_file(&file)?;
+        outputs.push(file);
+    }
+    Ok(outputs)
+}
+
+pub(crate) async fn submit(state: AppState, mut input: Submission) -> Result<serde_json::Value, Error> {
     if [&input.body.background, &input.body.execution, &input.body.summary].iter().any(|text| text.trim().is_empty()) {
         return Err(Error::Invalid( "invalid-report", "报告必须保留需求背景、执行对象及结果说明。".into()));
     }
@@ -97,6 +162,11 @@ pub(crate) async fn submit(state: AppState, input: Submission) -> Result<serde_j
         Ok(None) => return Err(Error::Forbidden( "chief-report-unassociated", "只有 chief 实际委派的独立 Chat 或直接 Map manager 可以提交 chief 报告。".into())),
         Err(error) => return Err(Error::Storage(error)),
     };
+    if let Some(run_id) = &delegation.run_id {
+        input.body.outputs = map_outputs(&state, run_id, delegation.output_rule(), &input).await?;
+    } else {
+        check_task_outputs(delegation.output_rule(), &input.body)?;
+    }
     let submitted = save_and_notify(state.herdr.clone(), async move {
         let report = Report {
             id: crate::chats::new_creation_id(),
@@ -210,7 +280,7 @@ pub(crate) async fn view(state: AppState, id: String, input: Action) -> Result<s
     let report = match find(&state, &id) { Ok(report) => report, Err(error) => return Err(error) };
     match state.chief.authorize(&input.session_id, |_| state.chief_reports.receipt(&id).map_err(crate::chief::Error::from)) {
         Ok(receipt) => Ok(json!({"report":report,"received":receipt.is_some(),"receipt":receipt,"process":false,
-            "guidance":"这是用户明确请求查看的原报告，不是自动补投或再次接收授权；接收记录不代表已呈现、已读或验收。"})),
+            "guidance":"这是用户明确请求查看的原报告，不是自动补投或再次接收授权；接收记录不代表已呈现、已读或验收。需理解文件成果时，按 outputs 中的实际地址读取文件，不根据 ID 猜测内容。"})),
         Err(error) => Err(Error::Chief(error)),
     }
 }

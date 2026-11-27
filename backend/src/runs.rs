@@ -401,7 +401,7 @@ impl Runs {
         }
     }
 
-    async fn read(&self, state: &AppState, id: &str) -> Result<Run, String> {
+    pub(crate) async fn read(&self, state: &AppState, id: &str) -> Result<Run, String> {
         let run: Run = self.read_record(state, id).await?;
         if run.id != id {
             return Err(format!("Run {id} 保存身份不一致：{}。", run.id));

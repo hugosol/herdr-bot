@@ -232,6 +232,10 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-paired-chief-run `
 
 先构建本 worktree 的页面，用独占绝对 `CARGO_TARGET_DIR` 运行 `cargo test --manifest-path backend/Cargo.toml --test chief_delegation -- --nocapture`。公开 chief／Chat／历史／报告 HTTP 配合独占 TUI、App/core 记录确认委派授权、发起目标和外部输入；业务输入门闩期间读回已有原生身份的历史与委派关联。更换当前 chief 后保留原 Tab，从真实通知目标及报告读回确认路由。记录型宿主拒绝通知时，保留原报告，并在至少 46 秒窗口核对没有额外输入、重投或复发派；这不代表真实安装宿主业务链路已验收。
 
+结构化交付定向入口为 `cargo test --manifest-path backend/Cargo.toml --test chief_delegation --test chief_authority -- --nocapture`。其中 `task_bot_launches_independent_chat_with_previewed_input_and_durable_sender_identity`、`reports::task_reports_validate_declared_files_separately_from_prose` 和 `map::map_reports_only_the_requested_finished_run_outputs` 核对预览、变化拒绝、实际提交、独立文件字节、报告 journal 与重启后的公开读回；取消时不提交启动，原生确认由跨仓／原生专项另验。`receipts::manual_resend_keeps_original_report_and_stops_notifying_after_receipt` 对照原 chief 不在在线清单时陌生报告和文件的授权读取、原报告手动重发与接收去重。两个故障入口 `reports::p21_real_save_failure_neither_notifies_nor_claims_success` 和 `reports::p21_report_is_public_before_notification_and_failure_survives_restart_without_replay` 分别观察真实保存拒绝与外部拒绝；两者均保留至少 46 秒的实际外部记录和独立 journal 对照。
+
+P57 用 `--test chief_delegation cutover_cleanup::cutover_rebuilds_current_chief_without_old_report_or_run_authority -- --exact --nocapture`。实际隔离后端退出后清理四份 chief 运行记录并离线移走整个旧 Run；重启后通过公开 Resume／登记重新建立当前 chief，以恢复旧 manager 的 Chat 同时无报告、管理或 finish 权限为反例。比较历史、实际文件与归档记录字节；不触及用户历史或现场数据。可与[交付与现场交接](../bot-map-contract-refactor-delivery.md#本轮产品自动证据)的 P56/P55 证据分别对照。
+
 ### 运行前提
 
 - 工具与依赖安装见 [构建与运行](../../README.md#构建与运行)。后端测试也需要 Node.js，供跨前后端网络护栏使用。

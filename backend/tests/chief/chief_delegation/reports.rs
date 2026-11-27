@@ -1,10 +1,14 @@
 use super::*;
 
 pub(super) fn content(result: &str) -> Value {
-    json!({"background":"User requested a private brief summary; publishing was forbidden.","execution":"Brief analyst, supplied brief 731, work-zone","result":result,"summary":"The brief was analyzed; publication remains blocked pending user decision.","deliverables":["C:/isolated-delivery/summary.txt"],"pendingDecisions":["Does the summary meet the request?"]})
+    json!({"background":"User requested a private brief summary; publishing was forbidden.","execution":"Brief analyst, supplied brief 731, work-zone","result":result,"summary":"The brief was analyzed; publication remains blocked pending user decision.","deliverables":["C:/isolated-delivery/summary.txt"],"pendingDecisions":["Does the summary meet the request?"],"outputs":[]})
 }
 pub(super) async fn delegated(f: &Fixture) -> Value {
     let preview = f.preview().await;
+    launch(f, preview).await
+}
+
+pub(super) async fn launch(f: &Fixture, preview: Value) -> Value {
     let accepted = body(post_json_over_tcp(f.server.addr(), "/api/chief/delegations", &json!({"sessionId":"chief-a","previewId":preview["previewId"]}).to_string()).await, 202);
     let id = accepted["id"].as_str().unwrap();
     if f.is_app() {
@@ -25,6 +29,68 @@ pub(super) fn notification_behavior(f: &Fixture, mut behavior: Value) {
     chief["agent_session"] = json!({"source":"herdr:pi","agent":"pi","kind":"path","value":f.root.path().join("chief-a.jsonl")});
     behavior["agents"] = json!([chief]);
     f.herdr.set_behavior(behavior);
+}
+
+// P23/P25/P26/P29 (S1/S4): a Task gets two required IDs. A report that
+// bypasses validation, or derives addresses from prose, must disagree with the
+// declared IDs, the independently written files, or the unchanged journal.
+#[tokio::test]
+async fn task_reports_validate_declared_files_separately_from_prose() {
+    let f = Fixture::new().await;
+    let mut request = f.request();
+    request["outputRule"] = json!([{"id":"x-731"},{"id":"final-notes"}]);
+    let preview = post(&f.server, "/api/chief/delegations/preview", request).await;
+    let delegation = launch(&f, preview).await;
+    let first = f.root.path().join("work/alpha.bin");
+    let second = f.root.path().join("materials/beta.txt");
+    let first_bytes = b"real result: 731\r\n";
+    let second_bytes = b"independent result: 904\n";
+    fs::write(&first, first_bytes).unwrap();
+    fs::write(&second, second_bytes).unwrap();
+    let alpha = json!({"id":"x-731","path":first});
+    let beta = json!({"id":"final-notes","path":second});
+    let journal = f.config.sessions.history_file.with_extension("chief-reports.jsonl");
+    notification_behavior(&f, json!({}));
+    let before = f.herdr.calls();
+    let addr = f.server.addr();
+    for (result, outputs, code) in [
+        ("success", json!([alpha]), "output-missing"),
+        ("success", json!([alpha,alpha]), "invalid-output-id"),
+        ("success", json!([alpha,{"id":"unknown","path":second}]), "undeclared-output"),
+        ("success", json!([alpha,{"id":"final-notes","path":"beta.txt"}]), "invalid-output-path"),
+        ("success", json!([alpha,{"id":"final-notes","path":f.root.path().join("materials")}]), "output-unreadable"),
+        ("success", json!([alpha,{"id":"final-notes","path":f.root.path().join("work/missing.txt")}]), "output-unreadable"),
+        ("failure", json!([alpha,{"id":"final-notes","path":f.root.path().join("work/missing.txt")}]), "output-unreadable"),
+    ] {
+        let mut report = content(result);
+        report["outputs"] = outputs;
+        let result = body(post_json_over_tcp(addr, "/api/chief/reports", &json!({"sessionId":"worker-a","body":report}).to_string()).await, 400);
+        assert_eq!(result["code"], code, "{result}");
+        assert_eq!(f.herdr.calls(), before, "validation must precede external lookup and notification");
+        assert!(!journal.exists());
+        assert_eq!(body(get_over_tcp(addr, "/api/chief/reports").await, 200)["reports"], json!([]));
+    }
+    let mut reports = Vec::new();
+    for (result, outputs) in [("success", json!([alpha,beta])), ("failure", json!([alpha])), ("blocked", json!([]))] {
+        let mut expected = content(result);
+        expected["deliverables"] = json!(["Prose only: nonexistent.txt with no file binding"]);
+        expected["outputs"] = outputs;
+        let mut sent = expected.clone();
+        if result == "blocked" { sent.as_object_mut().unwrap().remove("outputs"); }
+        let saved = post(&f.server, "/api/chief/reports", json!({"sessionId":"worker-a","body":sent})).await;
+        assert_eq!(saved["saved"], true);
+        assert_eq!(saved["report"]["delegationId"], delegation["id"]);
+        assert_eq!(saved["report"]["body"], expected);
+        reports.push(saved["report"].clone());
+    }
+    assert_eq!(common::read_json_lines(&journal), reports);
+    drop(f.server);
+    let restarted = TestServer::start(&f.config).await;
+    let saved = body(get_over_tcp(restarted.addr(), "/api/chief/reports?sessionId=worker-a").await, 200);
+    assert_eq!(saved["reports"], json!(reports));
+    for (output, bytes) in saved["reports"][0]["body"]["outputs"].as_array().unwrap().iter().zip([first_bytes.as_slice(), second_bytes.as_slice()]) {
+        assert_eq!(fs::read(output["path"].as_str().unwrap()).unwrap(), bytes);
+    }
 }
 
 // Approved S2 seam: HTTP submit/list/get, real isolated storage and actual
@@ -60,8 +126,18 @@ async fn p21_no_chief_report_is_saved_and_survives_actual_backend_restart() {
 #[tokio::test]
 async fn p21_report_is_public_before_notification_and_failure_survives_restart_without_replay() {
     let f = Fixture::new().await;
-    delegated(&f).await;
+    let mut request = f.request();
+    request["outputRule"] = json!([{"id":"partial"}]);
+    let preview = post(&f.server, "/api/chief/delegations/preview", request).await;
+    launch(&f, preview).await;
+    let file = f.root.path().join("work/partial.txt");
+    let bytes = b"Work survived the notification failure\r\n";
+    fs::write(&file, bytes).unwrap();
+    let mut expected = content("failure");
+    expected["outputs"] = json!([{"id":"partial","path":file}]);
     let before = prompts(&f);
+    let tabs_before = f.herdr.tabs();
+    let journal = f.config.sessions.history_file.with_extension("chief-reports.jsonl");
     let release = f.root.path().join("release-chief-notification");
     struct Release(std::path::PathBuf);
     impl Drop for Release {
@@ -75,7 +151,8 @@ async fn p21_report_is_public_before_notification_and_failure_survives_restart_w
     let gate = Release(release.clone());
     notification_behavior(&f, json!({"fail_prompt":true,"prompt_gate":{"wait_for_file":release,"timeout_ms":10000}}));
     let addr = f.server.addr();
-    let sending = tokio::spawn(async move { post_json_over_tcp(addr, "/api/chief/reports", &json!({"sessionId":"worker-a","body":content("failure")}).to_string()).await });
+    let submission = json!({"sessionId":"worker-a","body":expected}).to_string();
+    let sending = tokio::spawn(async move { post_json_over_tcp(addr, "/api/chief/reports", &submission).await });
     let observed = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if prompts(&f) == before + 1 { break; }
@@ -89,11 +166,13 @@ async fn p21_report_is_public_before_notification_and_failure_survives_restart_w
     assert_eq!(observed.expect("notification must reach external gate")["reports"], json!([report]));
     assert_eq!(result["saved"], true);
     assert_eq!(result["notification"]["status"], "failed");
-    assert_eq!(report["body"], content("failure"));
+    assert_eq!(report["body"], expected);
     let call = f.herdr.calls().into_iter().filter(|call| call["kind"] == "agent_prompt").last().unwrap();
     let chief_pane = f.herdr.tabs()[0]["pane_id"].clone();
     assert_eq!(call["target"], chief_pane, "route by current chief native identity, never sender or display name");
     assert!(call["text"].as_str().unwrap().contains(report["id"].as_str().unwrap()));
+    let calls_after_failure = f.herdr.calls();
+    assert_eq!(common::read_json_lines(&journal), [report.clone()]);
     drop(f.server);
     let recovered = TestServer::start(&f.config).await;
     assert_eq!(body(get_over_tcp(recovered.addr(), &format!("/api/chief/reports/{}", report["id"].as_str().unwrap())).await, 200), report);
@@ -101,10 +180,14 @@ async fn p21_report_is_public_before_notification_and_failure_survives_restart_w
     // Observe 46s after actual restart/re-registration: no automatic replay,
     // even across startup and an entire maintenance/expiry budget.
     post(&recovered, "/api/sessions/events", json!({"sessionId":"chief-a","kind":"register","data":{"cwd":f.root.path().join("work"),"agentType":"pi"}})).await;
+    let started = tokio::time::Instant::now();
     tokio::time::sleep(Duration::from_secs(46)).await;
-    assert_eq!(f.herdr.calls().iter().filter(|call| call["kind"] == "agent_prompt").count(), before + 1);
+    assert_eq!(f.herdr.calls(), calls_after_failure);
+    assert_eq!(f.herdr.tabs(), tabs_before);
+    assert_eq!(common::read_json_lines(&journal), [report.clone()]);
     assert_eq!(body(get_over_tcp(recovered.addr(), "/api/chief/reports").await, 200)["reports"], json!([report]));
-    println!("P21 failed-notification restart observationMs=46000 report={report}");
+    assert_eq!(fs::read(report["body"]["outputs"][0]["path"].as_str().unwrap()).unwrap(), bytes);
+    println!("P27 failed-notification restart observationMs={} report={report}", started.elapsed().as_millis());
 }
 
 // P17 independent oracle: actual delegation identity, not shared Task, name,
@@ -113,6 +196,11 @@ async fn p21_report_is_public_before_notification_and_failure_survives_restart_w
 #[tokio::test]
 async fn p17_only_actual_independent_chat_or_direct_manager_can_submit_chief_reports() {
     let (f, _, request) = map::map_fixture().await;
+    // P25: Map has a mandatory public file, but chief has not requested files.
+    let map_path = f.root.path().join("maps/flow.json");
+    let mut definition: Value = serde_json::from_slice(&fs::read(&map_path).unwrap()).unwrap();
+    definition["map_output_rule"] = json!({"files":[{"id":"map-only"}]});
+    fs::write(map_path, definition.to_string()).unwrap();
     let preview = post(&f.server, "/api/chief/delegations/preview", request).await;
     let started = body(post_json_over_tcp(f.server.addr(), "/api/chief/delegations", &json!({"sessionId":"chief-a","previewId":preview["previewId"]}).to_string()).await, 201);
     post(&f.server, "/api/workflow/manager/prepare_inputs", json!({"sessionId":"flow-manager","fileInputs":started["run"]["mapInput"]["files"],"confirmed":true,"reason":"Independent supplied brief approval"})).await;
@@ -140,7 +228,12 @@ async fn p17_only_actual_independent_chat_or_direct_manager_can_submit_chief_rep
         body(post_json_over_tcp(f.server.addr(), "/api/chief/reports", &forged.to_string()).await, 400);
     }
     assert_eq!(body(get_over_tcp(f.server.addr(), "/api/chief/reports").await, 200)["reports"], json!([]));
-    assert_eq!(prompts(&f), before, "unauthorized identities must neither save nor notify");
+    let mut wrong_class = content("progress");
+    body(post_json_over_tcp(f.server.addr(), "/api/chief/reports", &json!({"sessionId":"flow-manager","body":wrong_class}).to_string()).await, 400);
+    wrong_class = content("success");
+    wrong_class["canComplete"] = json!(false);
+    body(post_json_over_tcp(f.server.addr(), "/api/chief/reports", &json!({"sessionId":"flow-manager","body":wrong_class}).to_string()).await, 400);
+    assert_eq!(prompts(&f), before, "unauthorized or invalid reports must neither save nor notify");
     notification_behavior(&f, json!({}));
     let saved = post(&f.server, "/api/chief/reports", json!({"sessionId":"flow-manager","body":content("success")})).await;
     assert_eq!(saved["saved"], true);
@@ -149,6 +242,10 @@ async fn p17_only_actual_independent_chat_or_direct_manager_can_submit_chief_rep
     assert_eq!(saved["report"]["from"], "flow-manager");
     assert_eq!(saved["report"]["body"], content("success"));
     assert_eq!(prompts(&f), before + 1);
+    let run = body(get_over_tcp(f.server.addr(), &format!("/api/workflow/runs/{}", started["id"].as_str().unwrap())).await, 200);
+    assert_eq!(run["run"]["status"], "running");
+    assert!(run["run"]["finished"].is_null());
+    assert_eq!(run["run"]["mapOutput"]["files"], json!([]));
     let submitted = common::read_json_lines(&f.herdr.path().join("submitted.jsonl"));
     let text = submitted.last().unwrap()["text"].as_str().unwrap();
     let delivered: Value = serde_json::from_str(text.split_once("\n\n").unwrap().1).unwrap();
@@ -189,7 +286,16 @@ async fn p21_real_save_failure_neither_notifies_nor_claims_success() {
     assert!(!failed["message"].as_str().unwrap().is_empty());
     assert_eq!(f.herdr.calls(), before, "no inventory query or notification may precede saving");
     assert_eq!(body(get_over_tcp(f.server.addr(), "/api/chief/reports").await, 200)["reports"], json!([]));
-    println!("P21 real read-only journal error={failed}");
+    let original = fs::read(&path).unwrap();
+    assert!(original.is_empty());
+    let tabs = f.herdr.tabs();
+    let started = tokio::time::Instant::now();
+    tokio::time::sleep(Duration::from_secs(46)).await;
+    assert_eq!(f.herdr.calls(), before);
+    assert_eq!(f.herdr.tabs(), tabs);
+    assert_eq!(fs::read(&path).unwrap(), original);
+    assert_eq!(body(get_over_tcp(f.server.addr(), "/api/chief/reports").await, 200)["reports"], json!([]));
+    println!("P27 read-only journal observationMs={} error={failed}", started.elapsed().as_millis());
 }
 
 // Development regression for this ticket's current-recipient policy and shared

@@ -96,7 +96,12 @@ context 提供 runId、executionId、zone（节点工作目录）、input（node
 
 `POST /api/chief/reports` 是同机工具的报告提交入口。请求只接受 `sessionId` 和 `body`；后端按真实委派记录授权独立 Chat 或直接 Map manager，不按 Task 名称、扩展是否加载或调用者提供的 Bot／Run／收件人参数授权。Map 内部节点仍用 `/api/workflow/node/report` 向自己的 manager 报告。
 
-`body` 必须包含 `background`（需求背景）、`execution`（执行对象）、`result`（`success`／`failure`／`blocked`）、`summary`（结果说明）、`deliverables`（交付物字符串数组）和 `pendingDecisions`（待用户判断事项字符串数组）。三个文字说明字段（background／execution／summary）不得为空；无交付物或待判断项时明确传空数组。后端逐字保存内容，自动生成不可变的 `id`、时间 `at`、真实 `delegationId` 和发送方 `from`，不接受指定报告 ID 或覆盖原报告。
+`body` 必须包含 `background`（需求背景）、`execution`（执行对象）、`result`（`success`／`failure`／`blocked`）、`summary`（结果说明）、`deliverables`（交付物字符串数组）和 `pendingDecisions`（待用户判断事项字符串数组）。三个文字说明字段（background／execution／summary）不得为空；无交付物或待判断项时明确传空数组。后端逐字保存这些说明，自动生成不可变的 `id`、时间 `at`、真实 `delegationId` 和发送方 `from`，不接受指定报告 ID 或覆盖原报告。
+
+`body.outputs` 是独立的文件成果数组 `[{id, path}]`，省略提交字段等同于空数组；保存和读回始终包含数组。ID 是本次委派的逻辑标识，路径是实际可读文件的本机绝对地址。文字 `deliverables` 不会被解析为文件或补齐约定。
+
+- **Task 委派**：用 `outputs` 提交文件绑定。每个 ID 必须属于委派时确认的 `outputRule`，且不可重复；地址必须是合法、可读的文件。`success` 必须交齐，`failure`／`blocked` 可省略文件或仅登记有效的部分成果。
+- **Map 委派**：不在报告中填写文件地址。成功报告需要交付本次约定的文件时，后端从已显式结束的关联 Run 的 `mapOutput.files` 读取所需同名子集，拒绝报告覆盖地址。Map 自己仍须交齐全部公开文件才能 finish。未结束时可无文件报告失败／受阻；无文件要求的成功报告也不以 finish 为前提。报告不结束 Run、不自动推进，也不增加 `canComplete` 或进度分类。
 
 后端先将报告保存至历史目录旁的 `*.chief-reports.jsonl`，释放文件协调后才按当前有效 chief 的原生会话身份定位，并只在 `[herdr].backend` 选定的宿主尝试一次通知。TUI 使用匹配的 Pane，App 使用已核对归属的 App Pane 与 core 终端；不会按标题、原分派者或另一个宿主补选目标。没有 chief、定位失败或通知失败都不撤销报告。响应分别包含 `saved`、`report`、`notification.status`／`reason` 和诊断写入状态；通知状态为 `submitted`（Herdr 确认输入提交）、`failed`（明确未提交）、`uncertain`（外部效果不可确认）或 `not-attempted`（未发起通知）。`submitted` 不等于可靠接收、已呈现、用户已读或业务验收。真实保存失败返回非成功状态、`saved:false` 和 `not-attempted`，不发送通知；HTTP 回执丢失时先查询持久事实，不应再次提交而制造另一份报告。
 
@@ -114,6 +119,8 @@ context 提供 runId、executionId、zone（节点工作目录）、input（node
 | `POST /api/chief/reports/{id}/view` | 当前 chief 在用户明确要求查看时读取原报告；返回 `{report, received, receipt, process:false, guidance}`，不会创建／修改接收记录、自动通知或重新派发业务。未接收的报告也可明确查看，但查看本身不是接收授权。 |
 
 接收记录为 `{reportId, sessionId, claimId, at}`，其中 `at` 为 Unix 毫秒；保存在原报告 journal 旁的 `*.chief-reports.receipts.jsonl`，原报告内容不变。认领及去重持久提交与 chief 授权／撤销串行化；旧 chief 失权后不能取得新接收授权。外部定位等待后再次核实当前 claim 与接收事实；已经授权并进入外部提交的输入不会被 chief 更换物理撤回，返回值保留真实 `submitted`／`failed`／`uncertain`。
+
+接替者无需记得原委派或等待原 chief 在线。需要理解文件成果时，按报告的 `body.outputs` 中的实际地址读取文件；ID 不一定包含业务含义。报告保存路径而非文件副本，不保证文件之后仍可读。
 
 可靠接收不是模型已呈现、用户已读或业务验收。接收后、呈现前崩溃仍保留接收事实，不自动重播；重复 `receive` 的 `process:false` 不是新呈现授权，人工恢复须由用户在当前 chief 明确要求 `view`。存储不可确认返回非成功状态，不能把失败解释为已获处理授权或安全地重新提交业务报告。
 
@@ -162,9 +169,9 @@ Zone 列表显示目录名、稳定 ID 和服务器完整路径，可按名称�
 
 Task 型 Bot 委派使用公开 HTTP：
 
-1. 当前有效 chief 调用 `POST /api/chief/delegations/preview`，明确提供 `sessionId`、`botId`、`zoneId`、本次业务 `input`，以及 `materials: [{id, zoneId, path}]`。材料的 `path` 为对应已登记 zone 内的相对文件路径；即使与执行 zone 相同，也要显式指定。空业务输入、重复材料 ID、不可读／越界材料、冲突 Bot、没有 Task 目标或目标非普通 Task 均拒绝。
-2. 返回 `previewId` 与完整 `facts`：原始请求、真实 Bot／Task 定义、解析后的执行 cwd、材料地址、Chat 名称和将提交的完整 `prompt`。工具应完整呈现这些事实并取得本次原生批准；此 HTTP 预览不是批准本身，也不会创建 Herdr Tab。原生确认的接线与两宿主真实效果属于 toolkit 和跨仓验收。
-3. 只在批准后调用 `POST /api/chief/delegations`，请求仅含 `{sessionId, previewId}`。预览单次消费，不能附带替换业务输入。提交时重新核对 chief 权威及 Bot／Task、zone／材料绑定、提示词词典产生的完整文本和模型／扩展选择；批准期间含义发生变化则拒绝并要求重新预览确认，不会执行旧目标或替代工作。预览仅在本次后端进程内有效，重启后须重新确认。
+1. 当前有效 chief 调用 `POST /api/chief/delegations/preview`，明确提供 `sessionId`、`botId`、`zoneId`、本次业务 `input`，以及 `materials: [{id, zoneId, path}]`；可提供本次文件要求 `outputRule: [{id}]`（工具参数为 `output_rule`）。输出 ID 必须非空且唯一，空规则省略，不是 Bot 的文字 `output_rule` 或 Task 的静态接口。材料的 `path` 为对应已登记 zone 内的相对文件路径；即使与执行 zone 相同，也要显式指定。空业务输入、重复材料 ID、不可读／越界材料、冲突 Bot、没有 Task 目标或目标非普通 Task 均拒绝。
+2. 返回 `previewId` 与完整 `facts`：原始请求、真实 Bot／Task 定义、解析后的执行 cwd、材料地址、Chat 名称和将提交的完整 `prompt`。工具应完整呈现这些事实（含本次文件要求）并取得本次原生批准；此 HTTP 预览不是批准本身，也不会创建 Herdr Tab。取消或拒绝时工具不提交启动。原生确认的接线与两宿主真实效果属于 toolkit 和跨仓验收。
+3. 只在批准后调用 `POST /api/chief/delegations`，请求仅含 `{sessionId, previewId}`。预览单次消费，不能附带替换业务输入或 `outputRule`。批准的 `outputRule` 随原请求持久保存在委派的 `facts.request`，并给到实际执行 Chat。提交时重新核对 chief 权威及 Bot／Task、zone／材料绑定、提示词词典产生的完整文本和模型／扩展选择；批准期间含义发生变化则拒绝并要求重新预览确认，不会执行旧目标或替代工作。预览仅在本次后端进程内有效，重启后须重新确认。
 4. `202` 回执沿用普通 Chat 创建的形状与 `id`，通过 `GET /api/chats/{id}` 观察启动。只有 Herdr 就绪、真实原生身份及来源历史／委派关联保存、批准文本投递已确认后才是 `succeeded`；它只表示发起成功，**不表示业务完成**，不等待模型完成业务。失败保留现有阶段、类别、Tab／Pane／agent 与投递结果不确定说明，不自动清理或重试。
 
 `GET /api/chief/delegations/{id}` 读取独立于 chief 上下文保存的委派事实、实际 `sessionId` 和最后观察到的创建状态；`GET /api/chief/delegations?sessionId=<真实原生身份>` 精确查询发送方关联。委派记录保存在历史文件旁的 `.delegations.json` 文件，经过统一文件持久化边界。业务完成情况不由启动回执判断；后端意外中断时最后记录的 `starting` 也不是确定未启动，须核查外部现场，不要重新派发冒充恢复。来源 chief、Bot、Task、cwd、业务输入、材料及执行 Chat 不依靠 Task 名称推断，不产生父 Run／node／execution。材料只绑定地址，不复制或冻结文件内容；之后更改内容由实际执行者观察。
@@ -173,9 +180,9 @@ Task 型 Bot 委派使用公开 HTTP：
 
 ### chief 按 Bot 委派 Map Run
 
-Map 型 Bot 使用同一组委派 HTTP 操作，不把它转换成没有 Run 的 manager Chat：
+chief 不直接委派脚本型 Bot。Map 型 Bot 使用同一组委派 HTTP 操作，不把它转换成没有 Run 的 manager Chat：
 
-- 预览请求明确提供 `sessionId`、Map 型 `botId`、本次业务 `input`、manager 的 `zoneId`、`managerTaskId` 和 `materials: [{id, zoneId, path}]`。manager 必须是 manager 类型 Task，不能省略或从名称猜测；Task 型 Bot 则不接受 `managerTaskId`。材料 ID 对应目标 Map 的 `map_input_rule.files`，必需材料可以在启动管理者后准备；不接受未声明的材料 ID 或非法／不可读的实际文件。文件解析及预检复用既有 zone／Run 输入规则。
+- 预览请求明确提供 `sessionId`、Map 型 `botId`、本次业务 `input`、manager 的 `zoneId`、`managerTaskId` 和 `materials: [{id, zoneId, path}]`。manager 必须是 manager 类型 Task，不能省略或从名称猜测；Task 型 Bot 则不接受 `managerTaskId`。材料 ID 对应目标 Map 的 `map_input_rule.files`，必需材料可以在启动管理者后准备；不接受未声明的材料 ID 或非法／不可读的实际文件。文件解析及预检复用既有 zone／Run 输入规则。`outputRule` 只接受 `map_output_rule.files` 的同名子集；没有请求的 Map 公开成果仍是该 Map 自己的必交项。
 - `facts.task` 是明确选择的 manager，`facts.map.file` 是 Bot 实际引用的 Map，`facts.map.definitions` 包含所选 Map／嵌套 Map／Bot 定义，`tasks`、`zoneBindings`、`directMaterials` 展示内部执行预设、位置和直接材料。`facts.prompt` 是完整、已组装的 manager 初始输入。预览不创建 Run 或 Chat；必须完整展示后取得本次原生批准。
 - 批准后提交仍只含 `{sessionId, previewId}`。重新检查所选定义闭包及提示词词典解析后的业务含义、manager、内部 Task／zone、材料绑定及材料当前字节；变化或失效返回 `409 delegation-preview-stale`，保留原因并要求重新预览确认，既不悄悄执行更新后的工作，也不重试启动。未关联的定义改动不要求重新确认。这个检查不冻结执行后的文件，之后的改动仍由实际执行者观察。
 - Map 提交复用既有 Run 发起协议，完成启动返回 `201` 的 Run detail（`id`、`run` 等），不是 Task 的 `202` Chat 轮询回执。通过 `GET /api/workflow/runs/{id}` 读取运行事实；启动失败保持既有 `500`、`startupError`／`readError` 和真实外部效果，不声称回滚。Run 记录初始化失败时不启动 manager。

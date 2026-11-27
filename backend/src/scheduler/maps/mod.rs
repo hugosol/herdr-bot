@@ -33,7 +33,7 @@ pub enum InputRule {
 impl InputRule {
     pub fn id(&self) -> &str { match self { Self::File { id, .. } | Self::Node { id, .. } | Self::Run { id, .. } => id } }
 }
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct OutputRule { pub id: String }
 impl WorkflowMap {

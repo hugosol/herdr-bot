@@ -434,7 +434,7 @@ async fn protocol(
         let fixed = &task.trigger.prompt;
         let skill = preset.trigger.native_skill.as_deref();
         let text = match &role {
-            Role::Manager => state.prompts.manager(fixed, skill, &run.manager_context(state), false),
+            Role::Manager => state.prompts.manager(fixed, skill, &run.manager_context(state), None),
             Role::Node { id, target, .. } => {
                 use crate::prompts::{NodeContext, NodeRole};
                 let execution = run.nodes[*id].execution.as_ref().ok_or("缺少冻结执行。")?;
