@@ -293,6 +293,12 @@ V2 保留专用 authorization／confirmation 材料，独立运行并比较实�
 
 Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行为。正常 Ctrl+C 由终端输入处理，保留在途测试的清理机会。OMP／Pi 的临界场景在公开状态进入初始化后使用真实时钟，第 29 秒发布原生 header 和匹配的启动事件，核对事件前没有初始输入。缺失、无效或过期的启动证据阻止输入；写入历史失败仍不会撤销已提交的输入。
 
+### 本次输入与消息分层（P1、P2、P4、P8–P10、P29、P33–P36）
+
+`workflow_dispatch` 的 `input_preparation::` 检查公开 `mapInput` 与持久文件、全量替换、必需文件在准备及派发时的就绪门禁、已派发地址冻结；`dispatch_receives_background_direct_addresses_and_run_scoped_material_location` 同时观察独立实际提交、条件式文档入口和定义原字节不变。`roles::`、`end_node::`、`p42` 分别核对来源 Task 的独立用法、实际节点角色、原关联恢复和不重发。`workflow_start` 及 `chief_delegation` 的 Map 场景覆盖直接与委派发起；`missing_required_child_material_does_not_block_manager_but_blocks_work` 对照子 Run 准备门禁。`partial_child_submission_distinguishes_rejected_and_unknown_without_replaying` 及 chief Map 启动故障分别保留持久关联和受控宿主的实际提交记录，不将未知回执当未发送。
+
+页面：`npm --prefix frontend run test:browser:build -- workflowStart.spec.ts workflowCurrent.spec.ts --workers=1`，对照表单发起、冻结图、实际输入和重读/刷新外部调用。原生安装与业务遵从另验，不由受控宿主记录替代。
+
 ### Run 冻结 Map 与历史保留（P11–P14、P30、P32、P55）
 
 定向后端：`cargo test --manifest-path backend/Cargo.toml --test workflow_start manager_trigger_and_status_follow_committed_identity -- --exact` 检查副本先于外部启动及管理者实际收到的绝对路径；`initialization_and_identity_failures_stop_before_initial_instructions` 检查真实保存或外部失败。`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch frozen_map::` 检查旧／新定义、破坏副本及原样隔离归档；同目标的 `nesting::child_freezes_its_own_latest_map_without_freezing_referenced_bots`、`map_deletion::` 和 `history_integrity::deleting_source_maps_preserves_both_sides_of_nested_history` 检查子 Run 独立冻结及删除原定义保留整份历史。

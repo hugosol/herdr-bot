@@ -34,7 +34,7 @@ test('P30 deleting a Map retains its Run and frozen workflow graph', async ({ pa
   fs.writeFileSync(path.join(directory, 'map.json'), JSON.stringify(map))
   fs.writeFileSync(path.join(directory, 'run.json'), JSON.stringify({
     id: 'retained-run', map: 'work.JSON', createdAt: 1000, status: 'completed', managerTaskId: 'manager', zone: server!.cwd,
-    workspaceName: 'recorded workspace', userInput: 'Retained Run input', manager: null, finished: null,
+    workspaceName: 'recorded workspace', mapInput: { runInput: 'Retained Run input', files: [] }, manager: null, finished: null,
     nodes: { A: { status: 'completed', execution: null, failure: null, completion: null, previousExecutions: [] } },
   }))
   fs.writeFileSync(path.join(directory, 'history.jsonl'), '')

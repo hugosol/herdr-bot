@@ -114,6 +114,13 @@ pub struct Finished {
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MapInput {
+    pub run_input: String,
+    #[serde(deserialize_with = "crate::scheduler::object_array")]
+    pub files: Vec<crate::scheduler::maps::ResolvedFile>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Run {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -131,9 +138,7 @@ pub struct Run {
     pub zone_bindings: BTreeMap<String, String>,
     pub zone: String,
     pub workspace_name: String,
-    pub user_input: String,
-    #[serde(default)]
-    pub file_inputs: Vec<crate::scheduler::maps::ResolvedFile>,
+    pub map_input: MapInput,
     #[serde(default)]
     pub inputs_ready: bool,
     pub manager: Option<ChatReference>,
@@ -147,6 +152,7 @@ impl Run {
             id: &self.id,
             map: Runs::map_path(state, &self.id),
             files: self.prompt_files(state),
+            input: &self.map_input,
         }
     }
 
@@ -676,8 +682,7 @@ pub(crate) fn root_run(
         manager_zone_id: Some(input.zone),
         zone_bindings: checked.zone_bindings,
         workspace_name: checked.workspace_name,
-        user_input: input.user_input,
-        file_inputs: input.file_inputs,
+        map_input: MapInput { run_input: input.user_input, files: input.file_inputs },
         inputs_ready: false,
         manager: None,
         status: "running".into(),
@@ -876,8 +881,14 @@ pub(crate) async fn manager_dispatch(state: AppState, input: DispatchRequest) ->
         // Validate every dynamic selection before starting any external execution.
         let mut zones = crate::scheduler::validate_zone_selections(&state, &run, &map, &input.nodes, &input.zone_ids).await?;
         let mut results = Vec::with_capacity(input.nodes.len());
+        let mut required_input_error = None;
         for id in input.nodes {
-            let reasons = blocked(&run, &id, &map);
+            let mut reasons = blocked(&run, &id, &map);
+            if reasons.is_empty() {
+                if let Some(message) = required_input_error.get_or_insert_with(|| preflight::check_required_inputs(&map, &run.map_input.files)) {
+                    reasons.push(message.clone());
+                }
+            }
             if !reasons.is_empty() {
                 results.push(serde_json::json!({"nodeId":id,"status":"rejected","reasons":reasons}));
                 continue;

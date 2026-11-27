@@ -625,23 +625,34 @@ pub(crate) async fn run_creation(
         view.stage = Stage::Submitting;
     }
     let composed;
-    let text = if let Some(delegation) = &delegation { delegation.prompt.as_str() } else { composed = match prompts.task(&task.trigger.prompt, preset.trigger.native_skill.as_deref(), &input) {
-        Ok(text) => text,
-        Err(error) => {
-            let mut view = job.lock().await;
-            if let Some(chief) = authority {
-                if let Err(error) = chief.creation_failed(&view.id,false) { eprintln!("chief prompt failure persistence failed: {error:?}"); }
+    let text = if let Some(delegation) = &delegation {
+        delegation.prompt.as_str()
+    } else {
+        let skill = preset.trigger.native_skill.as_deref();
+        let message = if chief.is_some() {
+            prompts.chief(&task.trigger.prompt, skill, &input)
+        } else {
+            prompts.task(&task.trigger.prompt, skill, &input)
+        };
+        composed = match message {
+            Ok(text) => text,
+            Err(error) => {
+                let mut view = job.lock().await;
+                if let Some(chief) = authority {
+                    if let Err(error) = chief.creation_failed(&view.id,false) { eprintln!("chief prompt failure persistence failed: {error:?}"); }
+                }
+                view.stage = Stage::Failed;
+                view.input_outcome = Some(UnconfirmedInput::NotSubmitted);
+                view.failure = Some(Failure {
+                    stage: FailureStage::Submit,
+                    code: "prompt-dictionary-invalid".into(),
+                    message: format!("{error:#} 未提交初始指示；已创建的 Tab、Pane 与 agent 保留。"),
+                });
+                return;
             }
-            view.stage = Stage::Failed;
-            view.input_outcome = Some(UnconfirmedInput::NotSubmitted);
-            view.failure = Some(Failure {
-                stage: FailureStage::Submit,
-                code: "prompt-dictionary-invalid".into(),
-                message: format!("{error:#} 未提交初始指示；已创建的 Tab、Pane 与 agent 保留。"),
-            });
-            return;
-        }
-    }; &composed };
+        };
+        &composed
+    };
     // An empty trigger starts an interactive Chat without inventing a user
     // turn. Herdr rejects empty prompts; readiness already confirms startup.
     if !text.is_empty() {

@@ -266,9 +266,6 @@ async fn resolve(
             github_exploration: None,
         };
         let checked = crate::runs::preflight::check_run_preflight(state, file, &input).await.map_err(Error::Preflight)?;
-        if let Some(message) = crate::runs::preflight::check_prepared_inputs(&checked.map, file, &input.file_inputs, true) {
-            return Err(rejected("delegation-material-invalid", message));
-        }
         Some(crate::runs::root_run(file.clone(), input, checked, &task, id.to_owned()))
     } else { None };
     let name = run.as_ref().and_then(|prepared| prepared.run.name.clone())
@@ -318,7 +315,7 @@ async fn resolve(
     let skill = preset.trigger.native_skill.as_deref();
     let prompt = if let Some(prepared) = &run {
         let run = &prepared.run;
-        state.prompts.manager(fixed, skill, &run.manager_context(state), &run.user_input)
+        state.prompts.manager(fixed, skill, &run.manager_context(state), true)
     } else {
         state.prompts.chief_delegated_task(fixed, skill, &crate::prompts::ChiefDelegationContext {
             id,

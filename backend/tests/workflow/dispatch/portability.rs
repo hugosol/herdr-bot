@@ -99,9 +99,12 @@ async fn historical_absolute_input_rules_remain_readable_without_binding_snapsho
 #[tokio::test]
 async fn node_dictionary_reads_latest_and_does_not_expand_run_user_input() {
     let s = Scenario::new().await;
+    let material = s.data.path().join("literal-${location}.txt");
+    fs::write(&material, "UNEXPANDED-FILE-BODY").unwrap();
     edit_map(&s, |map| {
-        map["nodes"]["A"]["input"] = json!("node ${location}");
-        map["nodes"]["B"]["input"] = json!("next ${location}");
+        map["nodes"]["A"]["input"] = json!("node ${location}, escaped=$${unknown}");
+        map["nodes"]["A"]["input_rule"] = json!([{"id":"local","type":"file","path":"literal-${location}.txt"}]);
+        map["nodes"]["B"]["input"] = json!("${missing_node_key}");
     });
     let mut tasks: Value = serde_json::from_str(&fs::read_to_string(&s.config.tasks.storage_file).unwrap()).unwrap();
     for task in tasks["tasks"].as_array_mut().unwrap() { task["prompt"] = json!("fixed ${location}"); }
@@ -117,10 +120,15 @@ async fn node_dictionary_reads_latest_and_does_not_expand_run_user_input() {
     let result = s.dispatch("manager-05", &["A"]).await;
     assert_eq!(result["results"][0]["status"], "running", "{result}");
     let prompt = s.herdr.calls().into_iter().filter(|call| call["kind"] == "agent_prompt").last().unwrap()["text"].as_str().unwrap().to_owned();
-    assert!(prompt.contains("node second"), "{prompt}");
-    assert!(prompt.contains("fixed second"), "{prompt}");
+    assert!(prompt.contains("node second, escaped=${unknown}"), "{prompt}");
+    assert!(prompt.starts_with("/skill:teach fixed second\n\n"), "{prompt}");
     assert!(prompt.contains("literal ${not_in_dictionary}"), "{prompt}");
-    edit_map(&s, |map| map["nodes"]["B"]["input"] = json!("${missing_node_key}"));
+    assert!(prompt.contains(&format!("local: {}", material.display())) && !prompt.contains("UNEXPANDED-FILE-BODY"), "{prompt}");
+    let report = post_json_over_tcp(s.server.addr(), "/api/workflow/node/report",
+        &json!({"sessionId":"node-latest-dictionary","body":"report ${location} and $${unknown}","canComplete":false}).to_string()).await;
+    assert_eq!(report.status, 200, "{}", report.body);
+    let report: Value = serde_json::from_str(&report.body).unwrap();
+    assert_eq!(report["report"]["body"], "report ${location} and $${unknown}");
     fs::write(&s.config.prompts_file, "location = 'third'\n").unwrap();
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"node-missing-dictionary"},"native_cwd":s.data.path().join("node-zone")}));
     let prompts_before = s.herdr.calls().iter().filter(|call| call["kind"] == "agent_prompt").count();

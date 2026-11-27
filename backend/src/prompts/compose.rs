@@ -1,45 +1,50 @@
 use std::borrow::Cow;
 
-use super::{Field, PromptDictionary, Snapshot, context::{self, ChiefDelegationContext, ManagerContext, NodeContext}};
+use super::{Field, PromptDictionary, Snapshot, context::{self, ChiefDelegationContext, ManagerContext, NodeContext}, roles};
 
 impl PromptDictionary {
     pub(crate) fn task(&self, fixed: &str, skill: Option<&str>, input: &str) -> anyhow::Result<String> {
-        self.assemble(fixed, skill, |_| Ok(Cow::Borrowed(input)))
+        self.assemble(fixed, skill, "", |_| Ok(Cow::Borrowed(input)))
     }
 
-    pub(crate) fn manager(&self, fixed: &str, skill: Option<&str>, facts: &ManagerContext<'_>, input: &str) -> anyhow::Result<String> {
-        self.assemble(fixed, skill, |_| Ok(Cow::Owned(context::manager(facts, input))))
+    pub(crate) fn chief(&self, fixed: &str, skill: Option<&str>, input: &str) -> anyhow::Result<String> {
+        self.assemble(fixed, skill, roles::CHIEF, |_| Ok(Cow::Borrowed(input)))
+    }
+
+    pub(crate) fn manager(&self, fixed: &str, skill: Option<&str>, facts: &ManagerContext<'_>, delegated: bool) -> anyhow::Result<String> {
+        self.assemble(fixed, skill, "", |_| Ok(Cow::Owned(context::manager(facts, delegated))))
     }
 
     pub(crate) fn node(&self, fixed: &str, skill: Option<&str>, facts: &NodeContext<'_>) -> anyhow::Result<String> {
-        self.assemble(fixed, skill, |snapshot| {
+        self.assemble(fixed, skill, "", |snapshot| {
             let input = snapshot.render(Field::NodeInput, facts.input)?;
             Ok(Cow::Owned(context::node(facts, &input)?))
         })
     }
 
     pub(crate) fn chief_delegated_task(&self, fixed: &str, skill: Option<&str>, facts: &ChiefDelegationContext<'_>, input: &str) -> anyhow::Result<String> {
-        self.assemble(fixed, skill, |_| Ok(Cow::Owned(context::chief_delegated_task(facts, input))))
+        self.assemble(fixed, skill, "", |_| Ok(Cow::Owned(context::chief_delegated_task(facts, input))))
     }
 
     fn assemble<'a>(
         &self,
         task_prompt: &str,
         skill: Option<&str>,
+        role: &str,
         input: impl FnOnce(&Snapshot) -> anyhow::Result<Cow<'a, str>>,
     ) -> anyhow::Result<String> {
         let snapshot = self.snapshot()?;
         let fixed = snapshot.render(Field::TaskPrompt, task_prompt)?;
         let input = input(&snapshot)?;
         let instructions = snapshot.instructions(task_prompt);
-        Ok(join(&fixed, skill, &input, &instructions))
+        Ok(join(skill, [fixed.as_ref(), role, &input, &instructions]))
     }
 }
 
 /// A native Skill is the single leading `/skill:<name>` invocation. The
 /// remaining sections are already rendered or literal and are never rescanned.
-fn join(fixed: &str, skill: Option<&str>, input: &str, instructions: &str) -> String {
-    let sections = [fixed, input, instructions].into_iter().filter(|part| !part.is_empty());
+fn join(skill: Option<&str>, sections: [&str; 4]) -> String {
+    let sections = sections.into_iter().filter(|part| !part.is_empty());
     let body_len = sections.clone().map(|part| part.len() + 2).sum::<usize>().saturating_sub(2);
     let skill_len = skill.map_or(0, |skill| "/skill:".len() + skill.len() + usize::from(body_len != 0));
     let mut text = String::with_capacity(body_len + skill_len);
@@ -67,12 +72,12 @@ mod tests {
 
     #[test]
     fn plain_input_is_submitted_once_without_extra_prefix() {
-        assert_eq!(join("", None, "检查登录\n第二行", ""), "检查登录\n第二行");
+        assert_eq!(join(None, ["", "", "检查登录\n第二行", ""]), "检查登录\n第二行");
     }
 
     #[test]
     fn skill_uses_one_native_invocation_prefix() {
-        assert_eq!(join("固定指示", Some("code-review"), "本次任务", ""),
+        assert_eq!(join(Some("code-review"), ["固定指示", "", "本次任务", ""]),
             "/skill:code-review 固定指示\n\n本次任务");
     }
 }

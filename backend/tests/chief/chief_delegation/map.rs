@@ -39,7 +39,7 @@ async fn map_sender_is_saved_before_input_and_internal_node_keeps_workflow_gates
     let blocked = post(&f.server, "/api/workflow/manager/dispatch", manager.clone()).await;
     assert_eq!(blocked["snapshot"]["nodes"]["review"]["status"], "pending");
     assert_eq!(blocked["results"][0]["status"], "rejected");
-    post(&f.server, "/api/workflow/manager/prepare_inputs", json!({"sessionId":"flow-manager","fileInputs":started["run"]["fileInputs"],"confirmed":true,"reason":"Explicit independent review of brief binding"})).await;
+    post(&f.server, "/api/workflow/manager/prepare_inputs", json!({"sessionId":"flow-manager","fileInputs":started["run"]["mapInput"]["files"],"confirmed":true,"reason":"Explicit independent review of brief binding"})).await;
     f.identity("internal-reviewer");
     fs::write(f.root.path().join("internal-reviewer.jsonl"), json!({"type":"session","version":3,"id":"internal-reviewer","timestamp":"2026-11-12T00:00:00.000Z","cwd":f.root.path().join("materials")}).to_string()+"\n").unwrap();
     let mut behavior: Value = serde_json::from_slice(&fs::read(f.herdr.path().join("behavior.json")).unwrap()).unwrap();
@@ -75,7 +75,14 @@ async fn map_startup_failure_retains_run_provenance_and_real_submission_outcome(
             f.herdr.set_behavior(behavior);
         }
         let before = f.herdr.calls().len();
+        let submitted = || common::read_json_lines(&f.herdr.path().join("submitted.jsonl"));
+        let count = submitted().len();
         let started = body(post_json_over_tcp(f.server.addr(), "/api/chief/delegations", &json!({"sessionId":"chief-a","previewId":preview["previewId"]}).to_string()).await, 500);
+        let after = submitted();
+        assert_eq!(after.len() - count, usize::from(fault == "invalid_prompt_response"));
+        if fault == "invalid_prompt_response" {
+            assert_eq!(after.last().unwrap()["text"], preview["facts"]["prompt"]);
+        }
         let record = body(get_over_tcp(f.server.addr(), &format!("/api/chief/delegations/{}", preview["previewId"].as_str().unwrap())).await, 200);
         assert_eq!(record["runId"], preview["previewId"]);
         if fault != "run-initialize" { assert_eq!(record["runId"], started["id"]); }
@@ -96,14 +103,14 @@ async fn map_startup_failure_retains_run_provenance_and_real_submission_outcome(
 }
 
 #[tokio::test]
-async fn map_preview_requires_explicit_manager_and_all_required_named_materials() {
+async fn map_accepts_missing_required_materials_but_rejects_invalid_supplied_materials() {
     let (f, _, request) = map_fixture().await;
     let before = f.herdr.calls().len();
-    for missing in ["manager", "required-file", "wrong-manager-role", "undeclared-file"] {
+    for missing in ["manager", "wrong-manager-role", "undeclared-file", "unreadable-file"] {
         let mut input = request.clone();
         match missing {
             "manager" => { input.as_object_mut().unwrap().remove("managerTaskId"); }
-            "required-file" => input["materials"] = json!([]),
+            "unreadable-file" => input["materials"][0]["path"] = json!("missing-input.txt"),
             "wrong-manager-role" => input["managerTaskId"] = f.worker["id"].clone(),
             _ => input["materials"][0]["id"] = json!("not-declared"),
         }
@@ -111,6 +118,15 @@ async fn map_preview_requires_explicit_manager_and_all_required_named_materials(
         assert!(response.status >= 400, "{missing}: {}", response.body);
         assert_eq!(f.herdr.calls().len(), before);
     }
+    let mut incomplete = request.clone();
+    incomplete["materials"] = json!([]);
+    let preview = post(&f.server, "/api/chief/delegations/preview", incomplete).await;
+    assert_eq!(f.herdr.calls().len(), before);
+    let started = body(post_json_over_tcp(f.server.addr(), "/api/chief/delegations", &json!({"sessionId":"chief-a","previewId":preview["previewId"]}).to_string()).await, 201);
+    assert_eq!(started["run"]["mapInput"], json!({"runInput":request["input"],"files":[]}));
+    assert_eq!(started["run"]["inputsReady"], false);
+    assert_eq!(started["run"]["manager"]["sessionId"], "flow-manager");
+    assert_eq!(started["run"]["nodes"]["review"]["status"], "pending");
 }
 
 pub(super) async fn map_fixture() -> (Fixture, Value, Value) {
@@ -147,14 +163,14 @@ async fn map_bot_starts_real_root_run_and_preserves_explicit_manager_and_node_zo
     assert_eq!(run["map"], "flow.json");
     assert_eq!(run["managerTaskId"], manager["id"]);
     assert_eq!(run["managerZoneId"], "work-zone");
-    assert_eq!(run["userInput"], request["input"]);
+    assert_eq!(run["mapInput"]["runInput"], request["input"]);
     assert!(run.get("parent").is_none(), "chief is not a parent node: {run}");
     assert_eq!(run["manager"]["sessionId"], "flow-manager");
     assert_eq!(run["inputsReady"], false, "launch cannot approve workflow inputs");
     assert_eq!(run["nodes"]["review"]["status"], "pending");
     assert!(common::same_path(std::path::Path::new(run["zoneBindings"]["review-zone"].as_str().unwrap()), &f.root.path().join("materials")));
-    assert_eq!(run["fileInputs"][0]["id"], "brief");
-    assert!(common::same_path(std::path::Path::new(run["fileInputs"][0]["path"].as_str().unwrap()), &f.root.path().join("materials/brief.txt")));
+    assert_eq!(run["mapInput"]["files"][0]["id"], "brief");
+    assert!(common::same_path(std::path::Path::new(run["mapInput"]["files"][0]["path"].as_str().unwrap()), &f.root.path().join("materials/brief.txt")));
     let record = body(get_over_tcp(f.server.addr(), &format!("/api/chief/delegations/{}", preview["previewId"].as_str().unwrap())).await, 200);
     assert_eq!(record["runId"], run["id"]);
     assert_eq!(record["creation"]["stage"], "succeeded");
@@ -165,6 +181,11 @@ async fn map_bot_starts_real_root_run_and_preserves_explicit_manager_and_node_zo
     assert_eq!(sender["delegations"], json!([record]));
     let submitted = common::read_json_lines(&f.herdr.path().join("submitted.jsonl"));
     assert_eq!(submitted.last().unwrap()["text"], preview["facts"]["prompt"], "only the complete approved payload may be submitted");
+    let text = submitted.last().unwrap()["text"].as_str().unwrap();
+    assert!(text.contains("你负责本次 Run 的输入准备、节点编排、通用交接判断与流程收束"));
+    assert!(text.contains("本次工作由 chief 委派。按提供的业务要求完成工作，并向当前 chief 交接实际结果"));
+    assert!(text.contains("brief: ") && text.contains("brief.txt"));
+    assert!(!text.contains("Independent flow") && !text.contains("Supply brief"));
     let detail = body(get_over_tcp(f.server.addr(), &format!("/api/workflow/runs/{}", run["id"].as_str().unwrap())).await, 200);
     assert_eq!(detail["run"], *run);
 }

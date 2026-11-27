@@ -115,7 +115,7 @@ impl Scenario {
             self.prepared_fixtures.lock().unwrap().insert(identity.to_owned());
             return Some(status["snapshot"].clone());
         }
-        let response = post_json_over_tcp(self.server.addr(), "/api/workflow/manager/prepare_inputs", &json!({"sessionId":identity,"fileInputs":status["snapshot"]["fileInputs"],"confirmed":true,"reason":"Fixture bindings reviewed against this scenario's requirements"}).to_string()).await;
+        let response = post_json_over_tcp(self.server.addr(), "/api/workflow/manager/prepare_inputs", &json!({"sessionId":identity,"fileInputs":status["snapshot"]["mapInput"]["files"],"confirmed":true,"reason":"Fixture bindings reviewed against this scenario's requirements"}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         let snapshot = serde_json::from_str::<Value>(&response.body).unwrap()["snapshot"].clone();
         self.prepared_fixtures.lock().unwrap().insert(identity.to_owned());
