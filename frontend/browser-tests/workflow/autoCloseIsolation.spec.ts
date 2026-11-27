@@ -28,7 +28,7 @@ async function scenario(page: Page) {
   const bots = path.join(host.cwd, 'meta-data/bots')
   const maps = path.join(host.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(bots, { recursive: true }); fs.mkdirSync(maps, { recursive: true })
-  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: 'Worker', when: '', plan_guide: '', node_guide: '', task_id: tasks.normal }))
+  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: 'Worker', when: '', description: '', input_rule: '', output_rule: '', task_id: tasks.normal }))
   fs.writeFileSync(path.join(maps, 'isolation.json'), JSON.stringify({ title: '关闭隔离验收', description: '', nodes: {
     A: { title: '交接工作', bot_id: 'worker', zone: 'test/zone', input: '', output_rule: [], blocked_by: [], auto_close: true },
     B: { title: '后续工作', bot_id: 'worker', zone: 'test/zone', input: '', blocked_by: ['A'] },
@@ -108,7 +108,8 @@ async function observeUnchangedBusiness(page: Page, s: CleanupScenario, result: 
   const completion = result.snapshot.nodes.A.completion
   expect(completion.reason).toBe('已核实交接结果')
   expect(Object.keys(completion).sort()).toEqual(['actor', 'at', 'id', 'reason'])
-  expect(Object.keys(result.snapshot).sort()).toEqual(['createdAt', 'fileInputs', 'inputsReady', 'finished', 'id', 'manager', 'managerTaskId', 'map', 'name', 'naming', 'nodes', 'status', 'userInput', 'workspaceName', 'zone', 'managerZoneId', 'zoneBindings'].sort())
+  expect(Object.keys(result.snapshot).sort()).toEqual(['createdAt', 'inputsReady', 'finished', 'id', 'manager', 'managerTaskId', 'map', 'mapInput', 'name', 'naming', 'nodes', 'status', 'workspaceName', 'zone', 'managerZoneId', 'zoneBindings'].sort())
+  expect(result.snapshot).toMatchObject({ mapInput: { runInput: '验收关闭隔离', files: [] } })
   expect(Object.keys(result.snapshot.nodes.A).sort()).toEqual(['completion', 'execution', 'failure', 'previousExecutions', 'status'])
   // No successful cleanup field; a failure is separate from completion.
   const expected = { ...s.before, nodes: { ...s.before.nodes, A: { ...s.before.nodes.A, status: 'completed', completion,

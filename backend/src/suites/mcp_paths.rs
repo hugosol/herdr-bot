@@ -2,17 +2,13 @@
 //! lookups; argv, environment and URLs retain their native literal semantics.
 use std::path::Path;
 use crate::paths::Roots;
-use super::Suites;
 
-impl Suites {
-    pub(super) fn resolve_mcp_paths(&self, config: &mut serde_json::Value, roots: &Roots) -> Result<(), String> {
-        let base = self.mcp_file.parent().unwrap_or(Path::new("."));
-        resolve_command(config, roots, base)?;
-        if let Some(value) = config.get("cwd").and_then(serde_json::Value::as_str) {
-            config["cwd"] = resolve_path(value, roots, base)?;
-        }
-        Ok(())
+pub(super) fn resolve_command_and_cwd(config: &mut serde_json::Value, roots: &Roots, base: &Path) -> Result<(), String> {
+    resolve_command(config, roots, base)?;
+    if let Some(value) = config.get("cwd").and_then(serde_json::Value::as_str) {
+        config["cwd"] = resolve_path(value, roots, base)?;
     }
+    Ok(())
 }
 
 pub(super) fn resolve_command(config: &mut serde_json::Value, roots: &Roots, base: &Path) -> Result<(), String> {

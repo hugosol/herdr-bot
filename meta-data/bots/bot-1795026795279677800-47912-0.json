@@ -1,9 +1,10 @@
 {
-  "id": "bot-map-create-task-v2",
   "group": "meta-bot",
+  "id": "bot-map-create-task-v2",
   "name": "创建task-V2",
-  "when": "需要新建可复用的 normal Task，并创建绑定它的完整 Bot，同时大幅简化创建流程时使用。",
-  "plan_guide": "在待创建能力适合由单个 Chat 承担时使用；需要多个独立执行者协作交接的业务，选择“创建map”。\n\n输入为待创建能力的业务需求、约束、权限及可选参考材料。安排可用的 manager 类型 Task 与 manager zone，并预留用户确认业务取舍、完整候选及保存授权的环节；沿用已有有效确认。\n\n交付已保存并完整读回的 normal Task、绑定它的完整 Bot，以及确认依据、保存检查和未验证项。文件成果为独立的 saved／handoff，供调用方验收。\n\nV2 简化创建流程，不减少完整交付及必要确认。交付仅限配置，不包含生成能力的业务试运行。",
-  "node_guide": "填写待创建能力的业务目标、职责、输入输出、验收、非目标、允许操作、数据访问权限、资源限制和执行配置偏好。有指定要求时，提供 Task／Bot 命名、agent、模型、初始 Skill 或 Suite；说明须保留的独立 Chat、共享及下游用途，并附已有确认及其范围。\n\n准备输入时，读取 `${herdr-bot-api-url}/api/scheduler/maps/create-task-v2.json` 的 input_requirements 与 input_files。参考材料通过可选 materials 提供，说明内容、格式、用途及读取授权；缺席合法，已提供却不可读时须补齐。根接口不要求调用方预制 V2 request，该委托由 Task 创建阶段以真实新 Task ID 形成。\n\n分别明确 Task 创建、Bot 创建、必要 Task.prompt 保义优化及材料写入的委托与授权范围。未知正文在对应阶段形成完整候选后确认；缺失业务选择或授权由用户或指定交接方补齐，不作为默认授权。\n\n直接发起本 Map 时，通过本次要求及命名文件绑定提供材料；作为父 Map 节点调用时，以 input_rule 传入实际 materials，并在 output_rule 声明 saved／handoff。manager_task_id、zone、依赖和成果批准模式使用各自结构化字段；业务 input 说明本次委托、材料用途、权限及额外验收，不依赖其他 Chat 历史或指南自动注入。\n\n有正式交付位置、命名、格式、额外成果或验收要求时一并提供，并明确材料写入范围。最终配置与交接采用 `${herdr-bot-path}/docs/contracts/create-bot-v2-materials.md`「saved 与 handoff」规定的两个独立 JSON；完整配置只放 saved，handoff 不复制正文或承担隐式寻址。本次委托仅创建配置，不包含业务试运行、安装、写凭据、扩权或补建能力。",
+  "when": "需要新建可复用的 normal Task 并创建绑定它的完整 Bot，且目标业务适合一个 Chat 时选用。",
+  "description": "## 能力职责\n创建可独立使用的 normal Task，并为其创建能力索引 Bot。\n\n## 能力边界\n仅交付配置，不运行生成能力；需要多人协作交接的业务使用 Map。\n\n## 用户参与\n用户确认需求取舍、完整候选与具体保存范围。",
+  "input_rule": "能力需求、资源与权限、预期交付；可附参考材料、命名及执行配置偏好。",
+  "output_rule": "已保存的 normal Task、绑定它的 Bot，以及两者的身份文件；不代表目标业务已运行验证。",
   "map_file": "create-task-v2.json"
 }

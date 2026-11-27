@@ -127,7 +127,7 @@ impl Lifecycle {
             let task = saved["tasks"].as_array().unwrap().iter().find(|task|task["name"] == name).unwrap().clone();
             if name == "manager" { manager = task; } else { s.target = task; }
         }
-        s.post("/api/scheduler/bots/save", json!({"id":"creator","revision":null,"content":json!({"name":"Rust creator","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}).to_string()}), 200).await;
+        s.post("/api/scheduler/bots/save", json!({"id":"creator","revision":null,"content":json!({"name":"Rust creator","when":"","description":"","input_rule":"","output_rule":"","script":"create-blank-bot.ts"}).to_string()}), 200).await;
         let mut nodes = serde_json::Map::new();
         for (node, bot) in [("create", "first-result"), ("later", "second-result")] {
             let request = json!({"schema_version":1,"kind":"request","target":{"type":"task","task_id":s.target["id"]},"bot":{"id":bot,"name":bot},"requirements":"Create only an empty reusable Bot","constraints":["Do not run target"],"non_goals":["Business execution"],"resource_limits":[]});
@@ -187,7 +187,7 @@ impl Lifecycle {
         assert_eq!(report["runId"], self.run_id);
         assert_eq!(report["canComplete"], true);
         let edit = self.post("/api/scheduler/bots/edit", json!({"id":"first-result"}), 200).await;
-        let expected = json!({"id":"first-result","name":"first-result","when":"","plan_guide":"","node_guide":"","task_id":self.target["id"]});
+        let expected = json!({"id":"first-result","name":"first-result","when":"","description":"","input_rule":"","output_rule":"","task_id":self.target["id"]});
         assert_eq!(serde_json::from_str::<Value>(edit["revision"]["original"].as_str().unwrap()).unwrap(), expected);
         assert_eq!(report["outputs"].as_array().unwrap().len(), 2);
         for output in report["outputs"].as_array().unwrap() {
@@ -277,7 +277,7 @@ impl Drop for Lifecycle {
 #[tokio::test]
 async fn script_lifecycle_disconnect_and_pause_preserve_accepted_business_without_holding_run() {
     let s = Lifecycle::new().await;
-    let gate = super::history_integrity::file_gate::Gate::new(&s.root.path().join("tasks.json"));
+    let gate = crate::common::file_gate::Gate::new(&s.root.path().join("tasks.json"));
     let caller = common::OpenJsonRequest::submit(s.backend.addr, "/api/workflow/manager/dispatch", r#"{"sessionId":"script-lifecycle-manager","nodes":["create"]}"#).await;
     let observed = std::panic::AssertUnwindSafe(async {
         assert!(common::wait_until(Duration::from_secs(5), ||gate.reached()).await, "compiled business must reach held external task file");
@@ -341,7 +341,7 @@ async fn script_lifecycle_real_restart_preserves_finished_and_interrupted_facts_
     s.action("dispatch", json!({"nodes":["create"]}), 200).await;
     let finished = s.ended().await;
     s.assert_delivery(&finished, &finished["run"]["nodes"]["create"]["execution"]).await;
-    let gate = super::history_integrity::file_gate::Gate::new(&s.root.path().join("tasks.json"));
+    let gate = crate::common::file_gate::Gate::new(&s.root.path().join("tasks.json"));
     let interrupted = std::panic::AssertUnwindSafe(async {
         s.action("dispatch", json!({"nodes":["later"]}), 200).await;
         assert!(common::wait_until(Duration::from_secs(5), ||gate.reached()).await, "second compiled business must actually enter external file gate");

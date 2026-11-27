@@ -123,18 +123,34 @@ impl Launches {
     }
 
     async fn app_targets(&self, herdr: &HerdrClient, kind: &str, session_id: &str, location: Option<&super::NavigationTarget>) -> Result<Vec<Arc<LaunchTarget>>, HerdrError> {
-        let candidates = self.pending.lock().unwrap().values().filter_map(|pending| {
+        let candidates = self.pending.lock().unwrap().iter().filter_map(|(id, pending)| {
             let state = pending.state.borrow();
             let owner = state.owner.as_ref()?;
             let target = state.target.as_ref()?;
             (pending.kind == kind && state.retained && !state.closed && owner.session_id == session_id
                 && location.is_none_or(|location| target.location == *location)
-                && target.is_app()).then(|| (pending.clone(), owner.clone(), target.clone()))
+                && target.is_app()).then(|| (id.clone(), pending.clone(), owner.clone(), target.clone()))
         }).collect::<Vec<_>>();
         let mut found = Vec::with_capacity(candidates.len());
-        for (pending, owner, target) in candidates {
-            target.verify(herdr, kind, &owner.cwd, owner.pid, session_id, owner.session_file.as_deref()).await?;
-            if !pending.state.borrow().closed { found.push(target); }
+        for (id, pending, owner, target) in candidates {
+            match target.verify(herdr, kind, &owner.cwd, owner.pid, session_id, owner.session_file.as_deref()).await {
+                Ok(_) => {
+                    let state = pending.state.borrow();
+                    if state.retained && !state.closed { found.push(target); }
+                }
+                Err(LaunchVerificationError::Ended) => {
+                    pending.state.send_if_modified(|state| {
+                        if state.closed || !state.owner.as_ref().is_some_and(|current| current.same_session(&owner)) { return false; }
+                        state.closed = true;
+                        true
+                    });
+                    if !pending.state.borrow().closed {
+                        return Err(native_error("App owner changed during lookup"));
+                    }
+                    self.pending.lock().unwrap().remove(&id);
+                }
+                Err(error) => return Err(error.into()),
+            }
         }
         Ok(found)
     }
@@ -187,6 +203,7 @@ impl Launches {
             Ok(_) => (None, false),
             Err(LaunchVerificationError::OfficialIdentity(error)) => (Some(error), true),
             Err(LaunchVerificationError::ReportedIdentity(error)) => (Some(error), restore_identity),
+            Err(error @ LaunchVerificationError::Ended) => (Some(error.into()), false),
             Err(LaunchVerificationError::Unproven(error)) => (Some(error), false),
         };
         if let Some(error) = error {
@@ -204,6 +221,7 @@ impl Launches {
         pending.state.send_if_modified(|state| {
             if state.observes_replacement(&owner, phase) {
                 state.retry = Retry::OwnerChanged;
+                state.retained = false;
                 return true; // Notify the waiter without rebinding this launch.
             }
             if state.rejects(&owner) { return false; }
@@ -270,34 +288,43 @@ impl Launch {
     }
 
     pub(crate) async fn ready(&self, herdr: &HerdrClient) -> Result<NativeSession, HerdrError> {
-        self.wait_for(herdr, true).await
+        self.wait_for(herdr, true, |_| Ok(())).await
     }
 
-    pub(crate) async fn identity(&self, herdr: &HerdrClient) -> Result<NativeSession, HerdrError> {
-        self.wait_for(herdr, false).await
+    pub(crate) async fn identity<E: From<HerdrError>>(
+        &self, herdr: &HerdrClient, check: impl FnOnce(&NativeSession) -> Result<(), E>,
+    ) -> Result<NativeSession, E> {
+        self.wait_for(herdr, false, check).await
     }
 
-    pub(crate) fn retain_app_target(&self) {
-        self.pending.state.send_if_modified(|state| {
-            let retain = state.retry != Retry::OwnerChanged
-                && state.owner.as_ref().is_some_and(|owner| !owner.ended(state));
-            retain && !std::mem::replace(&mut state.retained, true)
-        });
-    }
-
-    async fn wait_for(&self, herdr: &HerdrClient, require_ready: bool) -> Result<NativeSession, HerdrError> {
+    async fn wait_for<E: From<HerdrError>>(
+        &self, herdr: &HerdrClient, require_ready: bool, check: impl FnOnce(&NativeSession) -> Result<(), E>,
+    ) -> Result<NativeSession, E> {
         let mut receiver = self.pending.state.subscribe();
         let (owner, target) = {
             let state = tokio::time::timeout(READY_TIMEOUT, receiver.wait_for(|state| {
                 state.identity_failure.is_some() || state.owner.as_ref().is_some_and(|owner| owner.ended(state) || state.identity && (!require_ready || state.ready))
             })).await.map_err(|_| HerdrError::Timeout("framework ready"))?
                 .map_err(|_| native_error("launch evidence no longer available"))?;
-            if let Some(error) = &state.identity_failure { return Err(error.clone()); }
+            if let Some(error) = &state.identity_failure { return Err(error.clone().into()); }
             let owner = state.owner.as_ref().unwrap();
-            if owner.ended(&state) { return Err(native_error("launch owner ended before input")); }
+            if owner.ended(&state) { return Err(native_error("launch owner ended before input").into()); }
             (owner.clone(), state.target.clone().unwrap())
         };
-        self.verify(herdr, &target, &owner).await
+        let native = self.verify(herdr, &target, &owner).await?;
+        check(&native)?;
+        // Retain a verified App owner independently of later persistence and
+        // input. A restore must first match the selected historical identity.
+        if target.is_app() {
+            self.pending.state.send_if_modified(|state| {
+                if state.closed || state.retained || state.retry == Retry::OwnerChanged || owner.ended(state) {
+                    return false;
+                }
+                state.retained = true;
+                true
+            });
+        }
+        Ok(native)
     }
 
     /// Submit to the verified launch; only a pre-write block permits another attempt.

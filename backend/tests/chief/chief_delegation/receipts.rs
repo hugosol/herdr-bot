@@ -8,9 +8,18 @@ use super::reports::{content, delegated, notification_behavior, prompts};
 #[tokio::test]
 async fn manual_resend_keeps_original_report_and_stops_notifying_after_receipt() {
     let f = Fixture::new().await;
-    delegated(&f).await;
+    let mut request = f.request();
+    request["outputRule"] = json!([{"id":"m-904"}]);
+    let preview = post(&f.server, "/api/chief/delegations/preview", request).await;
+    super::reports::launch(&f, preview).await;
+    let artifact = f.root.path().join("work/submitted-analysis.txt");
+    let bytes = b"Actual retained analysis, not inferable from m-904\r\n";
+    fs::write(&artifact, bytes).unwrap();
+    let mut expected = content("blocked");
+    expected["outputs"] = json!([{"id":"m-904","path":artifact}]);
     notification_behavior(&f, json!({"fail_prompt":true}));
-    let saved = post(&f.server, "/api/chief/reports", json!({"sessionId":"worker-a","body":content("blocked")})).await;
+    let saved = post(&f.server, "/api/chief/reports", json!({"sessionId":"worker-a","body":expected})).await;
+    assert_eq!(saved["report"]["body"], expected);
     assert_eq!(saved["notification"]["status"], "failed");
     let id = saved["report"]["id"].as_str().unwrap();
     let path = format!("/api/chief/reports/{id}/resend");
@@ -35,8 +44,8 @@ async fn manual_resend_keeps_original_report_and_stops_notifying_after_receipt()
     assert_eq!(absent["notification"]["status"], "not-attempted");
     assert_eq!(prompts(&f), before);
     replacement_chief(&f, "chief-b").await;
-    // Both original and current chief still have external processes. Manual
-    // resend must choose the authoritative replacement, not the delegator.
+    // P28: only the replacement is in the host inventory. It can read an
+    // unfamiliar saved report and its file before any delivery or receipt.
     let starts = common::read_json_lines(&f.herdr.path().join("started.jsonl"));
     let mut original = starts[0].clone();
     let mut current = starts.last().unwrap().clone();
@@ -46,8 +55,20 @@ async fn manual_resend_keeps_original_report_and_stops_notifying_after_receipt()
     }
     let target = current["pane_id"].clone();
     assert_ne!(target, original["pane_id"]);
-    f.herdr.set_behavior(json!({"agents":[original,current]}));
+    f.herdr.set_behavior(json!({"agents":[current]}));
     let before_resend = prompts(&f);
+    let view = format!("/api/chief/reports/{id}/view");
+    for session in ["chief-a", "worker-a"] {
+        let denied = body(post_json_over_tcp(f.server.addr(), &view, &json!({"sessionId":session}).to_string()).await, 409);
+        assert_eq!(denied["code"], "chief-not-current");
+    }
+    let recovered = post(&f.server, &view, json!({"sessionId":"chief-b"})).await;
+    assert_eq!(recovered["report"], saved["report"]);
+    assert_eq!(recovered["process"], false);
+    assert_eq!(recovered["received"], false);
+    let path_from_report = recovered["report"]["body"]["outputs"][0]["path"].as_str().unwrap();
+    assert_eq!(fs::read(path_from_report).unwrap(), bytes);
+    assert_eq!(prompts(&f), before_resend, "explicit read does not notify or resend");
     let resent = post(&f.server, &path, json!({"sessionId":"worker-a"})).await;
     assert_eq!(resent["report"], saved["report"]);
     assert_eq!(resent["notification"]["status"], "submitted");

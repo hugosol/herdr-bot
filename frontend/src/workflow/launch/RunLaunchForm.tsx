@@ -26,7 +26,7 @@ export function RunLaunchForm({ file, declarations = [], requirements = '', acti
   const [input, setInput] = useState<RunPreflightInput>(() => ({
     managerTaskId: '', zone: '', userInput: '',
     ...(file === 'github-repository-exploration.json' && {
-      githubExploration: { githubUrl: '', parentDirectory: '', explorationDirection: '' },
+      githubExploration: { githubUrl: '', parentDirectory: '' },
     }),
   }))
   const [loading, setLoading] = useState(true)
@@ -60,8 +60,18 @@ export function RunLaunchForm({ file, declarations = [], requirements = '', acti
     setError(null)
   }
 
+  function githubFieldsValid() {
+    const fields = input.githubExploration
+    if (!fields) return true
+    const missing = !fields.githubUrl.trim() ? 'github_url' : !fields.parentDirectory.trim() ? 'parent_directory' : null
+    if (!missing) return true
+    setError(missing === 'github_url' ? '请填写 GitHub 仓库链接。' : '请填写克隆父目录。')
+    document.getElementById(`run-file-input-${missing}`)?.focus()
+    return false
+  }
+
   async function check() {
-    if (busy || loading) return
+    if (busy || loading || !githubFieldsValid()) return
     setBusy(true)
     setError(null)
     setResult(null)
@@ -71,7 +81,7 @@ export function RunLaunchForm({ file, declarations = [], requirements = '', acti
   }
 
   async function launch() {
-    if (busy || loading) return
+    if (busy || loading || !githubFieldsValid()) return
     setBusy(true)
     setError(null)
     setResult(null)
@@ -102,7 +112,7 @@ export function RunLaunchForm({ file, declarations = [], requirements = '', acti
   }
 
   const workspaceName = zones.find(zone => zone.id === input.zone)?.path.replace(/[\\/]+$/, '').split(/[\\/]/).at(-1) ?? ''
-  return <form className="scheduler-run-form" aria-label="发起 Run" onSubmit={event => { event.preventDefault(); void check() }}>
+  return <form className="scheduler-run-form" aria-label="发起 Run" noValidate={input.githubExploration !== undefined} onSubmit={event => { event.preventDefault(); void check() }}>
     <h3>发起 Run · {file}</h3>
     <p>选择管理者配置并检查整张 Map。校验不创建 Run 或 Chat；启动 Run 会再次预检，保存本次要求并启动真实管理者，取得标识后进入只读详情。</p>
     <label>管理者 Task<select aria-label="管理者 Task" value={input.managerTaskId} disabled={loading || busy} onChange={event => change({ managerTaskId: event.target.value })}>
@@ -119,12 +129,12 @@ export function RunLaunchForm({ file, declarations = [], requirements = '', acti
     <p>Workspace 从管理者 zone 目录名推导；不选择当前或默认 Workspace。实际目标可用性在启动时确认。</p>
     {input.githubExploration ? <>
       <div className="scheduler-github-fields">
-        <label>GitHub 仓库链接<input id="run-file-input-github_url" value={input.githubExploration.githubUrl} disabled={busy} onChange={event => change({ githubExploration: { ...input.githubExploration!, githubUrl: event.target.value } })} placeholder="例如 https://github.com/owner/repo" /></label>
-        <label>克隆父目录<input id="run-file-input-parent_directory" value={input.githubExploration.parentDirectory} disabled={busy} onChange={event => change({ githubExploration: { ...input.githubExploration!, parentDirectory: event.target.value } })} placeholder={'服务器已有目录，例如 D:\\repos'} /></label>
-        <label>探索方向<textarea rows={2} value={input.githubExploration.explorationDirection} disabled={busy} onChange={event => change({ githubExploration: { ...input.githubExploration!, explorationDirection: event.target.value } })} placeholder="用一句话说明想了解什么，例如：梳理 CLI 入口" /></label>
+        <label>GitHub 仓库链接<input id="run-file-input-github_url" required value={input.githubExploration.githubUrl} disabled={busy} onChange={event => change({ githubExploration: { ...input.githubExploration!, githubUrl: event.target.value } })} placeholder="例如 https://github.com/owner/repo" /></label>
+        <label>克隆父目录<input id="run-file-input-parent_directory" required value={input.githubExploration.parentDirectory} disabled={busy} onChange={event => change({ githubExploration: { ...input.githubExploration!, parentDirectory: event.target.value } })} placeholder={'服务器已有目录，例如 D:\\repos'} /></label>
       </div>
-      <p>链接和父目录请一起填写，或一起留空。探索方向可单独填写。留空项可在管理者 Chat 补充。</p>
-    </> : <label>本次要求<textarea value={input.userInput} disabled={busy} onChange={event => change({ userInput: event.target.value })} placeholder="可空，支持 Markdown；不改写 node 输入或 Task 固定指示。" /></label>}
+      <p>GitHub 仓库链接和克隆父目录均为必填项。</p>
+    </> : null}
+    <label>本次要求<textarea value={input.userInput} disabled={busy} onChange={event => change({ userInput: event.target.value })} placeholder="可空，支持 Markdown；不改写 node 输入或 Task 固定指示。" /></label>
     {requirements.trim() && <MapInputRequirements content={requirements} />}
     {!input.githubExploration && <fieldset disabled={busy} aria-label="Run 文件输入绑定"><legend>本次文件输入</legend>
       {declarations.length === 0 && <p>此 Map 无文件输入声明，无需绑定文件。</p>}

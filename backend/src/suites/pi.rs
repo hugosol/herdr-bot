@@ -1,8 +1,8 @@
 //! Launch-local Pi configuration, consumed by the fixed public pi-suite factory.
 //! This never redirects the native agent directory or writes project/user state.
-use std::{collections::BTreeMap, path::Path};
+use std::path::Path;
 use crate::{paths::Roots, tasks::TaskError};
-use super::{Codemode, Suites};
+use super::{Codemode, ResourceKind, Suites};
 
 fn builtin_args(additional: usize) -> Vec<String> {
     // --no-extensions disables builtins too; keep native MCP and tool search.
@@ -31,13 +31,7 @@ impl Suites {
             super::extensions::check_available(&path).map_err(|error| fail(error))?;
             args.extend(["--prompt-template".into(), path.to_string_lossy().into_owned()]);
         }
-        let catalog = self.mcp_catalog().map_err(|error| fail(error.message))?;
-        let mut servers = BTreeMap::new();
-        for id in mcp {
-            let mut config = catalog.get(id).ok_or_else(|| fail(format!("集中 MCP 引用失效：{id}")))?.clone();
-            self.resolve_mcp_paths(&mut config, roots).map_err(|error| fail(format!("MCP「{id}」：{error}")))?;
-            servers.insert(id, config);
-        }
+        let servers = self.native_configs(id, ResourceKind::Mcp, mcp, roots)?;
         let config = serde_json::json!({"version": 1, "codemode": mode, "mcpServers": servers});
         let bytes = serde_json::to_vec_pretty(&config).map_err(|error| fail(error.to_string()))?;
         Ok((args, bytes))

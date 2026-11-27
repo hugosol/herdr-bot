@@ -5,6 +5,8 @@
 
 将用于发起 Chat 的可复用预设由 **Bot** 全量更名为 **Task**，以 Task 作为该概念的唯一现行名称。本决策取代 [ADR 0011](0011-bot-chat-terminology.md) 中的预设命名及对应契约名称，不改变其概念定义、Chat 含义或任何执行规则：同一个 Task 可以多次发起 Chat；恢复历史 Chat 不重新执行发起配置，需要新进程时仍读取来源 Task 的最新环境配置。Task 不是一次执行，也不引入任务生命周期或配置快照。
 
+> 后续 [ADR 0013](0013-rename-node-template-to-bot.md) 将下文的 `node_template` 更名为 Bot。当前存储路径见[定义数据与运行数据](../usage.md#定义数据与运行数据)。
+
 ## 切换边界
 
 表达预设概念的界面、代码符号与文件名、API、配置、持久化字段、命名占位符、相关工具和当前文档同步更名。例如 `/api/bots` 改为 `/api/tasks`，`botId` 与 `sourceBotId` 改为 `taskId` 与 `sourceTaskId`，`[bots]` 改为 `[tasks]`，默认存储 `bots.json` 改为 `tasks.json`，`{bot.name}` 改为 `{task.name}`。采用一次性硬切换，不保留运行时旧路由、字段、配置或占位符别名，避免同时维护两套领域契约；前后端与相关工具必须一起升级。

@@ -18,7 +18,7 @@ async fn save(s: &Scenario, draft: &Value, inputs: Value) -> common::HttpRespons
 #[tokio::test]
 async fn named_inputs_round_trip_without_dependencies_or_implicit_launch() {
     let s = Scenario::new().await;
-    let inputs = json!([{"id":"manager_file","type":"file","path":"handoff/not-created.csv"}, {"id":"node_file","type":"file","path":"external/result.txt","zone_id":"node"}, {"id":"unregistered_file","type":"file","path":"brief.md","zone_id":"unregistered"}, {"id":"summary","type":"node","node_id":"B","output_id":"review"}]);
+    let inputs = json!([{"id":"manager_file","type":"file","path":"handoff/not-created.csv"}, {"id":"node_file","type":"file","path":"external/result.txt","zone_id":"node"}, {"id":"unregistered_file","type":"file","path":"brief.md","zone_id":"unregistered"}, {"id":"summary","type":"node","source_node_ref":"B","node_output_ref":"review"}]);
     let response = save(&s, &draft(&s).await, inputs.clone()).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let read = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json").await;
@@ -39,7 +39,7 @@ async fn invalid_named_inputs_preserve_original_map() {
     let original = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json").await.body;
     let draft = draft(&s).await;
     for inputs in [
-        json!([{"id":"brief","type":"node","node_id":"typo","output_id":"review"}]),
+        json!([{"id":"brief","type":"node","source_node_ref":"typo","node_output_ref":"review"}]),
         json!([{"id":"brief","type":"file","path":"../brief.md"}]),
         json!([{"id":"brief","type":"file","path":"C:/absolute/brief.md"}]),
         json!([{"id":"brief","type":"file","path":"/absolute/brief.md"}]),
@@ -49,18 +49,18 @@ async fn invalid_named_inputs_preserve_original_map() {
         json!([{"id":"brief","type":"file","path":"\\brief.md"}]),
         json!({"brief":{"source":"file","path":"C:\\brief\u{0}.md"}}),
         json!([{"id":"brief","type":"file","path":12}]),
-        json!([{"id":"brief","type":"node","node_id":false,"output_id":"review"}]),
-        json!([{"id":"brief","type":"node","node_id":"B","output_id":[]}]),
-        json!([{"id":"brief","type":"file","path":"C:\\brief.md","node_id":"B","output_id":"review"}]),
+        json!([{"id":"brief","type":"node","source_node_ref":false,"node_output_ref":"review"}]),
+        json!([{"id":"brief","type":"node","source_node_ref":"B","node_output_ref":[]}]),
+        json!([{"id":"brief","type":"file","path":"brief.md","source_node_ref":"B","node_output_ref":"review"}]),
         json!({"brief":{"path":"C:\\brief.md"}}),
         json!([{"id":"brief","type":"FILE","path":"C:\\brief.md"}]),
         json!([{"id":"brief","type":false,"path":"C:\\brief.md"}]),
-        json!([{"id":"brief","type":"node","node_id":"B"}]),
+        json!([{"id":"brief","type":"node","source_node_ref":"B"}]),
         json!({"brief":["file","C:\\brief.md"]}),
         json!({"brief":null}), Value::Null,
         json!([{"id":"","type":"file","path":"brief.md"}]),
         json!([{"id":"brief","type":"file","path":"one"},{"id":"brief","type":"file","path":"two"}]),
-        json!([{"id":"brief","type":"node","node_id":"B","output_id":"undeclared"}]),
+        json!([{"id":"brief","type":"node","source_node_ref":"B","node_output_ref":"undeclared"}]),
     ] {
         let response = save(&s, &draft, inputs.clone()).await;
         assert_eq!(response.status, 500, "candidate={inputs} response={}", response.body);
@@ -101,7 +101,7 @@ async fn omitted_rules_default_to_empty_arrays_and_dispatch() {
 #[tokio::test]
 async fn output_rule_ids_and_referenced_declarations_are_validated_atomically() {
     let s = Scenario::new().await;
-    let saved = save(&s, &draft(&s).await, json!([{"id":"brief","type":"node","node_id":"B","output_id":"review"}])).await;
+    let saved = save(&s, &draft(&s).await, json!([{"id":"brief","type":"node","source_node_ref":"B","node_output_ref":"review"}])).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/edit", &json!({"id":"B"}).to_string()).await;
     assert_eq!(response.status, 200, "{}", response.body);
@@ -129,7 +129,7 @@ async fn output_rule_ids_and_referenced_declarations_are_validated_atomically() 
 #[tokio::test]
 async fn deleting_a_named_input_source_is_rejected_without_cascading() {
     let s = Scenario::new().await;
-    let saved = save(&s, &draft(&s).await, json!([{"id":"brief","type":"node","node_id":"C","output_id":"summary"}])).await;
+    let saved = save(&s, &draft(&s).await, json!([{"id":"brief","type":"node","source_node_ref":"C","node_output_ref":"summary"}])).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let current = draft(&s).await;
     let checked = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/check-delete", &json!({"id":"C"}).to_string()).await;
@@ -152,12 +152,26 @@ async fn dispatch_receives_background_direct_addresses_and_run_scoped_material_l
     let remote = s.data.path().join("node-zone").join("remote.txt");
     fs::write(&remote, "REMOTE-FILE-SENSITIVE").unwrap();
     let inputs = json!([{"id":"brief","type":"file","path":"private-source.txt"}, {"id":"remote","type":"file","path":"remote.txt","zone_id":"node"}]);
-    let response = save(&s, &draft(&s).await, inputs).await;
+    let rules = s.data.path().join("delivery-rules.md");
+    fs::write(&rules, "BUSINESS-RULES-BODY-4935").unwrap();
+    fs::write(&s.config.prompts_file, format!("business_rules = '{}'\n", rules.display())).unwrap();
+    let mut editor = draft(&s).await;
+    editor["content"]["input"] = json!("NODE-INPUT\n第二行\n交付本阶段成果前，读取 ${business_rules}，核对本节点成果是否满足交接条件。");
+    let response = save(&s, &editor, inputs).await;
     assert_eq!(response.status, 200, "{}", response.body);
+    let map_path = s.config.scheduler.map_directory.join("work.json");
+    let definition = fs::read(&map_path).unwrap();
     let first = s.start("named-manager-first").await;
     let second = s.start("named-manager-second").await;
     assert_ne!(first["id"], second["id"]);
-    assert_eq!(s.herdr.calls().iter().filter(|c| c["kind"] == "agent_prompt").count(), 2, "Run creation launches only managers");
+    let submitted = || common::read_json_lines(&s.herdr.path().join("submitted.jsonl"));
+    let managers = submitted();
+    assert_eq!(managers.len(), 2, "Run creation launches only managers");
+    for submission in managers {
+        let text = submission["text"].as_str().unwrap();
+        assert!(text.contains("业务执行和成果检查由节点承担"));
+        assert!(!text.contains("delivery-rules.md") && !text.contains("BUSINESS-RULES-BODY-4935") && !text.contains("MAP-SECRET"));
+    }
     let upstream_file = s.data.path().join("upstream.jsonl");
     fs::write(&upstream_file, format!("{}\n{}\n", json!({"type":"session","id":"named-upstream","cwd":s.data.path().join("node-zone")}), json!({"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"UPSTREAM-CHAT-SENSITIVE-7358"}]}}))).unwrap();
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"path","value":upstream_file},"native_cwd":s.data.path().join("node-zone")}));
@@ -166,19 +180,25 @@ async fn dispatch_receives_background_direct_addresses_and_run_scoped_material_l
         s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":identity},"native_cwd":s.data.path().join("node-zone")}));
         let result = s.dispatch(manager, &["A"]).await;
         assert_eq!(result["results"][0]["status"], "running");
-        let calls = s.herdr.calls();
-        let text = calls.iter().rev().find(|c| c["kind"] == "agent_prompt").unwrap()["text"].as_str().unwrap();
+        let submissions = submitted();
+        let text = submissions.last().unwrap()["text"].as_str().unwrap();
         let materials = s.data.path().join(".manager-zone").join(".workflow").join(started["id"].as_str().unwrap());
-        assert!(text.contains("MANAGER-USER-SECRET"), "Run background missing: {text}");
-        assert!(text.contains("NODE-INPUT\n第二行"), "business input missing: {text}");
+        assert!(text.starts_with("/skill:teach NODE-FIXED\n\n"), "implementation prompt/Skill missing: {text}");
+        assert!(text.contains("[Run background / runInput]\nMANAGER-USER-SECRET\n[/Run background / runInput]"), "Run background missing: {text}");
+        assert!(text.contains(&format!("[Business input]\nNODE-INPUT\n第二行\n交付本阶段成果前，读取 {}，核对本节点成果是否满足交接条件。", rules.display())), "condition and reference missing: {text}");
+        assert!(text.contains("[Output rules]\n[{\"id\":\"A\"},{\"id\":\"B\"},{\"id\":\"otherVolume\"},{\"id\":\"result\"},{\"id\":\"brief\"},{\"id\":\"shared\"}]\n[/Output rules]"));
         assert!(text.contains(file.to_str().unwrap()), "direct file address missing: {text}");
         assert!(text.contains(remote.to_str().unwrap()));
         assert!(text.contains(materials.to_str().unwrap()), "manager-zone Run materials location missing: {text}");
         assert!(!materials.starts_with(s.data.path().join("node-zone")));
-        for secret in ["FILE-BODY-SENSITIVE-9204", "UPSTREAM-CHAT-SENSITIVE-7358", "BOT-NODE-SECRET", "MAP-SECRET"] {
+        for secret in ["FILE-BODY-SENSITIVE-9204", "UPSTREAM-CHAT-SENSITIVE-7358", "BOT-WHEN-SECRET", "BOT-PLAN-SECRET", "BOT-NODE-SECRET", "BOT-OUTPUT-SECRET", "MAP-SECRET", "BUSINESS-RULES-BODY-4935"] {
             assert!(!text.contains(secret), "unexpected body injected: {secret}");
         }
         println!("P4/P24 dispatchRequest={} result={result} actualHostInput={text}", json!({"sessionId":manager,"nodes":["A"]}));
+    }
+    assert_eq!(fs::read(&map_path).unwrap(), definition);
+    for run in [&first, &second] {
+        assert_eq!(fs::read(s.config.scheduler.run_directory.join(run["id"].as_str().unwrap()).join("map.json")).unwrap(), definition);
     }
     assert!(!s.data.path().join(".manager-zone").join(".workflow").exists(), "location is guidance, not a directory/output preallocation protocol");
     assert_eq!(fs::read_to_string(file).unwrap(), "FILE-BODY-SENSITIVE-9204");

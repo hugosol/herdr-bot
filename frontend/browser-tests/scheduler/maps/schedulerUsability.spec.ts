@@ -88,7 +88,7 @@ for (const [size, width, height] of [['desktop', 1280, 900], ['narrow', 390, 844
     await expect(botID).toHaveAttribute('readonly', '')
     const weather = JSON.parse(await botJSON.inputValue())
     const editedGuide = '# 人工核对天气\n按当前 input 核对，保留 **原始文本**；不执行查询。'
-    await type(page, botJSON, JSON.stringify({ ...weather, plan_guide: '人工核对新版天气说明，不执行查询。', node_guide: editedGuide }, null, 2))
+    await type(page, botJSON, JSON.stringify({ ...weather, description: '人工核对新版天气说明，不执行查询。', input_rule: editedGuide }, null, 2))
     await activate(page, button('save'))
     await expect(preview).toContainText('人工核对新版天气说明，不执行查询。')
     await activate(page, page.getByTestId('tab-scheduler'))
@@ -159,7 +159,7 @@ for (const [size, width, height] of [['desktop', 1280, 900], ['narrow', 390, 844
     await activate(page, page.getByTestId('tab-bot'))
     await activate(page, button('new'))
     await type(page, botID, 'keyboard-bot')
-    const capability = { name: '键盘核对能力', when: '人工核对时。', plan_guide: '只作静态说明。', node_guide: JSON.stringify({ inputs: { city: '城市名称。' }, outputs: { summary: '说明文本。' } }) }
+    const capability = { name: '键盘核对能力', when: '人工核对时。', description: '只作静态说明。', input_rule: JSON.stringify({ inputs: { city: '城市名称。' }, outputs: { summary: '说明文本。' } }), output_rule: '' }
     await type(page, botJSON, JSON.stringify(capability, null, 2))
     await page.screenshot({ path: testInfo.outputPath(`${size}-bot-editor.png`), fullPage: true })
     await fitted(page)

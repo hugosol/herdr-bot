@@ -10,9 +10,8 @@
 ## 影响
 
 - 旧 `omp-bot.toml`、`OMP_BOT_*` 环境变量与 `omp-bot.local` 不再兼容；旧书签与旧防火墙规则需要一次性迁移。
-- 历史 ADR 保留原文，术语以 [`GLOSSARY.md`](../../GLOSSARY.md) 为准。README 的重复交付验证／变更记录已在 2026-10-23 文档精简时删除；Bot／Chat 的现行含义见 [ADR 0011](0011-bot-chat-terminology.md)。
-- `docs/omp-*.md`、`.omp/`、`omp` 命令与 `omp agent` 等 OMP 平台词汇不属于本项目标识，不随本次改名改动。
-- `my-agent-toolkit` 中连接真实面板的 interop 测试辅助文件需要独立后续更新；它的运行时端点走 loopback，不因面板改名而失效。
+- 历史 ADR 保留原文，现行术语以 [`GLOSSARY.md`](../../GLOSSARY.md) 为准。[ADR 0011](0011-bot-chat-terminology.md) 是早期的 Bot 和 Chat 命名决定；[ADR 0012](0012-rename-bot-preset-to-task.md) 将预设改称 Task，[ADR 0013](0013-rename-node-template-to-bot.md) 将 Bot 用于共享业务能力。
+- `.omp/`、`omp` 命令与 `omp agent` 等 OMP 平台词汇不属于本项目标识，不随本次改名改动。
 - GitHub 仓库原地改名以保留 issues、PR 与提交历史；本地目录改名放在最后执行。
 
 ## 命名边界

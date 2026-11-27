@@ -329,18 +329,19 @@ async fn auto_close_does_not_close_dispatch_failure_or_its_rejected_complete() {
     assert_eq!(s.herdr.calls(), before);
 }
 
-// P7/P10: the ticket fixes the choice at dispatch, not at completion or Run
-// creation. Reading the current Map at completion would close A and leave B
-// open. Both directions observe actual command targets, not only stored flags.
+// P12: freeze both policies when the Run starts. Reading the source Map at
+// dispatch or completion would close A and leave B open. Observe the actual
+// close target as well as the stored flags.
 #[tokio::test]
 async fn auto_close_uses_dispatch_choice_after_map_changes_in_both_directions() {
     let s = Scenario::without_output_contract().await;
-    s.start("close-map-manager").await;
     set_auto_close(&s, "B", true).await;
+    s.start("close-map-manager").await;
+    set_auto_close(&s, "A", true).await;
+    set_auto_close(&s, "B", false).await;
     node_host(&s, "close-map-A");
     let a = s.dispatch("close-map-manager", &["A"]).await;
     assert_eq!(a["results"][0]["status"], "running");
-    set_auto_close(&s, "A", true).await;
     approve_execution(&s, "close-map-A").await;
     submit_report(&s, "close-map-A", "A delivered without auto-close", true).await;
     manager_action(&s, "complete", json!({"sessionId":"close-map-manager","nodeId":"A","reason":"A delivered"}), 200).await;
@@ -350,7 +351,6 @@ async fn auto_close_uses_dispatch_choice_after_map_changes_in_both_directions() 
     let b = s.dispatch("close-map-manager", &["B"]).await;
     assert_eq!(b["results"][0]["status"], "running");
     let target = b["snapshot"]["nodes"]["B"]["execution"]["chat"]["tabId"].as_str().unwrap();
-    set_auto_close(&s, "B", false).await;
     approve_execution(&s, "close-map-B").await;
     submit_report(&s, "close-map-B", "B delivered with snapshotted auto-close", true).await;
     let completed = manager_action(&s, "complete", json!({"sessionId":"close-map-manager","nodeId":"B","reason":"B delivered"}), 200).await;

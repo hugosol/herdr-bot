@@ -37,14 +37,14 @@ async fn outer_create_publishes_task_then_wrapper_without_changing_legacy_entrie
         node["zone"] = json!("node");
     }
     fs::write(s.config.scheduler.map_directory.join("create-bot-wrapper.json"), child.to_string()).unwrap();
-    let bot = json!({"name":"Wrapper","when":"Existing targets only","plan_guide":"","node_guide":"","map_file":"create-bot-wrapper.json"});
+    let bot = json!({"name":"Wrapper","when":"Existing targets only","description":"","input_rule":"","output_rule":"","map_file":"create-bot-wrapper.json"});
     let saved = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/save", &json!({"id":"create-bot-wrapper","content":bot.to_string(),"revision":null}).to_string()).await;
     assert_eq!(saved.status,200,"{}",saved.body);
     fs::write(s.config.scheduler.map_directory.join(file), r#"{"title":"Outer","description":"","nodes":{}}"#).unwrap();
     let endpoint = format!("/api/scheduler/maps/{file}");
     let read = get_over_tcp(s.server.addr(), &format!("{endpoint}/inputs")).await;
     let read: Value = serde_json::from_str(&read.body).unwrap();
-    let saved = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"input_files":definition["input_files"],"input_requirements":definition["input_requirements"].as_str().unwrap_or(""),"revision":read["revision"]}).to_string()).await;
+    let saved = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"map_input_rule":definition["map_input_rule"],"revision":read["revision"]}).to_string()).await;
     assert_eq!(saved.status,200,"{}",saved.body);
     for id in ["w1","w2","wrap_bot","optimize_bot"] {
         let mut node = nodes[id].clone();

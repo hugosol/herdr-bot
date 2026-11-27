@@ -1,0 +1,66 @@
+{
+  "feature": "bot-map-contract-refactor",
+  "ticket": "04-frozen-run-history.md",
+  "run_id": "f242d50e-edc9-4eba-8202-722c164a8b3d",
+  "parent_session_id": "01a219c2-b655-73fe-b79a-9d1f4fbbf05e",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e.jsonl",
+  "workspace": "E:/Developer/myhub/herdr-bot",
+  "tool_call_id": "d064d31b-c552-473a-9fa3-37fa9725b1b9",
+  "started_at": "2026-11-27T05:51:51.357Z",
+  "tdd_status": "completed",
+  "retro_status": "completed",
+  "tdd_finished_at": "2026-11-27T06:19:01.911Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "04-frozen-run-historymd-d064d31b-c552-473a-9fa3-",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\implementation\\04-frozen-run-history.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"bot\",\n    \"branch\": \"hyper/bot-map-contract-refactor/04-frozen-run-history-057695-f1cebc6ae7d6\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-g9wOYc\"\n  }\n]\n协调仓集成分支：feature/bot-map-contract-refactor\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\implementation\\04-frozen-run-history.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"bot\",\n    \"branch\": \"hyper/bot-map-contract-refactor/04-frozen-run-history-057695-f1cebc6ae7d6\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-g9wOYc\"\n  }\n]\n协调仓集成分支：feature/bot-map-contract-refactor\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement frozen run history ticket in worktree",
+    "lastIntent": "Committing frozen Run history ticket",
+    "exitCode": 0,
+    "output": "已提交 `a79d6b0fe0`，未合入集成分支，worktree 可交接。\n\n- **P11–P14**：启动前保存通过校验的完整 `map.json`，管理者收到绝对路径。派发、retry、输入准备、finish 和 workflow 统一使用副本；副本缺失或损坏时明确报错，不回退。子 Run 在自身启动时冻结，不复制引用资源。\n- **P30 / P55**：删除 Map 只删除静态定义，保留 Run、冻结图及父子关联。隔离演练验证旧 Run 整目录逐字节保留、在线不可见且不补造历史。\n- **P32**：真实页面验证原 Map 改动后仍显示冻结图和实际输入，查看及刷新不增加启动或派发。\n\n**验证**：`workflow_start` / `workflow_dispatch` 精确选择器共通过 13 项；指定 workflow 浏览器套件通过 15 项；Map 删除与相邻浏览器回归通过 9 项。精确选择器见 `docs/agents/testing.md`。TDD 红灯实际捕获了副本未落盘、准备读取新规则、旧删除参数仍生效及页面回退四种问题。\n\n**未结**：基线没有独立 Run 删除入口，未擅自新增，也未将该项记为通过。05/06 须沿同一回归补齐新输入及公开成果断言并复跑；未执行现场归档。",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 1630301,
+    "tokens": 444081,
+    "requests": 107,
+    "contextTokens": 359057,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.2-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.2-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.2-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 382718,
+      "output": 61363,
+      "cacheRead": 26723584,
+      "cacheWrite": 0,
+      "totalTokens": 27167665,
+      "reasoningTokens": 17239,
+      "cost": {
+        "input": 0.765436,
+        "output": 0.6136300000000001,
+        "cacheRead": 2.6723584000000002,
+        "cacheWrite": 0,
+        "total": 4.0514244
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e\\04-frozen-run-historymd-d064d31b-c552-473a-9fa3-.md",
+    "outputMeta": {
+      "lineCount": 9,
+      "charCount": 560
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "04-frozen-run-historymd-d064d31b-c552-473a-9fa3-",
+  "session_id": "01a21b8f-6275-73ad-a00d-212372beb0fa",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e\\04-frozen-run-historymd-d064d31b-c552-473a-9fa3-.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-g9wOYc",
+  "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\retro\\04-frozen-run-history.md\\f242d50e-edc9-4eba-8202-722c164a8b3d.md",
+  "retro_finished_at": "2026-11-27T06:20:03.074Z"
+}

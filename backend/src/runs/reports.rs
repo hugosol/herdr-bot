@@ -219,22 +219,35 @@ pub(crate) async fn node_report(state: AppState, input: ReportRequest) -> RunRes
     let Some(output_rule) = execution.output_rule.as_ref() else {
         return Err(error(FailureKind::Invalid, "output-rule-unknown", "历史执行没有已知的冻结 outputRule，不能提交新报告。"));
     };
-    if input.outputs.iter().any(|file| !output_rule.iter().any(|rule| rule.id == file.id)) {
-        return Err(error(FailureKind::Invalid, "undeclared-output", "输出 ID 未在当前执行的 output_rule 中声明。"));
-    }
-    if input.can_complete {
-        if let Some(child_id) = execution.child_run_id() {
-            let child = match state.runs.read(&state, child_id).await {
-                Ok(child) => child,
-                Err(message) => return Err(error(FailureKind::Failed, "child-run-read-failed", &message)),
-            };
+    let outputs = if let Some(child_id) = execution.child_run_id() {
+        if !input.outputs.is_empty() {
+            return Err(error(FailureKind::Invalid, "child-output-override", "子 Run 的文件成果来自已完成 Run 的 mapOutput，不接受报告填入地址。"));
+        }
+        if input.can_complete {
+            let child = state.runs.read(&state, child_id).await
+                .map_err(|message| error(FailureKind::Failed, "child-run-read-failed", &message))?;
             if child.status != "completed" || child.finished.is_none() {
                 return Err(error(FailureKind::Invalid, "child-run-not-finished", "子 Run 必须显式 finish 后才能提交 canComplete=true；进展报告请使用 false。"));
             }
+            let mut files = child.map_output.files;
+            let mut outputs = Vec::with_capacity(output_rule.len());
+            for rule in output_rule {
+                let index = files.iter().position(|file| file.id == rule.id)
+                    .ok_or_else(|| error(FailureKind::Invalid, "child-output-missing", &format!("子 Run 未保存父执行所需的公开文件成果 {}。", rule.id)))?;
+                outputs.push(files.swap_remove(index));
+            }
+            outputs
+        } else {
+            Vec::new()
         }
-    }
+    } else {
+        if input.outputs.iter().any(|file| !output_rule.iter().any(|rule| rule.id == file.id)) {
+            return Err(error(FailureKind::Invalid, "undeclared-output", "输出 ID 未在当前执行的 output_rule 中声明。"));
+        }
+        input.outputs
+    };
     let work = submit(state, run.id, node_id, execution_id, ReportSubmission {
-        origin: ReportOrigin::Chat(input.session_id), body: input.body, can_complete: input.can_complete, outputs: input.outputs,
+        origin: ReportOrigin::Chat(input.session_id), body: input.body, can_complete: input.can_complete, outputs,
     }).await;
     match work {
         Ok(submitted) => Ok(RunOutcome::Value(serde_json::json!({"saved":true,"report":submitted.report,"notification":submitted.notification,"diagnostic":submitted.diagnostic,"guidance":"报告已保存。不要仅因通知失败重复 report；报告不等于完成，管理者仍须显式交接。"}))),
@@ -295,7 +308,6 @@ pub(super) async fn submit(state: AppState, run_id: String, node_id: String, exe
             let paths = Runs::paths(&state, &run.id);
             let owned = state.clone();
             state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
-                owned.runs.ensure_retained(&run.id).await?;
                 access.append_jsonl::<Report>(&paths[2], &report)?;
                 owned.runs.changed(&run.id, true).await;
                 Ok::<_, String>(report)

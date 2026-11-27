@@ -1,0 +1,10 @@
+{
+  "group": "meta-bot",
+  "id": "create-blank-bot",
+  "name": "空白 Bot 创建者",
+  "when": "需要为既有 normal Task 或 Map 准备共同 Bot 创作基线时选用。",
+  "description": "## 能力职责\n核实目标，创建唯一绑定的空白 Bot。\n\n## 能力边界\n不编写能力摘要，不创建、修改或运行目标。\n\n## 特殊前提\n本次委托明确；不要求提前批准未来正文。",
+  "input_rule": "创建 V1 的命名 request 与可选参考材料；目标必须已存在，名称和 ID 可按目标缺省。",
+  "output_rule": "四个能力字段为空的已保存 Bot、真实 revision 与完整目标形成的 baseline，以及 created handoff。",
+  "script": "create-blank-bot.ts"
+}

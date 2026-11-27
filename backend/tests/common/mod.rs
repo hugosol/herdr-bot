@@ -431,11 +431,19 @@ pub fn config_with_countdown(
         git: herdr_bot::GitConfig::default(),
         scheduler: herdr_bot::SchedulerConfig::default(),
         suites: herdr_bot::config::SuitesConfig {
-            dap_file: working_directory.join("dap.json"),
+            dap_directory: working_directory.join("dap"),
             generated_directory: working_directory.join("generated-suites"),
             ..herdr_bot::config::SuitesConfig::default()
         },
     }
+}
+
+pub fn write_suite_resource(directory: &Path, id: &str, config: serde_json::Value) -> PathBuf {
+    fs::create_dir_all(directory).unwrap();
+    let path = directory.join(format!("{id}.json"));
+    let definition = serde_json::json!({"name":id, "description":"Controlled fixture", "config":config});
+    fs::write(&path, definition.to_string()).unwrap();
+    path
 }
 
 /// 经 HTTP interface 请求一个固定操作：裸 POST，不带请求体或查询串。
@@ -496,7 +504,13 @@ pub struct TestServer {
 impl TestServer {
     /// 在 `127.0.0.1` 的临时端口上启动应用。
     pub async fn start(config: &herdr_bot::Config) -> Self {
-        let server = Self::start_app(herdr_bot::app(config)).await;
+        let sessions = herdr_bot::sessions::SessionsState::with_policy(config.sessions.policy());
+        let (app, state) = herdr_bot::app_with_state(
+            config,
+            std::sync::Arc::new(herdr_bot::SystemPowerOff),
+            std::sync::Arc::new(sessions),
+        );
+        let server = Self::start_with_state(app, &state).await;
         let executable = &config.herdr.executable;
         if executable.file_stem().and_then(|stem| stem.to_str()) == Some("herdr-fixture") {
             std::fs::write(executable.with_file_name("launch_endpoint.txt"), server.addr.to_string()).unwrap();
@@ -504,12 +518,15 @@ impl TestServer {
         server
     }
 
+    /// Start a configured router and attach its listener so it can execute workflow scripts.
+    pub async fn start_with_state(app: axum::Router, state: &herdr_bot::AppState) -> Self {
+        Self::bind_app_on(SocketAddr::from(([127, 0, 0, 1], 0)), app, Some(state)).await
+    }
+
     /// 在 `127.0.0.1` 的临时端口上启动**给定的应用**（例如注入了记录型关机动作的应用）。
-    ///
-    /// 与 `start` 完全同一形态（真实监听端口 + 每个请求独立 TCP 连接），只是装配好的应用由调用者
-    /// 提供；路由注册与交付运行时一致，因为两种装配都只经 `herdr_bot::app` / `herdr_bot::app_with_power_off`。
+    /// 不登记脚本服务地址；需要执行 workflow 脚本时使用 `start_with_state`。
     pub async fn start_app(app: axum::Router) -> Self {
-        Self::start_app_on("127.0.0.1:0".parse().expect("回环测试监听地址"), app).await
+        Self::start_app_on(SocketAddr::from(([127, 0, 0, 1], 0)), app).await
     }
 
     /// 在指定的回环地址上启动应用；即使手动网络授权已设置，普通入口也拒绝非回环监听。
@@ -518,7 +535,7 @@ impl TestServer {
             bind.ip().is_loopback(),
             "普通测试只允许回环（loopback）监听：{bind}；真实网卡验收请使用手动入口"
         );
-        Self::bind_app_on(bind, app).await
+        Self::bind_app_on(bind, app, None).await
     }
 
     /// 仅供显式手动运行的真实网卡验收使用，在绑定前检查网络授权。
@@ -530,13 +547,16 @@ impl TestServer {
             Ok("1"),
             "真实网卡验收必须经手动入口授权：HERDR_BOT_MANUAL_NETWORK=1"
         );
-        Self::bind_app_on(bind, app).await
+        Self::bind_app_on(bind, app, None).await
     }
 
-    async fn bind_app_on(bind: SocketAddr, app: axum::Router) -> Self {
+    async fn bind_app_on(bind: SocketAddr, app: axum::Router, state: Option<&herdr_bot::AppState>) -> Self {
         let listener = tokio::net::TcpListener::bind(bind)
             .await
             .expect("绑定测试监听端口");
+        if let Some(state) = state {
+            state.attach_listener(&listener).expect("登记测试脚本服务地址");
+        }
         let addr = listener.local_addr().expect("读取测试监听地址");
         let serving = tokio::spawn(async move {
             // 与交付运行时同一份装配：会话事件写入的来源校验靠连接信息拿到 TCP 对端地址。
@@ -635,19 +655,26 @@ pub async fn request_json_over_tcp(
     path: &str,
     body: Option<&str>,
 ) -> HttpResponse {
+    request_json_with_origin(addr, method, path, body, None).await
+}
+
+pub async fn request_json_with_origin(
+    addr: SocketAddr, method: &str, path: &str, body: Option<&str>, origin: Option<&str>,
+) -> HttpResponse {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     let mut stream = tokio::net::TcpStream::connect(addr)
         .await
         .expect("连接测试服务器");
+    let origin = origin.map_or_else(String::new, |origin| format!("Origin: {origin}\r\n"));
     let request = match body {
         Some(body) => format!(
-            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\
+            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\n{origin}Connection: close\r\n\
              Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
             body.len()
         ),
         None => format!(
-            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\n{origin}Connection: close\r\nContent-Length: 0\r\n\r\n"
         ),
     };
     stream

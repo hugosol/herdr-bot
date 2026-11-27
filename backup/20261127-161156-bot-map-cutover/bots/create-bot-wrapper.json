@@ -1,0 +1,10 @@
+{
+  "group": "meta-bot",
+  "id": "create-bot-wrapper",
+  "name": "为既有目标包装完整 Bot",
+  "when": "已存在 normal Task 或 Map，需要将其包装为能力 Bot 时选用。",
+  "description": "## 能力职责\n创建空白基线、编审四字段正文并一次保存完整 Bot。\n\n## 能力边界\n不修订已有 Bot，不创建、修改或运行目标。\n\n## 特殊前提\n需要可用管理者配置；正文审阅与成果批准独立于 V1 业务材料。",
+  "input_rule": "已存在且符合需求的真实目标、创建 V1 request 及可选材料。",
+  "output_rule": "完整已保存且读回一致的 Bot、绑定与 revision，及 saved／handoff；配置交付不是业务验证。",
+  "map_file": "create-bot-wrapper.json"
+}

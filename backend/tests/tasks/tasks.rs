@@ -85,7 +85,7 @@ async fn scheduler_groups_persist_catalog_clear_and_preserve_editor_revisions() 
     let map_path = config.scheduler.map_directory.join("work.json");
     std::fs::write(&map_path, json!({"title":"Work", "description":"Keep description", "nodes":{}}).to_string()).unwrap();
     let server = TestServer::start(&config).await;
-    let bot_content = json!({"name":"Worker", "when":"Keep when", "plan_guide":"Keep plan", "node_guide":"Keep node", "task_id":"stable-task"});
+    let bot_content = json!({"name":"Worker", "when":"Keep when", "description":"Keep plan","input_rule":"Keep node","output_rule":"", "task_id":"stable-task"});
     let saved = post_json_over_tcp(server.addr(), "/api/scheduler/bots/save", &json!({"id":"worker", "content":bot_content.to_string(), "revision":null}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     assert!(serde_json::from_str::<Value>(&saved.body).unwrap().get("group").is_none());
@@ -106,7 +106,7 @@ async fn scheduler_groups_persist_catalog_clear_and_preserve_editor_revisions() 
         let response = post_json_over_tcp(server.addr(), "/api/scheduler/bots/save", &json!({"id":"worker", "content":bot_content.to_string(), "revision":revisions[0]}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["group"], name);
-        let response = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/inputs", &json!({"input_files":[{"id":"brief","required":true}], "input_requirements":"", "revision":revisions[1]}).to_string()).await;
+        let response = post_json_over_tcp(server.addr(), "/api/scheduler/maps/work.json/inputs", &json!({"map_input_rule":{"files":[{"id":"brief","required":true}]}, "revision":revisions[1]}).to_string()).await;
         assert_eq!(response.status, 200, "{}", response.body);
         assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["group"], name);
         let maps: Value = serde_json::from_str(&get_over_tcp(server.addr(), "/api/scheduler/maps").await.body).unwrap();
@@ -150,7 +150,7 @@ async fn scheduler_groups_persist_catalog_clear_and_preserve_editor_revisions() 
     let persisted: Value = serde_json::from_slice(&std::fs::read(&map_path).unwrap()).unwrap();
     assert!(persisted.get("group").is_none());
     assert_eq!(persisted["description"], "Keep description");
-    assert_eq!(persisted["input_files"], json!([{"id":"brief", "required":true}]));
+    assert_eq!(persisted["map_input_rule"]["files"], json!([{"id":"brief", "required":true}]));
 }
 
 // Both hosts support every Task role; role extensions remain fixed resources,

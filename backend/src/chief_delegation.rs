@@ -4,6 +4,7 @@ use crate::{
     AppState,
     chats::{self, ChatCreationView},
     files::FileStore,
+    scheduler::{maps::OutputRule, object_array},
     tasks::{Task, TaskType, catalog::ResolvedPreset},
 };
 use serde::{Deserialize, Serialize};
@@ -31,6 +32,8 @@ pub(crate) struct DispatchRequest {
     input: String,
     #[serde(default)]
     materials: Vec<Material>,
+    #[serde(default, deserialize_with = "object_array", skip_serializing_if = "Vec::is_empty")]
+    output_rule: Vec<OutputRule>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     manager_task_id: Option<String>,
 }
@@ -51,7 +54,7 @@ struct Prepared {
     facts: Facts,
     preset: ResolvedPreset,
     chat_id: String,
-    run: Option<crate::runs::Run>,
+    run: Option<crate::runs::PreparedRun>,
     material_contents: Vec<Vec<u8>>,
 }
 #[derive(Clone, Serialize, Deserialize)]
@@ -64,6 +67,12 @@ pub(crate) struct Record {
     session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) run_id: Option<String>,
+}
+
+impl Record {
+    pub(crate) fn output_rule(&self) -> &[OutputRule] {
+        &self.facts.request.output_rule
+    }
 }
 
 pub(crate) struct Delegations {
@@ -195,6 +204,12 @@ async fn resolve(
             "必须明确本次业务输入。",
         ));
     }
+    let mut output_ids = std::collections::BTreeSet::new();
+    for rule in &request.output_rule {
+        if rule.id.trim().is_empty() || !output_ids.insert(rule.id.as_str()) {
+            return Err(rejected("invalid-output-id", "输出 ID 必须非空且不得重复。"));
+        }
+    }
     let cwd = chats::chat_zone(state, &request.zone_id).await.map_err(Error::Chat)?;
     let (bot, target) = crate::scheduler::bots::delegation_bot(&state.bot_directory, &request.bot_id).map_err(Error::Directory)?;
     let (task_id, map_file) = match target {
@@ -266,13 +281,13 @@ async fn resolve(
             github_exploration: None,
         };
         let checked = crate::runs::preflight::check_run_preflight(state, file, &input).await.map_err(Error::Preflight)?;
-        if let Some(message) = crate::runs::preflight::check_prepared_inputs(&state.map_directory, file, &input.file_inputs, true)
-            .map_err(|message| rejected("delegation-material-invalid", message))? {
-            return Err(rejected("delegation-material-invalid", message));
+        let public = checked.map.map_output_rule.as_ref().map_or(&[][..], |rule| rule.files.as_slice());
+        if let Some(unknown) = request.output_rule.iter().find(|rule| !public.iter().any(|file| file.id == rule.id)) {
+            return Err(rejected("undeclared-output", format!("Map 未声明本次委派所需的公开文件输出 {}。", unknown.id)));
         }
         Some(crate::runs::root_run(file.clone(), input, checked, &task, id.to_owned()))
     } else { None };
-    let name = run.as_ref().and_then(|run| run.name.clone())
+    let name = run.as_ref().and_then(|prepared| prepared.run.name.clone())
         .unwrap_or_else(|| chats::render_chat_name(&task.chat_name, &cwd, &task, chat_id));
     if name.trim().is_empty() || name.contains(['\n', '\r']) {
         return Err(rejected("chat-name-required", "命名规则必须生成有效单行名称。"));
@@ -283,7 +298,12 @@ async fn resolve(
         let mut tasks = std::collections::BTreeMap::new();
         let prompts = state.prompts.snapshot().map_err(|error| rejected("prompt-dictionary-invalid", error.to_string()))?;
         let mut bot_meaning = std::collections::BTreeMap::new();
-        for (key, field) in [("when", crate::prompts::Field::BotWhen), ("plan_guide", crate::prompts::Field::BotPlanGuide), ("node_guide", crate::prompts::Field::BotNodeGuide)] {
+        for (key, field) in [
+            ("when", crate::prompts::Field::BotWhen),
+            ("description", crate::prompts::Field::BotDescription),
+            ("input_rule", crate::prompts::Field::BotInputRule),
+            ("output_rule", crate::prompts::Field::BotOutputRule),
+        ] {
             bot_meaning.insert(key, prompts.render(field, bot[key].as_str().expect("validated Bot guidance"))
                 .map_err(|error| rejected("prompt-dictionary-invalid", error.to_string()))?);
         }
@@ -310,18 +330,22 @@ async fn resolve(
         }
         Some(json!({"file":file,"definitions":closure.definitions,"rootBotMeaning":bot_meaning,"tasks":tasks,"zoneBindings":bindings,"directMaterials":direct_materials}))
     } else { None };
-    let prompt = if let Some(run) = &run {
-        crate::runs::manager_prompt(state, run, &task, &preset)
-            .map_err(|error| rejected("prompt-dictionary-invalid", error))?
+    let fixed = &task.trigger.prompt;
+    let skill = preset.trigger.native_skill.as_deref();
+    let prompt = if let Some(prepared) = &run {
+        let run = &prepared.run;
+        state.prompts.manager(fixed, skill, &run.manager_context(state), Some(&request.output_rule))
     } else {
-        let context = json!({"delegationId":id,"botId":request.bot_id,"sourceChiefSessionId":request.session_id,"zoneId":request.zone_id,"cwd":cwd,"materials":materials});
-        let business_input = format!("{}\n\n[Chief delegation]\n{}", request.input,
-            serde_json::to_string_pretty(&context).expect("context serialization"));
-        let snapshot = state.prompts.snapshot().map_err(|error| rejected("prompt-dictionary-invalid", error.to_string()))?;
-        let fixed = snapshot.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt)
-            .map_err(|error| rejected("prompt-dictionary-invalid", error.to_string()))?;
-        chats::compose_prompt(&fixed, preset.trigger.native_skill.as_deref(), &business_input, &snapshot.instructions(&task.trigger.prompt))
-    };
+        state.prompts.chief_delegated_task(fixed, skill, &crate::prompts::ChiefDelegationContext {
+            id,
+            bot_id: &request.bot_id,
+            chief_session_id: &request.session_id,
+            zone_id: &request.zone_id,
+            cwd: &cwd,
+            materials: &materials,
+            output_rule: &request.output_rule,
+        }, &request.input)
+    }.map_err(|error| rejected("prompt-dictionary-invalid", error.to_string()))?;
     Ok(Prepared {
         facts: Facts {
             request,
@@ -383,9 +407,6 @@ pub(crate) async fn commit(state: AppState, input: CommitRequest) -> Result<Outc
     if prepared.facts.request.session_id != input.session_id {
         return Err(rejected("chief-not-current", "预览不属于当前调用会话。"));
     }
-    let map_operation = if let Some(run) = &prepared.run {
-        Some(state.runs.map_lock(&run.map).await.lock_owned().await)
-    } else { None };
     let fresh = match resolve(
         &state,
         prepared.facts.request.clone(),
@@ -428,13 +449,11 @@ pub(crate) async fn commit(state: AppState, input: CommitRequest) -> Result<Outc
         facts: prepared.facts.clone(),
         creation: view.clone(),
         session_id: None,
-        run_id: prepared.run.as_ref().map(|run| run.id.clone()),
+        run_id: prepared.run.as_ref().map(|prepared| prepared.run.id.clone()),
     }) {
         return Err(Error::Storage(error));
     }
     if let Some(run) = prepared.run {
-        crate::runs::register_root(&state, &run).await;
-        drop(map_operation);
         return crate::runs::launch_root(state.clone(), run, prepared.facts.task, prepared.preset, Some(Launch {
             store: Arc::clone(&state.delegations), id: input.preview_id,
             prompt: prepared.facts.prompt, name: prepared.facts.name,

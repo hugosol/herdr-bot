@@ -1,0 +1,82 @@
+{
+  "title": "创建map",
+  "group": "meta-map",
+  "description": "将业务需求转化为新业务 Map，并完成关联提示词的分层优化；交付系统中已保存的配置，不启动生成的业务流程。管理者验收各阶段成果前，读取 ${herdr-bot-path}/meta-data/workflow-maps/plan_workflow/planning-deliverables.md「创建 Map 的整图交接」。",
+  "nodes": {
+    "generate_map": {
+      "title": "概要方案转换为业务 Map",
+      "bot_id": "plan-to-map",
+      "input": "",
+      "input_rule": [
+        {
+          "type": "node",
+          "id": "outline",
+          "node_id": "outline",
+          "output_id": "outline"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "map"
+        }
+      ],
+      "auto_approved": true,
+      "auto_close": true,
+      "end_node": false,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "outline"
+      ]
+    },
+    "optimize_map": {
+      "title": "prompt优化者——Map维度",
+      "bot_id": "bot-task-18e65aed740825f8-0",
+      "input": "依据 outline 优化 map 对应的服务配置。允许修改目标 Map、关联 Task、Bot、子 Map 及共同文档中的提示词；共享对象的具体修改范围由用户在本 Chat 中确认。",
+      "input_rule": [
+        {
+          "type": "node",
+          "id": "map",
+          "node_id": "generate_map",
+          "output_id": "map"
+        },
+        {
+          "type": "node",
+          "id": "outline",
+          "node_id": "outline",
+          "output_id": "outline"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "map"
+        },
+        {
+          "id": "handoff"
+        }
+      ],
+      "auto_approved": false,
+      "auto_close": true,
+      "end_node": false,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "generate_map"
+      ]
+    },
+    "outline": {
+      "title": "概要规划与用户确认",
+      "bot_id": "outline-planning",
+      "input": "",
+      "input_rule": [],
+      "output_rule": [
+        {
+          "id": "outline"
+        }
+      ],
+      "auto_approved": false,
+      "auto_close": true,
+      "end_node": false,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": []
+    }
+  }
+}

@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import { openNodeJson, showMapDirectory, showMapNodes } from '../../support/ui'
+import { expectNoHorizontalOverflow, openNodeJson, showMapDirectory, showMapNodes } from '../../support/ui'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { expect, test, type Page } from '@playwright/test'
@@ -43,6 +43,75 @@ async function save(page: Page, id: string, content: unknown, revision: unknown,
   return page.request.post(`${server!.baseURL}/api/scheduler/maps/${name}/nodes/save`, { data: { id, content: typeof content === 'string' ? content : JSON.stringify(content), revision, create } })
 }
 
+// S1/S2/S4, P5/P31: actual edits must survive reload without turning an
+// omitted rule or prose-only output into a required public file.
+test('public Map rules save and reload independently without inventing files', async ({ page }) => {
+  const base = { title: '公开规则样例', description: '保留用途原文', nodes: {} }
+  const root = await setup(page, base)
+  const untouched = inventory(root)['untouched.json']
+  const reopen = async () => {
+    await page.reload()
+    await page.getByTestId('tab-scheduler').click()
+    await page.locator('[data-map-file="work.JSON"]').click()
+  }
+  const openRules = () => page.getByRole('button', { name: '编辑 Map 公开规则', exact: true }).click()
+  const form = page.getByRole('form', { name: 'Map 公开规则', exact: true })
+  const input = form.getByRole('checkbox', { name: '声明 Map 输入规则', exact: true })
+  const output = form.getByRole('checkbox', { name: '声明 Map 输出规则', exact: true })
+  const inputProse = form.getByRole('textbox', { name: 'Map 输入要求 Markdown', exact: true })
+  const inputFiles = form.getByRole('textbox', { name: 'Map 文件输入声明 JSON', exact: true })
+  const outputProse = form.getByRole('textbox', { name: 'Map 输出说明 Markdown', exact: true })
+  const outputFiles = form.getByRole('textbox', { name: 'Map 文件输出声明 JSON', exact: true })
+  const commitRules = async (expected: object) => {
+    await form.getByRole('button', { name: '保存公开规则', exact: true }).click()
+    await expect(form).toHaveCount(0)
+    expect(await readMap(page)).toEqual(expected)
+    expect(JSON.parse(inventory(root)['work.JSON'])).toEqual(expected)
+    expect(inventory(root)['untouched.json']).toBe(untouched)
+  }
+
+  await openRules()
+  await expect(input).not.toBeChecked()
+  await expect(output).not.toBeChecked()
+  await expect(inputFiles).toBeDisabled()
+  await expect(outputFiles).toBeDisabled()
+  await input.check()
+  await output.check()
+  await inputProse.fill('**先确认范围**\n\n保留尾随空格。  \n')
+  await inputFiles.fill('[{"id":"brief","required":false,"description":"参考附件"}]')
+  await outputProse.fill('**交付核对记录**')
+  await outputFiles.fill('[{"id":"brief","description":"已核对记录"}]')
+  await commitRules({ ...base,
+    map_input_rule: { description: '**先确认范围**\n\n保留尾随空格。  \n', files: [{ id: 'brief', required: false, description: '参考附件' }] },
+    map_output_rule: { description: '**交付核对记录**', files: [{ id: 'brief', description: '已核对记录' }] },
+  })
+
+  await reopen()
+  const preview = page.getByRole('region', { name: 'Map 预览', exact: true })
+  await expect(preview.getByText('先确认范围', { exact: true })).toBeVisible()
+  await expect(preview.getByText('已核对记录', { exact: false })).toBeVisible()
+  await openRules()
+  await expect(input).toBeChecked()
+  await expect(output).toBeChecked()
+  await expect(inputProse).toHaveValue('**先确认范围**\n\n保留尾随空格。  \n')
+  expect(JSON.parse(await inputFiles.inputValue())).toEqual([{ id: 'brief', required: false, description: '参考附件' }])
+  expect(JSON.parse(await outputFiles.inputValue())).toEqual([{ id: 'brief', description: '已核对记录' }])
+  await input.uncheck()
+  await outputProse.fill('交给用户继续对话，不交付文件。')
+  await outputFiles.fill('[]')
+  await commitRules({ ...base, map_output_rule: { description: '交给用户继续对话，不交付文件。', files: [] } })
+
+  await reopen()
+  await expect(preview.getByText('交给用户继续对话，不交付文件。', { exact: true })).toBeVisible()
+  await openRules()
+  await expect(input).not.toBeChecked()
+  await expect(output).toBeChecked()
+  await expect(outputFiles).toHaveValue('[]')
+  await output.uncheck()
+  await commitRules(base)
+  expect(server!.herdrCalls()).toEqual([])
+})
+
 test('dynamic zone editor saves no preset and reloads all unrelated node fields', async ({ page }) => {
   const configured = { ...audit, end_node: false, auto_approved: false, auto_close: true, input_rule: [{ id: 'source', type: 'file', path: 'input.txt', zone_id: 'materials-zone' }], output_rule: [{ id: 'result' }] }
   const root = await setup(page, { ...original, nodes: { ...original.nodes, A: configured } })
@@ -51,7 +120,7 @@ test('dynamic zone editor saves no preset and reloads all unrelated node fields'
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
   await expect(page.getByRole('radio', { name: '固定 zone', exact: true })).toBeChecked()
   await expect(page.getByRole('textbox', { name: 'zone', exact: true })).toHaveValue(configured.zone)
-  await page.getByRole('radio', { name: '动态 zone', exact: true }).check()
+  await page.getByRole('radio', { name: '手动动态 zone', exact: true }).check()
   await expect(page.getByRole('textbox', { name: 'zone', exact: true })).toHaveCount(0)
   const savedRequest = page.waitForRequest(request => request.url().endsWith('/nodes/save') && request.method() === 'POST')
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
@@ -68,11 +137,82 @@ test('dynamic zone editor saves no preset and reloads all unrelated node fields'
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '独立审计 A', exact: true }).click()
   await expect(page.getByRole('region', { name: 'node 配置概览', exact: true })).toContainText('dynamic · 每次执行时指定，尚未指定 zone')
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
-  await expect(page.getByRole('radio', { name: '动态 zone', exact: true })).toBeChecked()
+  await expect(page.getByRole('radio', { name: '手动动态 zone', exact: true })).toBeChecked()
   await expect(page.getByRole('textbox', { name: 'zone', exact: true })).toHaveCount(0)
   expect(JSON.parse(await (await openNodeJson(page)).inputValue())).toEqual(nodeContent(configured))
   await page.getByRole('radio', { name: '固定 zone', exact: true }).check()
   await expect(page.getByRole('textbox', { name: 'zone', exact: true })).toHaveValue('')
+  expect(server!.herdrCalls()).toEqual([])
+})
+
+test('input-driven dynamic zone editor validates the local input and persists the declaration', async ({ page }, info) => {
+  const configured = { ...audit, end_node: false, auto_approved: false, auto_close: true,
+    input_rule: [
+      { id: 'registered-repo', type: 'file', path: 'registered-zone.json', zone_id: 'materials-zone' },
+      { id: 'second-registration', type: 'file', path: 'second-zone.json', zone_id: 'materials-zone' },
+    ], output_rule: [{ id: 'result' }],
+  }
+  const root = await setup(page, { ...original, nodes: { ...original.nodes, A: configured } })
+  const before = inventory(root)
+  const selectNode = () => page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '独立审计 A', exact: true }).click()
+  const edit = page.getByRole('button', { name: '修改 node', exact: true })
+  const form = page.getByRole('form', { name: 'node 编辑', exact: true })
+  const saveButton = form.getByRole('button', { name: '保存 node', exact: true })
+  const mode = form.getByRole('radio', { name: '输入驱动的动态 zone', exact: true })
+  const source = form.getByRole('textbox', { name: '节点输入 ID', exact: true })
+  const requests: { content: string }[] = []
+  page.on('request', request => {
+    if (request.url().endsWith('/nodes/save') && request.method() === 'POST') requests.push(request.postDataJSON())
+  })
+
+  await selectNode()
+  await edit.click()
+  await mode.check()
+  await saveButton.click()
+  await expect(page.getByRole('alert').filter({ hasText: '请填写动态 zone 的节点输入 ID' })).toBeVisible()
+  await source.fill('registered-zone.json')
+  await saveButton.click()
+  await expect(page.getByRole('alert').filter({ hasText: '必须存在于本节点的 input_rule' })).toBeVisible()
+  expect(requests).toEqual([])
+  expect(inventory(root)).toEqual(before)
+  await source.fill('registered-repo')
+  const zone = { type: 'dynamic', input_id: 'registered-repo' }
+  const zoneEditor = form.locator('.scheduler-zone-setting')
+  await zoneEditor.screenshot({ path: info.outputPath('input-driven-zone-editor.png') })
+  const desktop = page.viewportSize()!
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(source).toHaveValue('registered-repo')
+  await source.fill('second-registration')
+  await source.fill('registered-repo')
+  await source.click()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({ path: info.outputPath('input-driven-zone-editor-phone.png') })
+  await page.setViewportSize(desktop)
+  await saveButton.click()
+  await expect(form).toHaveCount(0)
+  expect(requests).toHaveLength(1)
+  expect(JSON.parse(requests[0].content)).toEqual({ ...configured, zone })
+  expect((await readMap(page)).nodes.A).toEqual({ ...configured, zone })
+  expect(JSON.parse(inventory(root)['work.JSON']).nodes.A).toEqual({ ...configured, zone })
+  expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
+
+  await page.reload()
+  await page.getByTestId('tab-scheduler').click()
+  await page.locator('[data-map-file="work.JSON"]').click()
+  await selectNode()
+  const declaration = page.getByRole('region', { name: 'node 配置概览', exact: true })
+  await expect(declaration).toContainText('dynamic · 来自节点输入 registered-repo')
+  await expect(declaration).not.toContainText('每次执行时指定')
+  await declaration.locator('.scheduler-zone-setting').screenshot({ path: info.outputPath('input-driven-zone-declaration.png') })
+  await edit.click()
+  await expect(mode).toBeChecked()
+  await expect(source).toHaveValue('registered-repo')
+  await source.fill('second-registration')
+  let prompted = false
+  page.once('dialog', async dialog => { prompted = true; await dialog.dismiss() })
+  await form.getByRole('button', { name: '放弃编辑', exact: true }).click()
+  expect(prompted).toBe(true)
+  await expect(source).toHaveValue('second-registration')
   expect(server!.herdrCalls()).toEqual([])
 })
 
@@ -145,7 +285,7 @@ test('editing a real node keeps identity, open parameters and all non-target def
 test('registered Bot Markdown guidance does not constrain, complete or validate node input', async ({ page }) => {
   const root = await setup(page), before = inventory(root)
   const bots = path.join(server!.cwd, 'meta-data/bots')
-  fs.writeFileSync(path.join(bots, 'known.json'), JSON.stringify({ id: 'declared-inputs', name: '已登记能力', when: '', plan_guide: '说明不是校验规则', node_guide: '# 必须填写城市\n这是工作指引，不是必填规则。' }))
+  fs.writeFileSync(path.join(bots, 'known.json'), JSON.stringify({ id: 'declared-inputs', name: '已登记能力', when: '', description: '说明不是校验规则', input_rule: '# 必须填写城市\n这是工作指引，不是必填规则。', output_rule: '' }))
   const botsBefore = inventory(bots)
   await page.getByRole('button', { name: '刷新全部', exact: true }).click()
   await page.getByRole('button', { name: '新增 node', exact: true }).click()

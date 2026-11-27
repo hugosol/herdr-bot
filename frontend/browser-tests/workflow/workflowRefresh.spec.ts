@@ -17,8 +17,10 @@ async function fixture(interval?: number) {
   fs.mkdirSync(root, { recursive: true })
   const maps = path.join(server.cwd, 'meta-data/workflow-maps')
   fs.mkdirSync(maps, { recursive: true })
-  fs.writeFileSync(path.join(maps, 'observed-map.json'), JSON.stringify({ title: '轮询图', description: '', nodes: { A: { title: '保留节点', bot_id: 'saved-bot', zone: 'test/saved-zone', input: '节点输入', blocked_by: [] } } }))
-  const run = { id: 'observed-run', map: 'observed-map.json', createdAt: 1000, status: 'running', managerTaskId: 'manager', zone: 'C:/saved-zone', workspaceName: 'saved-workspace', userInput: '保留上次成功的现场', manager: null, finished: null, nodes: { A: { status: 'pending', execution: null, failure: null, completion: null, previousExecutions: [] } } }
+  const definition = JSON.stringify({ title: '轮询图', description: '', nodes: { A: { title: '保留节点', bot_id: 'saved-bot', zone: 'test/saved-zone', input: '节点输入', blocked_by: [] } } })
+  fs.writeFileSync(path.join(maps, 'observed-map.json'), definition)
+  fs.writeFileSync(path.join(root, 'map.json'), definition)
+  const run = { id: 'observed-run', map: 'observed-map.json', createdAt: 1000, status: 'running', managerTaskId: 'manager', zone: 'C:/saved-zone', workspaceName: 'saved-workspace', mapInput: { runInput: '保留上次成功的现场', files: [] }, manager: null, finished: null, nodes: { A: { status: 'pending', execution: null, failure: null, completion: null, previousExecutions: [] } } }
   const runPath = path.join(root, 'run.json')
   fs.writeFileSync(runPath, JSON.stringify(run))
   fs.writeFileSync(path.join(root, 'history.jsonl'), '')
@@ -145,7 +147,7 @@ test('P56.01 list and detail failures retain last success then recover without R
   await expect(stamp).toHaveAttribute('datetime', lastSuccess!)
   await expect(graphNode).toBeVisible()
   expect(fs.readFileSync(runPath, 'utf8')).toBe('{ broken Run')
-  fs.writeFileSync(runPath, JSON.stringify({ ...run, status: 'paused', userInput: '恢复后的现场' }))
+  fs.writeFileSync(runPath, JSON.stringify({ ...run, status: 'paused', mapInput: { ...run.mapInput, runInput: '恢复后的现场' } }))
   const restored = fs.readFileSync(runPath, 'utf8')
   // No manual refresh: the next configured poll must clear the stale error.
   await expect(page.getByTestId('run-user-input')).toHaveText('恢复后的现场', { timeout: 7500 })

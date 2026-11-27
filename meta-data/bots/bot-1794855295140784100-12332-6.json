@@ -1,9 +1,10 @@
 {
-  "id": "bot-map-create-bot-v2",
   "group": "meta-bot",
+  "id": "bot-map-create-bot-v2",
   "name": "创建bot-V2",
-  "when": "为既有 normal Task、Map 或 TypeScript Script 新建完整 Bot，并整体梳理执行职责、三指南的约束归属与信息承接时使用。",
-  "plan_guide": "按需求对齐、整体分层设计与创建两个串行阶段安排。W1 确认统一意图并交付需求与完整原始材料；W2 直接消费双材料，在同一 Chat 完成分层设计、候选确认和获准保存，无需另设优化节点。Task 型兼顾共享绑定与独立 Chat 用途；Map／Script 型只设计新 Bot 三指南。Task 型仅保存获准且必要的 Task.prompt 保义优化；Map／Script 目标完整不变。旧 Bot 修订、目标建设和业务试运行另行安排。\n\n预留 W1 意图确认，以及 W2 完整候选、身份绑定、共享影响和保存授权的用户参与。沿用有效确认，初始委托不提前批准未知正文；配置保存与材料写入分别遵守 V2 业务授权；成果按 auto_approved 独立批准，报告自由发送，不要求发送许可。Skill／共享文档默认只读，修改须另获具体授权。\n\n选用时读取 ${herdr-bot-api-url}/api/scheduler/maps/create-bot-v2.json 的 input_requirements、input_files 和节点定义，核实当前输入接口、执行位置及依赖。落实真实可用的 manager 类型 Task 与 manager zone；内部节点遵循自身 zone，调用方位置不覆盖内部位置。必要服务、契约、Skill 和宿主资源缺失时另行解决，本能力不补建能力或扩权。保存须满足运行保护条件，不通过改变运行状态绕过。\n\n作为其他 Map 的节点调用时，按 ${herdr-bot-path}/docs/workflow-runtime.md「Map 型节点与子 Run」「子流程交付与父层验收」配置 manager_task_id、命名输入及父节点 saved／handoff 输出，避免直接或间接递归调用。子管理者在内部 finish 后，将 W2 的真实 saved／handoff 登记给父执行，由父管理者独立验收并 complete。\n\n全部获准配置保存、完整读回和必要材料交付一致后才算完成；部分成功保留真实效果，修复另行授权。交付止于“文本／定义优化完成，行为未验证”。",
-  "node_guide": "准备委托时，读取 ${herdr-bot-api-url}/api/scheduler/maps/create-bot-v2.json 的 input_requirements 与 input_files，并按 ${herdr-bot-path}/docs/contracts/create-bot-v2-materials.md「通用格式与目标定位」「request 与 materials」准备 V2 request；materials 可选，提供时说明内容、用途和读取授权。可选材料缺席合法，已提供却不可读时须补齐。\n\nrequest 指定一个既有 normal Task、Map 或 TypeScript Script，说明业务需求、约束、非目标、资源限制、已有确认及授权范围；有命名要求时提供 Bot ID、名称和分组。服务可查的完整配置由执行者自行核实。Task 型说明 prompt 优化权限及须保留的独立、共享用途；Map／Script 型保持目标不变。已有 Bot 绑定时明确是否仍新建。\n\n作为 Map 节点调用时，以 input_rule 将实际材料按 request／materials 同名传入，并在 output_rule 声明 saved／handoff；manager_task_id、zone、依赖和成果批准模式使用各自结构化字段；报告不需要发送许可。业务 input 说明本次委托差异、材料用途、已有确认及额外交付与验收，不依赖其他 Chat 上下文或指南自动注入。\n\n明确材料新建授权与允许范围；有正式交付位置、命名、下游用途或额外验收要求时一并提供。默认成果是 V2 saved 与 handoff 两个独立 JSON，完整配置只放 saved，确认、分层归属、共享影响及检查结论放 handoff。必要业务决定或授权缺失时由用户或指定交接方补齐，最终候选及保存批准在 W2 形成候选后取得。",
+  "when": "需要为既有 Task、Map 或 TypeScript 脚本创建 Bot 时使用。",
+  "description": "## 能力职责\n核实目标和需求，设计并保存完整的 Bot 能力索引。\n\n## 用户参与\n需求、完整候选及具体保存范围由用户确认。\n\n## 操作效果\n新增 Bot；Task 目标可在获准范围内保义优化 prompt，Map 和脚本目标保持不变。",
+  "input_rule": "既有 normal Task、Map 或 TypeScript 脚本的定位文件；可附额外创建要求、约束和参考资料。",
+  "output_rule": "已保存的 Bot 配置及包含其 ID 的身份文件；交付止于配置，实际业务效果另行验证。",
   "map_file": "create-bot-v2.json"
 }

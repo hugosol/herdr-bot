@@ -112,20 +112,28 @@ impl AppHost {
     }
 
     pub(super) async fn observe_launch(&self, location: &NavigationTarget, target: &AppTerminal) -> Result<Value, HerdrError> {
-        let spaces = self.spaces().await?;
-        if bound_pane(&spaces, &location.workspace_id, &location.tab_id, &target.address)? != location.pane_id {
-            return Err(unexpected(LIST, "启动 Pane 与终端的关联已改变"));
-        }
+        self.observe_owner(location, target).await?
+            .ok_or_else(|| unexpected(CORE_GET, "启动终端已结束"))
+    }
+
+    pub(super) async fn observe_owner(&self, location: &NavigationTarget, target: &AppTerminal) -> Result<Option<Value>, HerdrError> {
         let status = self.core_status(&target.endpoint).await?;
         if core_identity(&status)? != (target.core_id.as_str(), target.core_pid) {
             return Err(unexpected(CORE_STATUS, "启动所用的 core 实例已改变"));
         }
         let record = self.core_get(&target.endpoint, &target.address).await?;
-        if pid(&record) != Some(target.root_pid) {
-            return Err(unexpected(CORE_GET, "终端根进程已改变"));
+        if nonempty(record.get("address")) != Some(target.address.as_str()) || pid(&record) != Some(target.root_pid) {
+            return Err(unexpected(CORE_GET, "终端地址或根进程已改变"));
+        }
+        if nonempty(record.get("state")) == Some("finished") {
+            return Ok(None);
+        }
+        let spaces = self.spaces().await?;
+        if bound_pane(&spaces, &location.workspace_id, &location.tab_id, &target.address)? != location.pane_id {
+            return Err(unexpected(LIST, "启动 Pane 与终端的关联已改变"));
         }
         verify_process(&record, &target.address, &target.nonce, target.bootstrap_pid, target.correlation.as_ref()).await?;
-        Ok(record)
+        Ok(Some(record))
     }
 
     pub(super) async fn close_tab(&self, location: &NavigationTarget, target: &AppTerminal) -> Result<(), HerdrError> {

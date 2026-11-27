@@ -73,7 +73,7 @@ export function RunDetails({ id, active }: { id: string | null; active: boolean 
       {run && <div><WorkflowStatus status={run.status} saved={!detail?.managed} /><p className="workflow-muted">{Number.isFinite(run.createdAt) && !Number.isNaN(new Date(run.createdAt).getTime()) && <><time dateTime={new Date(run.createdAt).toISOString()}>{new Date(run.createdAt).toLocaleString()}</time> · </>}{Object.values(run.nodes).filter(node => node.status === 'completed').length} / {Object.keys(run.nodes).length} 已交接</p></div>}
     </header>}
     <div className="workflow-refresh-info"><p role="status" aria-label="workflow 更新">最后成功时间：{snapshot && snapshot.id === id && snapshot.at !== null ? <time dateTime={new Date(snapshot.at).toISOString()}>{new Date(snapshot.at).toLocaleString()}</time> : '尚无成功查询。'}</p><button type="button" onClick={refresh}>刷新 Run</button></div>
-    {snapshot?.definitionsPending && <p role="status">运行事实已读回；当前定义仍在读取，暂沿用上次目录（若有），不是历史执行快照。</p>}
+    {snapshot?.definitionsPending && <p role="status">运行事实已读回；冻结 Map 和名称目录仍在读取，暂沿用上次读取结果（若有）。</p>}
     {error && <p className="workflow-alert" role="alert">更新失败：{error} 保留上次成功现场；可见时继续按配置查询，也可手动刷新。查询不改写 Run，不重试任何运行操作。</p>}
     <div hidden={id !== null}><RunList active={active && id === null} entries={snapshot?.entries ?? null} error={error} onOpen={() => { listScroll.current = window.scrollY }} /></div>
     {id && <>
@@ -87,13 +87,16 @@ export function RunDetails({ id, active }: { id: string | null; active: boolean 
       {detail?.readError && <p className="workflow-alert" role="alert">运行记录读取失败：{detail.readError}</p>}
       {run && detail && <>
         <section aria-label="输入准备状态"><h3>输入准备</h3><p>{run.inputsReady === true ? '管理者已确认输入就绪。' : run.inputsReady === false ? '输入尚未确认就绪；管理者需澄清材料并确认绑定后才能派发业务节点。' : '此历史记录未保存输入准备状态，不能据此判断输入已就绪。'}</p></section>
+        {run.status === 'completed' && <section aria-label="Run 公开文件成果"><h3>公开文件成果</h3>
+          {run.mapOutput.files.length ? <dl>{run.mapOutput.files.map(file => <div key={file.id}><dt><code>{file.id}</code></dt><dd><code className="workflow-path">{file.path}</code></dd></div>)}</dl> : <p>本次 Run 未登记公开文件成果。</p>}
+        </section>}
         {snapshot?.current && <RunCurrentView key={run.id} run={run} managed={detail.managed} reports={detail.reports} current={snapshot.current} />}
         <details className="workflow-run-background">
           <summary>运行背景 · 本次要求与管理者</summary>
           <dl><dt>managerTaskId</dt><dd>{run.managerTaskId}</dd><dt>zone</dt><dd>{run.zone}</dd><dt>workspaceName</dt><dd>{run.workspaceName}</dd></dl>
-          <h3>userInput</h3><pre className="workflow-prose" data-testid="run-user-input">{run.userInput}</pre>
-          <section aria-label="Run 文件输入"><h3>fileInputs</h3>
-            {run.fileInputs?.length ? <dl>{run.fileInputs.map(file => <div key={file.id}><dt><code>{file.id}</code></dt><dd><code className="workflow-path">{file.path}</code></dd></div>)}</dl> : <p>未保存文件输入绑定；是否就绪请查看输入准备状态。没有默认地址或自动发现。</p>}
+          <h3>runInput</h3><pre className="workflow-prose" data-testid="run-user-input">{run.mapInput.runInput}</pre>
+          <section aria-label="Run 文件输入"><h3>files</h3>
+            {run.mapInput.files.length ? <dl>{run.mapInput.files.map(file => <div key={file.id}><dt><code>{file.id}</code></dt><dd><code className="workflow-path">{file.path}</code></dd></div>)}</dl> : <p>未保存文件输入绑定；是否就绪请查看输入准备状态。没有默认地址或自动发现。</p>}
           </section>
           <h3>manager</h3>{run.manager ? <RunChatReference label="管理者 Chat" chat={run.manager} runId={run.id} /> : <p>尚无已保存管理者 Chat 关联。</p>}
         </details>

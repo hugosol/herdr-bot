@@ -1,0 +1,66 @@
+{
+  "feature": "bot-map-contract-refactor",
+  "ticket": "02-bot-contract-and-consumers.md",
+  "run_id": "070d73ca-382c-4aea-b2b3-01f8308553e2",
+  "parent_session_id": "01a219c2-b655-73fe-b79a-9d1f4fbbf05e",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e.jsonl",
+  "workspace": "E:/Developer/myhub/herdr-bot",
+  "tool_call_id": "5f75d211-bbdb-4151-946a-934f68766bc1",
+  "started_at": "2026-11-27T05:25:41.035Z",
+  "tdd_status": "completed",
+  "retro_status": "completed",
+  "tdd_finished_at": "2026-11-27T05:51:15.850Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "02-bot-contract-and-consumersmd-5f75d211-bbdb-41",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\implementation\\02-bot-contract-and-consumers.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"bot\",\n    \"branch\": \"hyper/bot-map-contract-refactor/02-bot-contract-and-consumers-3e68da-f1cebc6ae7d6\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-BV2WBo\"\n  }\n]\n协调仓集成分支：feature/bot-map-contract-refactor\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\implementation\\02-bot-contract-and-consumers.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"bot\",\n    \"branch\": \"hyper/bot-map-contract-refactor/02-bot-contract-and-consumers-3e68da-f1cebc6ae7d6\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-BV2WBo\"\n  }\n]\n协调仓集成分支：feature/bot-map-contract-refactor\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement bot map contract refactor ticket",
+    "lastIntent": "Committing isolated Bot contract changes",
+    "exitCode": 0,
+    "output": "票据 02 已提交 `e30d7e2c2c`，未合入集成分支。\n\n- **P3／P31**：四字段 Bot 贯通 HTTP、持久文件和真实页面编辑重载；非法输入、旧字段及过期 revision 拒绝后不改写。`schedulerBotEditing.spec.ts` **11/11**，另有修正后的相邻浏览器用例 **4/4**。\n- **P29／P38／P39**：创建、修订、材料和真实 Map→Bun 执行链切换至新格式。覆盖完整读回、命名文件、并发保护，以及读回、材料或通知失败时保留实际效果。`workflow_dispatch` 首轮 **33/35**；两项在历史夹具对照时因未计入既有 `design-taste-frontend` Skill 条目而失败。仅修正该夹具预期后，独立复跑 `create_migration_` **2/2**，未重跑首轮其他用例。`python scripts/test-script-contracts.py` 通过。\n- **P53**：`runtime_data` 定向 **2/2**，分别验证真实启动后离线 Bot／Map 不参与列表、读取或预检，以及既有布局标记阻止重导入。\n\n未移动生产数据，也未验证未选旧定义、延期 tester 或人工业务效果。08／14 切换时须定位实际在线定义根及启动导入源，备份放在两者之外。",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 1534674,
+    "tokens": 554114,
+    "requests": 102,
+    "contextTokens": 301227,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.2-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.2-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.2-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 500334,
+      "output": 53780,
+      "cacheRead": 21165568,
+      "cacheWrite": 0,
+      "totalTokens": 21719682,
+      "reasoningTokens": 14971,
+      "cost": {
+        "input": 1.0006680000000001,
+        "output": 0.5378000000000001,
+        "cacheRead": 2.1165568,
+        "cacheWrite": 0,
+        "total": 3.6550247999999996
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e\\02-bot-contract-and-consumersmd-5f75d211-bbdb-41.md",
+    "outputMeta": {
+      "lineCount": 7,
+      "charCount": 592
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "02-bot-contract-and-consumersmd-5f75d211-bbdb-41",
+  "session_id": "01a21b77-6c4c-767d-9a82-393d6d4255d6",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e\\02-bot-contract-and-consumersmd-5f75d211-bbdb-41.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-BV2WBo",
+  "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\retro\\02-bot-contract-and-consumers.md\\070d73ca-382c-4aea-b2b3-01f8308553e2.md",
+  "retro_finished_at": "2026-11-27T05:51:53.030Z"
+}

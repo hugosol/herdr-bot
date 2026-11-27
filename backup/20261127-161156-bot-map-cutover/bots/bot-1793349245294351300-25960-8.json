@@ -1,0 +1,10 @@
+{
+  "group": "meta-bot",
+  "id": "write-bot-node-guide",
+  "name": "Bot.input_rule 编写者",
+  "when": "需要编写或修订 Bot.input_rule 时选用。",
+  "description": "## 能力职责\n编写并确认规划所需输入种类、含义及关键前提的完整摘要。\n\n## 能力边界\n不保存 Bot、不修改执行目标或生成 Map。\n\n## 用户参与\n澄清未定业务取舍，沿用有效确认；修订在同一 Chat 整理。",
+  "input_rule": "真实 Bot、共同基线、需求和获准范围，重点核实实际输入、材料用途、关键选择与权限限制；独立 Chat 可按共同契约核实基线。",
+  "output_rule": "确认过的唯一 text 与必要 handoff；定稿不等于配置已保存。",
+  "task_id": "task-18e340f5287462ec-4"
+}

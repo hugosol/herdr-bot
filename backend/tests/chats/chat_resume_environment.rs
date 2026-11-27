@@ -56,7 +56,7 @@ storage_file = 'tasks.json'
 metadata_file = 'options.toml'
 [suites]
 definition_file = 'suites.json'
-dap_file = 'native catalog/dap.json'
+dap_directory = 'native catalog/dap'
 [sessions]
 history_file = 'history.json'
 "#, herdr.executable().display())).unwrap();
@@ -206,16 +206,11 @@ async fn source_survives_restart_and_resume_uses_latest_environment_without_trig
             }
             suites.push(declaration);
         }
-        let dap_catalog = root.path().join("native catalog/dap.json");
+        let dap_directory = root.path().join("native catalog/dap");
         let write_dap = |command: &str| {
-            fs::write(&dap_catalog, json!({"adapters":{"resume-adapter":{
-                "name":"Resume adapter", "description":"Local Rust fixture", "config":{"command":command, "languages":["rust"]}
-            }}}).to_string()).unwrap();
+            common::write_suite_resource(&dap_directory, "resume-adapter", json!({"command":command, "languages":["rust"]}));
         };
-        if agent == "omp" {
-            fs::create_dir(dap_catalog.parent().unwrap()).unwrap();
-            write_dap("adapter-old");
-        }
+        if agent == "omp" { write_dap("adapter-old"); }
         fs::write(root.path().join("suites.json"), json!({"suites":suites}).to_string()).unwrap();
         let file = native(root.path(),&herdr,agent,"native-full-identity-001");
         let panel = Panel::start(root.path(), &herdr);

@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NodeSettingsValue } from './maps/NodeSettings'
 import { listBots, loadBotDraft, saveBot, checkBotDelete, deleteBot, updateBotGroup, type BotRevision, type BotCatalog } from '../controllers/botController'
-import { groupOnlyRevision, updateMapGroup, listMaps, loadMap, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, deleteMap, type WorkflowMap, type MapCatalog } from '../controllers/schedulerController'
+import { groupOnlyRevision, updateMapGroup, listMaps, loadMap, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, deleteMap, nodeZoneProblem, type WorkflowMap, type MapCatalog, type NodeZone } from '../controllers/schedulerController'
 
 type Listing = { kind: 'loading' } | ({ kind: 'ready' } & MapCatalog) | { kind: 'error'; message: string }
 type Preview = { kind: 'loading' } | { kind: 'ready'; map: WorkflowMap } | { kind: 'error'; message: string }
 type Bots = { kind: 'loading' } | ({ kind: 'ready' } & BotCatalog) | { kind: 'error'; message: string }
 type Draft = { kind: 'Bot' | 'node'; create: boolean; id: string; content: string; revision: BotRevision | null; initialId: string; initialContent: string; file: string | null; settings: NodeSettingsValue | null; initialSettings: NodeSettingsValue | null }
-const draftChanged = (draft: Draft) => draft.id !== draft.initialId || draft.content !== draft.initialContent || (typeof draft.settings?.zone === 'string' || typeof draft.initialSettings?.zone === 'string' ? draft.settings?.zone !== draft.initialSettings?.zone : draft.settings?.zone?.type !== draft.initialSettings?.zone?.type) || draft.settings?.auto_approved !== draft.initialSettings?.auto_approved || draft.settings?.auto_close !== draft.initialSettings?.auto_close
+function zoneChanged(zone: NodeZone | undefined, initial: NodeZone | undefined) {
+  if (typeof zone === 'string' || typeof initial === 'string') return zone !== initial
+  return zone?.type !== initial?.type || zone?.input_id !== initial?.input_id
+}
+const draftChanged = (draft: Draft) => draft.id !== draft.initialId || draft.content !== draft.initialContent || zoneChanged(draft.settings?.zone, draft.initialSettings?.zone) || draft.settings?.auto_approved !== draft.initialSettings?.auto_approved || draft.settings?.auto_close !== draft.initialSettings?.auto_close
 type State = { listing: Listing; bots: Bots; file: string | null; preview: Preview | null; selectedId: string | null; botId: string | null; draft: Draft | null; editingBusy: boolean; editError: string | null; returnProblem: string | null; deleteMapTarget: string | null; deletingMap: boolean; deleteMapError: string | null }
 const message = (error: unknown) => error instanceof Error ? error.message : '读取或修改失败。'
 
@@ -40,12 +44,13 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
     const removed = selected !== null && !Object.hasOwn(map.nodes, selected)
     update({ preview: { kind: 'ready', map }, ...(removed ? { selectedId: null, returnProblem: `来源 node ${selected} 已移除，原选择已失效。` } : {}) })
   }
-  async function refresh(includeListing = true, saved = false) {
+  async function refresh(includeListing = true, saved = false, reuseBots = false) {
     if (!enabled.current) return
     includeListing = includeListing || current.current.listing.kind === 'loading'
     const owner = beginRequest()
     const file = current.current.file
-    update({ returnProblem: null, ...(includeListing ? { listing: { kind: 'loading' } as Listing } : {}), ...(!saved ? { bots: { kind: 'loading' } as Bots } : {}), ...(file ? { preview: { kind: 'loading' } as Preview } : {}) })
+    const includeBots = !reuseBots || current.current.bots.kind !== 'ready'
+    update({ returnProblem: null, ...(includeListing ? { listing: { kind: 'loading' } as Listing } : {}), ...(includeBots && !saved ? { bots: { kind: 'loading' } as Bots } : {}), ...(file ? { preview: { kind: 'loading' } as Preview } : {}) })
     const jobs: Promise<void>[] = []
     if (includeListing) jobs.push(listMaps(owner.signal).then(catalog => {
       if (owner.valid()) update({ listing: { kind: 'ready', ...catalog } })
@@ -63,7 +68,7 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
         ...(saved ? { editError: `Bot 已保存，但 Map 刷新失败：${message(error)}。请显式刷新；不会再次保存。` } : {}),
       })
     }))
-    jobs.push(listBots(owner.signal).then(catalog => {
+    if (includeBots) jobs.push(listBots(owner.signal).then(catalog => {
       if (owner.valid()) update({ bots: { kind: 'ready', ...catalog } })
     }, error => {
       if (!owner.valid()) return
@@ -100,7 +105,7 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
   function selectFile(file: string) {
     if (file === current.current.file || !abandonDraft()) return false
     update({ file, selectedId: null, preview: { kind: 'loading' }, returnProblem: null })
-    void refresh(false)
+    void refresh(false, false, true)
     return true
   }
   function openBot(id: string | null) {
@@ -154,6 +159,8 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
         for (const field of ['node_id', 'zone', 'auto_approved', 'auto_close', 'end_node']) {
           if (Object.hasOwn(value, field)) throw new Error(`请移除 node 内容 JSON 中的顶层 ${field}；使用独立控件。`)
         }
+        const zoneProblem = nodeZoneProblem(draft.settings?.zone, 'input_rule' in value ? value.input_rule : undefined)
+        if (zoneProblem) throw new Error(zoneProblem)
         content = JSON.stringify({ ...value, ...draft.settings })
       }
       const payload = { id: draft.id, content, revision: draft.revision }
@@ -206,11 +213,11 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
     update({ deleteMapTarget: current.current.file, deleteMapError: null })
   }
   function closeMapDeletion() { if (!inFlight.current) update({ deleteMapTarget: null, deleteMapError: null }) }
-  async function removeMap(deleteHistory: boolean) {
+  async function removeMap() {
     const file = current.current.deleteMapTarget
     if (file === null) return
     await operation(async valid => {
-      const catalog = await deleteMap(file, deleteHistory)
+      const catalog = await deleteMap(file)
       if (valid()) update({ listing: { kind: 'ready', ...catalog }, file: null, preview: null, selectedId: null, returnProblem: null, deleteMapTarget: null })
     }, true)
   }

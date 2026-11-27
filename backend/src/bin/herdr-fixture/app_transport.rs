@@ -19,7 +19,9 @@ pub(super) fn intercept(args: &[String]) -> bool {
     if matches!(command, "server status" | "get") && std::env::var_os("HC_SOCKET").is_none() {
         super::fail("wrong_core", "App terminal operations require an explicit core endpoint");
     }
-    let reply = replies.get(command).unwrap_or_else(|| super::usage(args));
+    let reply = data.as_str().filter(|_| command == "get")
+        .and_then(|terminal| replies.get(format!("get:{terminal}")))
+        .or_else(|| replies.get(command)).unwrap_or_else(|| super::usage(args));
     if let Some(message) = reply.get("fixture_error").and_then(Value::as_str) {
         super::fail("controlled-failure", message);
     }

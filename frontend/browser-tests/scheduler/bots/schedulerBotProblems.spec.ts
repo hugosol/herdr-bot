@@ -7,7 +7,7 @@ import { startServer, type E2EServer } from '../../support/support'
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
 
-const normal = { id: 'normal', name: '正常能力说明', when: '需要核对材料时', plan_guide: '仅整理差异，不执行工作', node_guide: JSON.stringify({ inputs: { source: '待核对的文本' }, outputs: { report: '差异报告说明' } }) }
+const normal = { id: 'normal', name: '正常能力说明', when: '需要核对材料时', description: '仅整理差异，不执行工作', input_rule: JSON.stringify({ inputs: { source: '待核对的文本' }, outputs: { report: '差异报告说明' } }), output_rule: '' }
 const plan = { title: 'Bot 问题隔离计划', description: '', nodes: {
   A: { title: '问题工作', bot_id: 'problem', input: JSON.stringify({ target: '原始参数' }), zone: 'unregistered-zone', blocked_by: [] },
   B: { title: '正常工作', bot_id: 'normal', input: JSON.stringify({}), zone: 'unregistered-zone', blocked_by: ['A'] },
@@ -51,10 +51,10 @@ async function normalDetails(page: Page) {
   const details = page.getByRole('region', { name: 'Bot 预览', exact: true })
   await expect(details.getByText('正常能力说明', { exact: true })).toBeVisible()
   await expect(details.getByRole('region', { name: 'when', exact: true })).toHaveText('需要核对材料时')
-  await details.getByRole('button', { name: 'plan_guide', exact: true }).click()
-  await expect(details.getByRole('region', { name: 'plan_guide', exact: true })).toHaveText('仅整理差异，不执行工作')
-  await details.getByRole('button', { name: 'node_guide', exact: true }).click()
-  for (const text of ['待核对的文本', '差异报告说明']) await expect(details.getByRole('region', { name: 'node_guide', exact: true })).toContainText(text)
+  await details.getByRole('button', { name: 'description', exact: true }).click()
+  await expect(details.getByRole('region', { name: 'description', exact: true })).toHaveText('仅整理差异，不执行工作')
+  await details.getByRole('button', { name: 'input_rule', exact: true }).click()
+  for (const text of ['待核对的文本', '差异报告说明']) await expect(details.getByRole('region', { name: 'input_rule', exact: true })).toContainText(text)
 }
 
 // S1 + production S2, P20/P29: a real bad file coexists with a normal
@@ -111,8 +111,8 @@ test('P20 P29 an actual unreadable bot file leaves the valid graph and normal ca
 // winner indexing fails the zero-description check and both filename checks.
 test('P5 P35 duplicate identity diagnoses every conflicting file in list and node preview without choosing a winner', async ({ page }) => {
   const { bots } = await prepare()
-  const first = JSON.stringify({ ...normal, id: 'problem', name: '禁止任选第一说明', plan_guide: 'FIRST_BUSINESS_TEXT' })
-  const second = JSON.stringify({ ...normal, id: 'problem', name: '禁止任选第二说明', plan_guide: 'SECOND_BUSINESS_TEXT' })
+  const first = JSON.stringify({ ...normal, id: 'problem', name: '禁止任选第一说明', description: 'FIRST_BUSINESS_TEXT' })
+  const second = JSON.stringify({ ...normal, id: 'problem', name: '禁止任选第二说明', description: 'SECOND_BUSINESS_TEXT' })
   fs.writeFileSync(path.join(bots, 'first.json'), first)
   fs.writeFileSync(path.join(bots, 'second.json'), second)
   await openPlan(page)
@@ -168,7 +168,7 @@ test('P21 invalid duplicate declaration cannot make another file an unambiguous 
 // Existing strict serde behavior is retained, not replaced with an internal
 // validation seam. Missing/defaulting, null coercion, permissive structures or
 // fallback-to-chat would expose a bad capability instead of a local diagnostic.
-const requiredFields = ['id', 'name', 'when', 'plan_guide', 'node_guide'] as const
+const requiredFields = ['id', 'name', 'when', 'description', 'input_rule', 'output_rule'] as const
 const invalidDefinitions: { name: string; value: Record<string, unknown>; diagnostic: string }[] = []
 for (const field of requiredFields) {
   const base: Record<string, unknown> = { ...normal, id: 'problem' }
@@ -186,7 +186,8 @@ invalidDefinitions.push(
   { name: 'legacy implementation', value: { ...normal, id: 'problem', implementation: { type: 'chat' } }, diagnostic: 'unknown field `implementation`' },
   { name: 'legacy inputs', value: { ...normal, id: 'problem', inputs: {} }, diagnostic: 'unknown field `inputs`' },
   { name: 'legacy outputs', value: { ...normal, id: 'problem', outputs: {} }, diagnostic: 'unknown field `outputs`' },
-  { name: 'legacy description', value: { ...normal, id: 'problem', description: '' }, diagnostic: 'unknown field `description`' },
+  { name: 'legacy planning guide', value: { ...normal, id: 'problem', plan_guide: '' }, diagnostic: 'unknown field `plan_guide`' },
+  { name: 'legacy node guide', value: { ...normal, id: 'problem', node_guide: '' }, diagnostic: 'unknown field `node_guide`' },
   { name: 'legacy use_when', value: { ...normal, id: 'problem', use_when: '' }, diagnostic: 'unknown field `use_when`' },
   { name: 'nontext Task reference', value: { ...normal, id: 'problem', task_id: {} }, diagnostic: 'expected a string' },
 )
@@ -222,9 +223,9 @@ for (const example of invalidDefinitions) {
 // keys or null. No unapproved business-text length or name quota is added.
 test('P22 explicit empty descriptions named objects and long text are valid rather than omitted', async ({ page }) => {
   const { bots } = await prepare()
-  const empty = { id: 'problem', name: '', when: '', plan_guide: '', node_guide: '' }
+  const empty = { id: 'problem', name: '', when: '', description: '', input_rule: '', output_rule: '' }
   const longText = '完整能力文本'.repeat(2500)
-  const named = { ...empty, id: 'named', plan_guide: longText, node_guide: '# 业务指引\n不是校验规则' }
+  const named = { ...empty, id: 'named', description: longText, input_rule: '# 业务指引\n不是校验规则', output_rule: '' }
   fs.writeFileSync(path.join(bots, 'empty.json'), JSON.stringify(empty))
   fs.writeFileSync(path.join(bots, 'named.json'), JSON.stringify(named))
   await openPlan(page)
@@ -242,7 +243,7 @@ test('P22 explicit empty descriptions named objects and long text are valid rath
   await page.getByTestId('tab-bot').click()
   await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: '· problem', exact: true }).click()
   const detail = page.getByRole('region', { name: 'Bot 预览', exact: true })
-  for (const title of ['node_guide', 'plan_guide', 'when']) {
+  for (const title of ['input_rule', 'description', 'when']) {
     await detail.getByRole('button', { name: title, exact: true }).click()
     await expect(detail.getByRole('region', { name: title, exact: true })).toBeEmpty()
   }

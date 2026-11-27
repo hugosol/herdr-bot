@@ -1,49 +1,40 @@
 {
   "title": "创建bot-V2",
   "group": "meta-map",
-  "description": "为既有 normal Task、Map 或 TypeScript Script 新建完整 Bot，采用两个串行普通 Task 对话：先对齐统一需求，再整体分层设计并创建 Bot；Task 型另保存获准且必要的 Task.prompt 优化。依据已确认方案 create-bot-v2 r1，W1 对应 align_requirements，W2 对应 design_and_create。\n\n范围：保留原创建bot及其调用方；不创建或执行目标，Map／Script 目标保持不变。交付 saved（完整读回配置）与 handoff（确认、分层归属、保存检查及未验证项）；配置交付不证明原生加载或业务效果。\n\n子流程交接：本流程管理者在 finish 后，将 W2 的真实 saved／handoff 登记到父执行声明的同名输出；Map 本身不新增顶层输出。",
-  "input_requirements": "为一个已经存在的 normal Task、Map 或 TypeScript Script 新建 Bot；旧 Bot 修订、目标建设与业务运行不在范围内。说明业务需求、适用范围、约束、资源限制、读取授权和已有确认；Bot 命名可由节点提出并确认。\n\n预留 W1 统一意图确认，以及 W2 完整候选、共享影响和保存授权确认。初始委托不提前批准未知正文；Skill／共享文档默认只读，修改另需明确授权。管理者依据各命名文件的描述核实、准备并确认实际输入就绪，再派发业务节点。",
-  "input_files": [
-    {
-      "id": "request",
-      "required": true,
-      "description": "创建委托，采用 V2 JSON。准备或核实时读取 E:/Developer/myhub/herdr-bot/docs/contracts/create-bot-v2-materials.md 的“通用格式与目标定位”和“request 与 materials”，按其中唯一协议填写目标、需求、约束、授权及确认依据；不使用旧 create_blank 格式。"
-    },
-    {
-      "id": "materials",
-      "required": false,
-      "description": "参考材料，按 E:/Developer/myhub/herdr-bot/docs/contracts/create-bot-v2-materials.md 的“request 与 materials”说明内容、格式、用途和读取授权；缺席合法，已提供须可读。"
-    }
-  ],
+  "description": "为既有 Task、Map 或 TypeScript 脚本创建 Bot。",
+  "map_input_rule": {
+    "description": "根据 request 定位的目标及其引用资料创建 Bot；有额外创建要求、约束或参考资料时，通过本次要求提供。",
+    "files": [
+      {
+        "id": "request",
+        "required": true,
+        "description": "创建目标的定位文件。准备或读取时，查阅 ${herdr-bot-path}/meta-data/workflow-maps/create-bot-v2/materials.md「request」。"
+      }
+    ]
+  },
+  "map_output_rule": {
+    "files": [
+      {
+        "id": "created_bot",
+        "description": "已创建 Bot 的身份 JSON 文件，唯一字段 bot_id 为正式配置的 Bot ID；用于读取或引用该 Bot，不是完整配置副本。"
+      }
+    ]
+  },
   "nodes": {
     "align_requirements": {
       "title": "对齐 Bot 需求",
       "bot_id": "align-bot-requirements-v2",
-      "input": "## 本次目标与材料\n按已确认方案 create-bot-v2 r1 执行 W1：对齐既有 normal Task、Map 或 TypeScript Script 的新建 Bot 需求。request 承载目标、需求及已有授权；materials 是可选参考，本次 userInput 补充业务意图。\n\n## V2 格式与交接用途\nmaterial_contract 是本次格式契约。消费 request／materials 和生成双材料前，读取其中“通用格式与目标定位”“request 与 materials”“target_materials”，采用对应的 V2 协议。\n\n原始目标材料以 target_materials 交付，使用该契约规定的 JSON 格式，供 W2 比较当前配置及整体分层设计。\n\n## 额外交付要求\n交付材料须符合上述 V2 协议；保留用户指定的正式交付位置与命名。",
+      "input": "读取 request 前，查阅 ${herdr-bot-path}/meta-data/workflow-maps/create-bot-v2/materials.md「request」；交付 bot_requirements 前，查阅同文档「bot_requirements」。写入交接文件前，读取同文档「材料写入授权」。",
       "input_rule": [
         {
           "type": "run",
           "id": "request",
-          "input_id": "request"
-        },
-        {
-          "type": "run",
-          "id": "materials",
-          "input_id": "materials"
-        },
-        {
-          "type": "file",
-          "id": "material_contract",
-          "path": "docs/contracts/create-bot-v2-materials.md",
-          "zone_id": "hugosol/herdr-bot"
+          "run_file_ref": "request"
         }
       ],
       "output_rule": [
         {
           "id": "bot_requirements"
-        },
-        {
-          "id": "target_materials"
         }
       ],
       "auto_approved": false,
@@ -55,33 +46,23 @@
     "design_and_create": {
       "title": "整体分层设计并创建 Bot",
       "bot_id": "bot-task-18e89651aa593290-1",
-      "input": "## 本次目标\n按已确认方案 create-bot-v2 r1 执行 W2：为 W1 已核实的既有 normal Task、Map 或 TypeScript Script 新建完整 Bot。在当前 Chat 按固定职责整体分层设计、确认并保存；不重做完整访谈或自动增加节点。\n\n## 双材料用途\n完整消费 bot_requirements（统一意图、范围、命名、确认及授权依据）和 target_materials（完整原始目标与必要参考原文）。前者用于核实业务与材料写入权限，后者用于比较当前真实目标、核实共享影响及设计承接；保留独立 Chat 和共享用途。W1 的意图确认不代替本阶段最终候选与保存授权。\n\n## 本次输出格式\nmaterial_contract 是本次 V2 格式契约。消费目标材料及生成文件前，读取其中“通用格式与目标定位”“target_materials”“saved 与 handoff”；核实 create_bot／optimize_task_prompt 的委托含义时另读“request 与 materials”。交付独立的 saved 与 handoff JSON：前者承载完整最终读回对象和真实 revision，后者承载确认、授权、分层归属、共享影响及检查结论。保留用户正式交付位置与命名。\n\n## 本次验收\n完成固定职责要求的全部获准保存、完整读回、非目标保持及可达承接检查，并核对两份输出符合 V2 协议，才可交接。Task 型保存全部获准且必要的 prompt 变化，无变化不更新；Map／Script 型跳过该步并保持目标完整不变。按契约如实填写 checks；部分失败遵守固定职责的现场核实与部分效果处理，不使用成功 handoff 冒充完成。注明“文本／定义优化完成，行为未验证”。",
+      "input": "读取 request 或 bot_requirements 前，查阅 ${herdr-bot-path}/meta-data/workflow-maps/create-bot-v2/materials.md 中对应章节；交付 created_bot 前，查阅同文档「created_bot」。写入交接文件前，读取同文档「材料写入授权」。",
       "input_rule": [
+        {
+          "type": "run",
+          "id": "request",
+          "run_file_ref": "request"
+        },
         {
           "type": "node",
           "id": "bot_requirements",
-          "node_id": "align_requirements",
-          "output_id": "bot_requirements"
-        },
-        {
-          "type": "node",
-          "id": "target_materials",
-          "node_id": "align_requirements",
-          "output_id": "target_materials"
-        },
-        {
-          "type": "file",
-          "id": "material_contract",
-          "path": "docs/contracts/create-bot-v2-materials.md",
-          "zone_id": "hugosol/herdr-bot"
+          "source_node_ref": "align_requirements",
+          "node_output_ref": "bot_requirements"
         }
       ],
       "output_rule": [
         {
-          "id": "saved"
-        },
-        {
-          "id": "handoff"
+          "id": "created_bot"
         }
       ],
       "auto_approved": false,

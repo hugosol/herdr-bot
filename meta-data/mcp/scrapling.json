@@ -1,0 +1,7 @@
+{
+  "name": "Scrapling",
+  "description": "提供 Scrapling 网页抓取工具。",
+  "config": {
+    "command": "scrapling-mcp"
+  }
+}

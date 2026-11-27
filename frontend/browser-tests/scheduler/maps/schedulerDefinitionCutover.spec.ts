@@ -20,13 +20,13 @@ test('P1.01 P2.01 P3.01 Bot documents round-trip independently without a Task bi
   await page.getByTestId('tab-scheduler').click()
   await page.getByTestId('tab-bot').click()
   await page.getByRole('button', { name: 'new', exact: true }).click()
-  const content = { name: '合同能力', when: 'WHEN_ONLY **何时选用**', plan_guide: 'PLAN_ONLY\n- 规划说明', node_guide: 'NODE_ONLY\n# 非校验规则：必须有业务输入' }
+  const content = { name: '合同能力', when: 'WHEN_ONLY **何时选用**', description: 'PLAN_ONLY\n- 规划说明', input_rule: 'NODE_ONLY\n# 非校验规则：必须有业务输入', output_rule: '' }
   await page.getByLabel('Bot ID', { exact: true }).fill('shared-contract')
   await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(JSON.stringify(content))
   await page.getByRole('button', { name: 'save', exact: true }).click()
   await expect(page.getByRole('form', { name: 'Bot 编辑', exact: true })).toHaveCount(0)
   const preview = page.getByRole('region', { name: 'Bot 预览', exact: true })
-  for (const [tab, text] of [['node_guide', content.node_guide], ['plan_guide', content.plan_guide], ['when', content.when]]) {
+  for (const [tab, text] of [['input_rule', content.input_rule], ['output_rule', content.output_rule], ['description', content.description], ['when', content.when]]) {
     await preview.getByRole('button', { name: tab, exact: true }).click()
     await expect(preview.getByRole('region', { name: tab, exact: true })).toHaveText(text)
   }
@@ -40,7 +40,7 @@ test('P1.01 P2.01 P3.01 Bot documents round-trip independently without a Task bi
   expect(fs.readdirSync(root)).toHaveLength(1)
   expect(JSON.parse(fs.readFileSync(path.join(root, fs.readdirSync(root)[0]), 'utf8'))).toEqual({ id: 'shared-contract', ...content })
   const edit = await (await page.request.post(`${server.baseURL}/api/scheduler/bots/edit`, { data: { id: 'shared-contract' } })).json()
-  const empty = { name: '', when: '', plan_guide: '', node_guide: '' }
+  const empty = { name: '', when: '', description: '', input_rule: '', output_rule: '' }
   const saved = await page.request.post(`${server.baseURL}/api/scheduler/bots/save`, { data: { id: edit.id, content: JSON.stringify(empty), revision: edit.revision } })
   expect(saved.ok()).toBe(true)
   expect(await saved.json()).toEqual({ id: 'shared-contract', ...empty })
@@ -53,13 +53,13 @@ test('P1.01 P2.01 P3.01 Bot documents round-trip independently without a Task bi
 test('P1.01 P2.01 P3.01 P4.01 Bot rejects malformed or legacy definitions without replacing the saved reference', async ({ request }) => {
   server = await startServer({ separateCwd: true, herdr: {} })
   const api = `${server.baseURL}/api/scheduler/bots`
-  const content = { name: '引用而非副本', when: 'WHEN', plan_guide: 'PLAN', node_guide: 'NODE', task_id: 'task-does-not-exist' }
+  const content = { name: '引用而非副本', when: 'WHEN', description: 'PLAN', input_rule: 'NODE', output_rule: '', task_id: 'task-does-not-exist' }
   const saved = await request.post(`${api}/save`, { data: { id: 'reference-only', content: JSON.stringify(content), revision: null } })
   expect(saved.ok()).toBe(true)
   expect(await saved.json()).toEqual({ id: 'reference-only', ...content })
   let edit = await (await request.post(`${api}/edit`, { data: { id: 'reference-only' } })).json()
   // Clearing any single document does not require clearing or reading another.
-  for (const key of ['when', 'plan_guide', 'node_guide']) {
+  for (const key of ['when', 'description', 'input_rule', 'output_rule']) {
     const value = { ...content, [key]: '' }
     const result = await request.post(`${api}/save`, { data: { id: edit.id, content: JSON.stringify(value), revision: edit.revision } })
     expect(result.ok()).toBe(true)
@@ -72,8 +72,8 @@ test('P1.01 P2.01 P3.01 P4.01 Bot rejects malformed or legacy definitions withou
   const bytes = fs.readFileSync(file, 'utf8')
   const invalid = [
     ...['schema_version', 'use_when', 'description', 'inputs', 'outputs', 'implementation', 'chat_id', 'state', 'task'].map(key => ({ ...content, [key]: key === 'schema_version' ? 1 : {} })),
-    ...['name', 'when', 'plan_guide', 'node_guide'].map(key => Object.fromEntries(Object.entries(content).filter(([field]) => field !== key))),
-    ...['name', 'when', 'plan_guide', 'node_guide', 'task_id'].map(key => ({ ...content, [key]: 7 })),
+    ...['name', 'when', 'description', 'input_rule', 'output_rule'].map(key => Object.fromEntries(Object.entries(content).filter(([field]) => field !== key))),
+    ...['name', 'when', 'description', 'input_rule', 'output_rule', 'task_id'].map(key => ({ ...content, [key]: 7 })),
     { ...content, typo: true }, [],
   ]
   for (const value of invalid) {

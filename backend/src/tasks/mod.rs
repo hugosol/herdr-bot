@@ -487,8 +487,8 @@ impl Tasks {
 
     /// Read, validate, mutate and publish under one shared resource scope.
     fn change(&self, change: impl FnOnce(&FileAccess, &mut Vec<Task>) -> Result<(), TaskError>) -> Result<Vec<Task>, TaskError> {
-        let [suite_file, mcp_file, dap_file] = self.suites.selection_scope();
-        self.files.with(&[self.storage_file.clone(), suite_file, mcp_file, dap_file, self.metadata_file.clone()], |access| {
+        let [suite_file, mcp_directory, lsp_directory, dap_directory] = self.suites.selection_scope();
+        self.files.with(&[self.storage_file.clone(), suite_file, mcp_directory, lsp_directory, dap_directory, self.metadata_file.clone()], |access| {
             access.update_json(
                 &self.storage_file,
                 |access| self.read(access).map(|tasks| TasksDocument { tasks }),
@@ -584,7 +584,7 @@ impl Tasks {
     pub(crate) fn catalog_result(&self, result: Result<Vec<Task>, TaskError>) -> Result<TaskListResponse, CatalogError> {
         let catalog = self.catalog().map_err(CatalogError::Task)?;
         let suites = self.suites.list().map_err(CatalogError::Suite)?;
-        let mcp = self.suites.mcp_catalog().map_err(CatalogError::Suite)?.into_keys().collect();
+        let mcp = self.suites.mcp_ids().map_err(CatalogError::Suite)?;
         let tasks = result.map_err(CatalogError::Task)?;
         Ok(TaskListResponse { tasks, options: TaskOptionsResponse { catalog: catalog.options(), suites, mcp } })
     }

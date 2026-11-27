@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { listBots, type Bot } from '../controllers/botController'
-import { loadMap, type WorkflowMap } from '../controllers/schedulerController'
+import type { WorkflowMap } from '../controllers/schedulerController'
 import { fetchTasks, type Task } from '../controllers/taskController'
-import { listRuns, loadRun, type RunDetail, type RunEntry } from '../controllers/workflowController'
+import { listRuns, loadRun, loadRunMap, type RunDetail, type RunEntry } from '../controllers/workflowController'
 
 export type CurrentDefinition = { map: WorkflowMap | null; mapError: string | null; bots: Bot[]; tasks: Task[]; catalogErrors: string[] }
 type Snapshot = { id: string | null; entries: RunEntry[]; detail: RunDetail | null; current: CurrentDefinition | null; at: number | null; definitionsPending?: boolean }
@@ -14,12 +14,8 @@ async function currentDefinition(detail: RunDetail, visible: () => boolean): Pro
   if (!run) return null
   const current: CurrentDefinition = { map: null, mapError: null, bots: [], tasks: [], catalogErrors: [] }
   try {
-    const map = await loadMap(run.map)
-    const savedIds = Object.keys(run.nodes)
-    if (savedIds.length !== Object.keys(map.nodes).length || savedIds.some(id => !Object.hasOwn(map.nodes, id))) {
-      current.mapError = '当前 node 标识集合与 Run 不一致，无法可靠对应。'
-    } else current.map = map
-  } catch (error) { current.mapError = error instanceof Error ? error.message : 'Map 无法读取。' }
+    current.map = await loadRunMap(run.id)
+  } catch (error) { current.mapError = error instanceof Error ? error.message : '冻结 Map 无法读取。' }
   if (!visible()) return current
   try {
     const catalog = await listBots()

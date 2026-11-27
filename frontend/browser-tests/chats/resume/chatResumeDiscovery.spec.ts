@@ -85,7 +85,7 @@ for (const agent of ['pi', 'omp']) {
       const entry = path.join(path.dirname(suiteFile), 'declared-suite-extension.ts')
       const suite = {
         id: `original-suite-${agent}`, name: `Original Suite · ${agent === 'omp' ? 'OMP' : 'Pi'}`, harness: agent,
-        skills: [], extensions: [entry], mcp: [], ...(agent === 'pi' ? { prompts: [], codemode: 'on' } : { lsp: {} }),
+        skills: [], extensions: [entry], mcp: [], ...(agent === 'pi' ? { prompts: [], codemode: 'on' } : { lsp: [] }),
       }
       if (hasSuite) {
         fs.mkdirSync(path.dirname(suiteFile), { recursive: true })

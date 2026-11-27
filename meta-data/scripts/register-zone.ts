@@ -4,12 +4,12 @@ import { isAbsolute, join, parse, resolve } from "node:path";
 
 type Binding = { id: string; path: string };
 type Context = {
+  serviceUrl: string;
   inputs?: Binding[];
   outputRule?: { id: string }[];
   host(operation: "read_json", args: { path: string }): Promise<unknown>;
   host(operation: "material", args: { id: string; document: unknown }): Promise<Binding>;
 };
-const SERVICE = "http://127.0.0.1:18787";
 const TIMEOUT_MS = 10_000;
 class RegistrationError extends Error {
   constructor(readonly code: string, message: string, readonly details?: unknown) { super(message); }
@@ -45,11 +45,11 @@ function query(git: string, cwd: string, args: string[], env: NodeJS.ProcessEnv)
   });
   return promise;
 }
-async function http(method: "GET" | "POST", body?: unknown): Promise<{ status: number; document: unknown }> {
+async function http(serviceUrl: string, method: "GET" | "POST", body?: unknown): Promise<{ status: number; document: unknown }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const response = await fetch(`${SERVICE}/api/zones`, {
+    const response = await fetch(`${serviceUrl}/api/zones`, {
       method, redirect: "error", signal: controller.signal,
       ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
     });
@@ -112,17 +112,17 @@ export default async function registerZone(context: Context) {
     if (!samePath(top, path) || origin !== input.ssh_url || head !== input.head_commit || shallow !== "true") reject("repository-verification-failed", "实际 Git 根目录、origin、HEAD 或浅仓库事实与 G1 材料不符。");
     await checkDirectory();
     stage = "preflight";
-    if (zones((await http("GET")).document).some(zone => zone.id === zoneId)) reject("zone-already-registered", "zone ID 已登记；不复用、覆盖、改绑或生成替代 ID。");
+    if (zones((await http(context.serviceUrl, "GET")).document).some(zone => zone.id === zoneId)) reject("zone-already-registered", "zone ID 已登记；不复用、覆盖、改绑或生成替代 ID。");
     await checkDirectory();
     stage = "register";
     postAttempted = true;
     effects.registration = "unknown";
-    const posted = await http("POST", { id: zoneId, path });
+    const posted = await http(context.serviceUrl, "POST", { id: zoneId, path });
     effects.registration = "succeeded";
     const returned = zones(posted.document).find(zone => zone.id === zoneId);
     if (!returned || !samePath(returned.path, path)) reject("registration-response-mismatch", "登记响应未包含预期绑定；不重投或回滚。");
     stage = "read_back";
-    const readBack = zones((await http("GET")).document).find(zone => zone.id === zoneId);
+    const readBack = zones((await http(context.serviceUrl, "GET")).document).find(zone => zone.id === zoneId);
     effects.observation = readBack ? "registered" : "not_registered";
     if (readBack) effects.binding = readBack;
     if (!readBack || !samePath(readBack.path, path)) reject("zone-readback-mismatch", "登记后的公开读回与预期绑定不一致。");
@@ -130,7 +130,7 @@ export default async function registerZone(context: Context) {
     stage = "material";
     effects.material = "unknown";
     const output = await context.host("material", { id: "registered_zone", document: {
-      service_url: SERVICE, zone_id: zoneId, repository_id: zoneId, repository_directory: path,
+      service_url: context.serviceUrl, zone_id: zoneId, repository_id: zoneId, repository_directory: path,
       ssh_url: input.ssh_url, head_commit: head, binding: readBack,
       checks: { repository_verified: true, post_status: posted.status, read_back_matches: true },
     } });
@@ -140,7 +140,7 @@ export default async function registerZone(context: Context) {
   } catch (error) {
     if (postAttempted && effects.observation === "not_attempted") {
       try {
-        const found = zones((await http("GET")).document).find(zone => zone.id === zoneId);
+        const found = zones((await http(context.serviceUrl, "GET")).document).find(zone => zone.id === zoneId);
         effects.observation = found ? "registered" : "not_registered";
         if (found) effects.binding = found;
         effects.expected_binding_matches = !!found && !!path && samePath(found.path, path);

@@ -20,7 +20,7 @@ fn facts(s: &Scenario) -> std::collections::BTreeMap<String, [Vec<u8>; 3]> {
     }).collect()
 }
 async fn nested(s: &Scenario) {
-    request(s, "/api/scheduler/bots/save", json!({"id":"nested","revision":null,"content":json!({"name":"Nested","when":"","plan_guide":"","node_guide":"","map_file":"inner.json"}).to_string()}), 200).await;
+    request(s, "/api/scheduler/bots/save", json!({"id":"nested","revision":null,"content":json!({"name":"Nested","when":"","description":"","input_rule":"","output_rule":"","map_file":"inner.json"}).to_string()}), 200).await;
     fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner","description":"","nodes":{"internal":{"title":"Internal work","bot_id":"worker","input":"INNER","zone":"node","blocked_by":[]}}}).to_string()).unwrap();
     fs::write(s.config.scheduler.map_directory.join("work.json"), json!({"title":"Outer","description":"","nodes":{"A":{"title":"Call","bot_id":"nested","manager_task_id":s.manager_task,"input":"TRIGGER-ONLY-731","zone":"node","blocked_by":[]}}}).to_string()).unwrap();
 }

@@ -38,10 +38,10 @@ async fn rust_retry_requires_explicit_failure_and_preserves_partial_effects_and_
     fs::write(s.data.path().join("request.json"), input.to_string()).unwrap();
     map_for_request(&s, "Business comes only from the named request").await;
     let mut map: Value = serde_json::from_slice(&fs::read(s.config.scheduler.map_directory.join("work.json")).unwrap()).unwrap();
-    map["nodes"]["old_consumer"] = json!({"title":"Read partial baseline independently","bot_id":"worker","input":"Read the actual named baseline","input_rule":[{"id":"baseline","type":"node","node_id":"create","output_id":"baseline"}],"zone":"node","blocked_by":[]});
+    map["nodes"]["old_consumer"] = json!({"title":"Read partial baseline independently","bot_id":"worker","input":"Read the actual named baseline","input_rule":[{"id":"baseline","type":"node","source_node_ref":"create","node_output_ref":"baseline"}],"zone":"node","blocked_by":[]});
     fs::write(s.config.scheduler.map_directory.join("work.json"), map.to_string()).unwrap();
     let run = s.start("failure-manager").await;
-    let gate = super::super::history_integrity::file_gate::Gate::new(&s.config.tasks.storage_file);
+    let gate = crate::common::file_gate::Gate::new(&s.config.tasks.storage_file);
     let launched = s.dispatch("failure-manager", &["create"]).await;
     let old_id = launched["snapshot"]["nodes"]["create"]["execution"]["id"].as_str().unwrap();
     assert!(common::wait_until(Duration::from_secs(5), || gate.reached()).await);
@@ -102,7 +102,7 @@ async fn rust_retry_requires_explicit_failure_and_preserves_partial_effects_and_
     input["bot"]["id"] = json!("invoice-review-replacement");
     input["bot"]["name"] = json!("Replacement reviewer");
     fs::write(s.data.path().join("request.json"), input.to_string()).unwrap();
-    let gate = super::super::history_integrity::file_gate::Gate::new(&s.config.tasks.storage_file);
+    let gate = crate::common::file_gate::Gate::new(&s.config.tasks.storage_file);
     let retry = action(&s, "retry", json!({"confirmed":true,"reason":"Partial effects inspected; authorize independent replacement Bot"}), 200).await;
     assert!(common::wait_until(Duration::from_secs(5), || gate.reached()).await);
     let current = &retry["snapshot"]["nodes"]["create"]["execution"];

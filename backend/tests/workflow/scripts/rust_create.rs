@@ -9,7 +9,7 @@ async fn request(s: &Scenario, path: &str, body: Value, status: u16) -> Value {
     serde_json::from_str(&response.body).unwrap()
 }
 async fn creator(s: &Scenario) {
-    request(s, "/api/scheduler/bots/save", json!({"id":"rust-create","revision":null,"content":json!({"name":"Rust creator","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}).to_string()}), 200).await;
+    request(s, "/api/scheduler/bots/save", json!({"id":"rust-create","revision":null,"content":json!({"name":"Rust creator","when":"","description":"","input_rule":"","output_rule":"","script":"create-blank-bot.ts"}).to_string()}), 200).await;
 }
 async fn target_task(s: &Scenario) -> Value {
     let tasks = request(s, "/api/tasks", json!({"name":"Only read invoices","taskType":"normal","agent":"pi","chatName":"Invoice {chat.id}","model":"gpt-6.1-sol","thinking":"high","skill":null,"prompt":"只读，不修改。"}), 200).await;
@@ -25,7 +25,7 @@ async fn map_for_request(s: &Scenario, input: &str) {
     // Public file seam owns Map publication; public GET validates its real shape.
     let map = json!({"title":"Rust creation","description":"Isolated creation acceptance","nodes":{
         "create":{"title":"Create blank","bot_id":"rust-create","input":input,"input_rule":[{"id":"request","type":"file","zone_id":"manager","path":"request.json"}],"output_rule":[{"id":"baseline"},{"id":"handoff"}],"zone":"node","blocked_by":[]},
-        "consume":{"title":"Consume real JSON","bot_id":"worker","input":"Read named baseline and handoff, cross-check complete configuration and revision","input_rule":[{"id":"baseline","type":"node","node_id":"create","output_id":"baseline"},{"id":"handoff","type":"node","node_id":"create","output_id":"handoff"}],"zone":"node","blocked_by":["create"]}
+        "consume":{"title":"Consume real JSON","bot_id":"worker","input":"Read named baseline and handoff, cross-check complete configuration and revision","input_rule":[{"id":"baseline","type":"node","source_node_ref":"create","node_output_ref":"baseline"},{"id":"handoff","type":"node","source_node_ref":"create","node_output_ref":"handoff"}],"zone":"node","blocked_by":["create"]}
     }});
     fs::write(s.config.scheduler.map_directory.join("work.json"), map.to_string()).unwrap();
     let read = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json").await;
@@ -82,14 +82,16 @@ async fn rust_create_dispatch_writes_blank_bot_and_delivers_real_baseline_before
     assert_eq!(report["source"], json!({"kind":"typescript","script":"create-blank-bot.ts"}));
     assert_eq!(report["executionId"], execution["id"]);
     let edit = request(&s, "/api/scheduler/bots/edit", json!({"id":"invoice-review"}), 200).await;
-    let expected = json!({"id":"invoice-review","name":"Invoice reviewer","group":"isolated","when":"","plan_guide":"","node_guide":"","task_id":target["id"]});
-    let actual: Value = serde_json::from_str(edit["revision"]["original"].as_str().unwrap()).unwrap();
+    let expected = json!({"id":"invoice-review","name":"Invoice reviewer","group":"isolated","when":"","description":"","input_rule":"","output_rule":"","task_id":target["id"]});
+    let persisted = fs::read(s.config.scheduler.bot_directory.join(edit["revision"]["file"].as_str().unwrap())).unwrap();
+    assert_eq!(persisted, edit["revision"]["original"].as_str().unwrap().as_bytes());
+    let actual: Value = serde_json::from_slice(&persisted).unwrap();
     assert_eq!(actual, expected);
     let output = |id: &str| report["outputs"].as_array().unwrap().iter().find(|file| file["id"] == id).unwrap()["path"].as_str().unwrap().to_owned();
     let baseline: Value = serde_json::from_slice(&fs::read(output("baseline")).unwrap()).unwrap();
     let handoff: Value = serde_json::from_slice(&fs::read(output("handoff")).unwrap()).unwrap();
     assert_eq!(baseline, json!({"schema_version":1,"kind":"baseline","bot":expected,"revision":edit["revision"],"target":{"type":"task","task_id":target["id"],"configuration":target},"request":input}));
-    assert_eq!(handoff, json!({"schema_version":1,"kind":"handoff","stage":"created","bot_id":"invoice-review","target":{"type":"task","task_id":target["id"]},"sources":[{"binding_id":"request","direction":"input","role":"request"}],"checks":{"bot_read_back":true,"target_unchanged":true},"unverified":["仅创建定义；未执行目标业务，也未保存三指南。"]}));
+    assert_eq!(handoff, json!({"schema_version":1,"kind":"handoff","stage":"created","bot_id":"invoice-review","target":{"type":"task","task_id":target["id"]},"sources":[{"binding_id":"request","direction":"input","role":"request"}],"checks":{"bot_read_back":true,"target_unchanged":true},"unverified":["仅创建定义；未执行目标业务，也未保存四字段正文。"]}));
     let status = request(&s, "/api/workflow/manager/status", json!({"sessionId":"rust-manager"}), 200).await;
     assert!(!status["ready"].as_array().unwrap().contains(&json!("consume")));
     assert!(s.herdr.calls()[calls.len()..].iter().all(|call| call["kind"] == "agent_prompt"), "only manager report notification is allowed");
@@ -176,7 +178,7 @@ async fn rust_create_saved_report_survives_immediate_and_delayed_notification_re
             assert_eq!(fs::read(output["path"].as_str().unwrap()).unwrap(), *original);
         }
         let edit = request(&s, "/api/scheduler/bots/edit", json!({"id":"invoice-review"}), 200).await;
-        let expected = json!({"id":"invoice-review","name":"Invoice reviewer","group":"isolated","when":"","plan_guide":"","node_guide":"","task_id":target["id"]});
+        let expected = json!({"id":"invoice-review","name":"Invoice reviewer","group":"isolated","when":"","description":"","input_rule":"","output_rule":"","task_id":target["id"]});
         assert_eq!(serde_json::from_str::<Value>(edit["revision"]["original"].as_str().unwrap()).unwrap(), expected);
         let baseline: Value = serde_json::from_slice(&bytes[0]).unwrap();
         assert_eq!(baseline, json!({"schema_version":1,"kind":"baseline","bot":expected,"revision":edit["revision"],"target":{"type":"task","task_id":target["id"],"configuration":target},"request":input}));
@@ -256,7 +258,7 @@ async fn rust_create_returns_while_business_target_read_is_held_and_freezes_name
     map_for_request(&s, "First node.input must not become parameters").await;
     let run = s.start("held-rust-manager").await;
     let calls = s.herdr.calls();
-    let gate = super::history_integrity::file_gate::Gate::new(&path);
+    let gate = crate::common::file_gate::Gate::new(&path);
     let addr = s.server.addr();
     let dispatch = tokio::spawn(async move { post_json_over_tcp(addr, "/api/workflow/manager/dispatch", r#"{"sessionId":"held-rust-manager","nodes":["create"]}"#).await });
     let observation = std::panic::AssertUnwindSafe(async {
@@ -290,7 +292,7 @@ async fn rust_create_returns_while_business_target_read_is_held_and_freezes_name
     let baseline: Value = serde_json::from_slice(&fs::read(output.as_str().unwrap()).unwrap()).unwrap();
     assert_eq!(baseline["target"]["configuration"], target);
     assert_eq!(fs::read(&path).unwrap(), original);
-    assert_eq!(baseline["bot"], json!({"id":format!("bot-{}", target["id"].as_str().unwrap()),"name":"Only read invoices","when":"","plan_guide":"","node_guide":"","task_id":target["id"]}));
+    assert_eq!(baseline["bot"], json!({"id":format!("bot-{}", target["id"].as_str().unwrap()),"name":"Only read invoices","when":"","description":"","input_rule":"","output_rule":"","task_id":target["id"]}));
     let list = get_over_tcp(s.server.addr(), "/api/workflow/runs").await;
     assert_eq!(serde_json::from_str::<Value>(&list.body).unwrap()["runs"].as_array().unwrap().len(), 1, "target must not execute");
 }
@@ -302,7 +304,7 @@ async fn rust_create_returns_while_business_target_read_is_held_and_freezes_name
 async fn rust_create_map_target_preserves_complete_definition_and_named_run_source() {
     let s = Scenario::new().await;
     creator(&s).await;
-    let target = json!({"title":"Exact target","group":"isolated","description":"Do not execute","input_requirements":"Read exact materials","input_files":[{"id":"source","required":true,"description":"Original source"}],"nodes":{"inspect":{"title":"Inspect","bot_id":"worker","input":"Only inspect","input_rule":[{"id":"source","type":"run","input_id":"source"}],"output_rule":[{"id":"result"}],"auto_approved":false,"auto_close":false,"zone":"node","blocked_by":[]}}});
+    let target = json!({"title":"Exact target","group":"isolated","description":"Do not execute","map_input_rule":{"description":"Read exact materials","files":[{"id":"source","required":true,"description":"Original source"}]},"nodes":{"inspect":{"title":"Inspect","bot_id":"worker","input":"Only inspect","input_rule":[{"id":"source","type":"run","run_file_ref":"source"}],"output_rule":[{"id":"result"}],"auto_approved":false,"auto_close":false,"zone":"node","blocked_by":[]}}});
     let target_path = s.config.scheduler.map_directory.join("exact.target.json");
     fs::write(&target_path, target.to_string()).unwrap();
     let original = fs::read(&target_path).unwrap();
@@ -313,8 +315,8 @@ async fn rust_create_map_target_preserves_complete_definition_and_named_run_sour
     map_for_request(&s, "").await;
     let root = s.config.scheduler.map_directory.join("work.json");
     let mut map: Value = serde_json::from_slice(&fs::read(&root).unwrap()).unwrap();
-    map["input_files"] = json!([{"id":"submission","required":true}]);
-    map["nodes"]["create"]["input_rule"] = json!([{"id":"request","type":"run","input_id":"submission"}]);
+    map["map_input_rule"]["files"] = json!([{"id":"submission","required":true}]);
+    map["nodes"]["create"]["input_rule"] = json!([{"id":"request","type":"run","run_file_ref":"submission"}]);
     fs::write(root, map.to_string()).unwrap();
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"map-rust-manager"},"native_cwd":s.data.path()}));
     let run = request(&s, "/api/scheduler/maps/work.json/runs", json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":"Create definition only","fileInputs":[{"id":"submission","path":path}]}), 201).await;
@@ -327,7 +329,7 @@ async fn rust_create_map_target_preserves_complete_definition_and_named_run_sour
     let full_target = get_over_tcp(s.server.addr(), "/api/scheduler/maps/exact.target.json").await;
     assert_eq!(full_target.status, 200, "{}", full_target.body);
     assert_eq!(baseline["target"]["configuration"], serde_json::from_str::<Value>(&full_target.body).unwrap());
-    assert_eq!(baseline["bot"], json!({"id":"bot-map-exact.target","name":"Exact target","when":"","plan_guide":"","node_guide":"","map_file":"exact.target.json"}));
+    assert_eq!(baseline["bot"], json!({"id":"bot-map-exact.target","name":"Exact target","when":"","description":"","input_rule":"","output_rule":"","map_file":"exact.target.json"}));
     let edit = request(&s, "/api/scheduler/bots/edit", json!({"id":"bot-map-exact.target"}), 200).await;
     assert_eq!(baseline["revision"], edit["revision"]);
     assert_eq!(fs::read(target_path).unwrap(), original);
@@ -437,12 +439,12 @@ async fn rust_create_write_readback_and_material_failures_report_actual_effects(
         map_for_request(&s, "No input inference").await;
         let run = s.start(&format!("fault-{case}")).await;
         let original_tasks = fs::read(&s.config.tasks.storage_file).unwrap();
-        let task_gate = super::history_integrity::file_gate::Gate::new(&s.config.tasks.storage_file);
+        let task_gate = crate::common::file_gate::Gate::new(&s.config.tasks.storage_file);
         let dispatched = s.dispatch(&format!("fault-{case}"), &["create"]).await;
         assert_eq!(dispatched["results"][0]["status"], "running");
         assert!(common::wait_until(Duration::from_secs(5), || task_gate.reached()).await);
         let saved_bots = s.data.path().join("held-bots");
-        let bot_gate = if case == "readback" { Some(super::history_integrity::file_gate::Gate::new(&s.config.scheduler.bot_directory.join("worker.json"))) } else { None };
+        let bot_gate = if case == "readback" { Some(crate::common::file_gate::Gate::new(&s.config.scheduler.bot_directory.join("worker.json"))) } else { None };
         if case == "write" {
             fs::rename(&s.config.scheduler.bot_directory, &saved_bots).unwrap();
             fs::write(&s.config.scheduler.bot_directory, b"real file blocks legal Bot directory").unwrap();
@@ -485,7 +487,7 @@ async fn rust_create_write_readback_and_material_failures_report_actual_effects(
         if case == "write" { assert_ne!(response.status, 200); } else {
             assert_eq!(response.status, 200, "{}", response.body);
             let edit: Value = serde_json::from_str(&response.body).unwrap();
-            assert_eq!(edit["content"], json!({"name":"Invoice reviewer","group":"isolated","when":"","plan_guide":"","node_guide":"","task_id":target["id"]}));
+            assert_eq!(edit["content"], json!({"name":"Invoice reviewer","group":"isolated","when":"","description":"","input_rule":"","output_rule":"","task_id":target["id"]}));
             assert!(!edit["revision"]["original"].as_str().unwrap().is_empty());
         }
         request(&s, "/api/workflow/manager/complete", json!({"sessionId":format!("fault-{case}"),"nodeId":"create","reason":"Partial effects do not grant completion"}), 409).await;
@@ -594,7 +596,7 @@ async fn rust_create_enforces_automatic_policy_and_declared_delivery_ids() {
 #[tokio::test]
 async fn rust_create_target_round_trips_and_rejected_edits_preserve_definition() {
     let s = Scenario::new().await;
-    let content = json!({"name":"Rust blank creator","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"});
+    let content = json!({"name":"Rust blank creator","when":"","description":"","input_rule":"","output_rule":"","script":"create-blank-bot.ts"});
     let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/bots/save", &json!({"id":"rust-create","content":content.to_string(),"revision":null}).to_string()).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let saved: Value = serde_json::from_str(&response.body).unwrap();

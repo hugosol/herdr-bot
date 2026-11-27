@@ -46,7 +46,7 @@ impl Fixture {
         for dir in [&config.scheduler.map_directory, &config.scheduler.bot_directory] { fs::create_dir_all(dir).unwrap(); }
         herdr.set_workspaces(json!([{"workspace_id":"isolation-workspace","label":data.path().file_name().unwrap().to_str().unwrap()}]));
         let (app, state) = crate::app_with_state(&config, Arc::new(crate::SystemPowerOff), Arc::new(crate::sessions::SessionsState::with_policy(config.sessions.policy())));
-        let server = TestServer::start_app(app).await;
+        let server = TestServer::start_with_state(app, &state).await;
         fs::write(herdr.path().join("launch_endpoint.txt"), server.addr().to_string()).unwrap();
         let mut fixture = Self { data, herdr, config, server, state, manager: Value::Null, targets: Vec::new() };
         fixture.post("/api/zones", json!({"id":"isolation","path":fixture.data.path()}), 200).await;
@@ -57,12 +57,12 @@ impl Fixture {
         }
         fixture.manager = tasks[0]["id"].clone();
         fixture.targets = tasks[2..].to_vec();
-        fs::write(fixture.config.scheduler.bot_directory.join("creator.json"), json!({"id":"creator","name":"creator","when":"","plan_guide":"","node_guide":"","script":"create-blank-bot.ts"}).to_string()).unwrap();
-        fs::write(fixture.config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"","plan_guide":"","node_guide":"","task_id":tasks[1]["id"]}).to_string()).unwrap();
+        fs::write(fixture.config.scheduler.bot_directory.join("creator.json"), json!({"id":"creator","name":"creator","when":"","description":"","input_rule":"","output_rule":"","script":"create-blank-bot.ts"}).to_string()).unwrap();
+        fs::write(fixture.config.scheduler.bot_directory.join("worker.json"), json!({"id":"worker","name":"worker","when":"","description":"","input_rule":"","output_rule":"","task_id":tasks[1]["id"]}).to_string()).unwrap();
         fs::write(fixture.config.scheduler.map_directory.join("isolation.json"), json!({"title":"Report isolation","description":"","nodes":{
             "create":{"title":"Create","bot_id":"creator","input":"No natural language arguments","input_rule":[{"id":"request","type":"file","zone_id":"isolation","path":"request.json"}],"output_rule":[{"id":"baseline"},{"id":"handoff"},{"id":"legacy"}],"zone":"isolation","blocked_by":[]},
             "decoy":{"title":"Other node","bot_id":"worker","input":"Other scope","output_rule":[{"id":"legacy"}],"zone":"isolation","blocked_by":[]},
-            "consumer":{"title":"Actual current JSON","bot_id":"worker","input":"Read the named JSON files","input_rule":[{"id":"baseline","type":"node","node_id":"create","output_id":"baseline"},{"id":"handoff","type":"node","node_id":"create","output_id":"handoff"}],"zone":"isolation","blocked_by":["create"]}
+            "consumer":{"title":"Actual current JSON","bot_id":"worker","input":"Read the named JSON files","input_rule":[{"id":"baseline","type":"node","source_node_ref":"create","node_output_ref":"baseline"},{"id":"handoff","type":"node","source_node_ref":"create","node_output_ref":"handoff"}],"zone":"isolation","blocked_by":["create"]}
         }}).to_string()).unwrap();
         let read = get_over_tcp(fixture.server.addr(), "/api/scheduler/maps/isolation.json").await;
         assert_eq!(read.status, 200, "{}", read.body);

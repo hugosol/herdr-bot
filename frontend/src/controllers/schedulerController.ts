@@ -1,6 +1,10 @@
 import type { BotRevision } from './botController'
 
-export type MapFileInput = { id: string; required: boolean; description?: string }
+type MapFileRule = { id: string; description?: string }
+export type MapFileInput = MapFileRule & { required: boolean }
+type MapRule<File> = { description?: string; files?: File[] }
+type MapRules = { map_input_rule?: MapRule<MapFileInput>; map_output_rule?: MapRule<MapFileRule> }
+type MapRulesDraft = MapRules & { revision: BotRevision }
 
 /** Only a membership-only write may advance an open draft's optimistic revision. */
 export function groupOnlyRevision(previous: BotRevision | null, next: BotRevision): boolean {
@@ -38,8 +42,8 @@ function isInputRule(value: unknown): value is InputRule[] {
   return Array.isArray(value) && new Set(value.map(rule => rule?.id)).size === value.length && value.every(rule =>
     typeof rule === 'object' && rule !== null && !Array.isArray(rule) && typeof rule.id === 'string' &&
     (rule.type === 'file' ? typeof rule.path === 'string' && (!('zone_id' in rule) || typeof rule.zone_id === 'string') && Object.keys(rule).every(key => ['id', 'type', 'path', 'zone_id'].includes(key))
-      : rule.type === 'run' ? typeof rule.input_id === 'string' && Object.keys(rule).every(key => ['id', 'type', 'input_id'].includes(key))
-      : rule.type === 'node' && typeof rule.node_id === 'string' && typeof rule.output_id === 'string' && Object.keys(rule).every(key => ['id', 'type', 'node_id', 'output_id'].includes(key))))
+      : rule.type === 'run' ? typeof rule.run_file_ref === 'string' && Object.keys(rule).every(key => ['id', 'type', 'run_file_ref'].includes(key))
+      : rule.type === 'node' && typeof rule.source_node_ref === 'string' && typeof rule.node_output_ref === 'string' && Object.keys(rule).every(key => ['id', 'type', 'source_node_ref', 'node_output_ref'].includes(key))))
 }
 
 function isOutputRule(value: unknown): value is OutputRule[] {
@@ -47,17 +51,45 @@ function isOutputRule(value: unknown): value is OutputRule[] {
     typeof rule === 'object' && rule !== null && !Array.isArray(rule) && typeof rule.id === 'string' && Object.keys(rule).every(key => key === 'id'))
 }
 
-function isMapFileInputs(value: unknown): value is MapFileInput[] {
-  return Array.isArray(value) && new Set(value.map(input => input?.id)).size === value.length && value.every(input =>
-    typeof input === 'object' && input !== null && !Array.isArray(input) && typeof input.id === 'string' && input.id.trim() !== '' && typeof input.required === 'boolean' && (!('description' in input) || typeof input.description === 'string') && Object.keys(input).every(key => ['id', 'required', 'description'].includes(key)))
+function isMapRule(value: unknown, input: boolean): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => key !== 'description' && key !== 'files')) return false
+  if ('description' in value && typeof value.description !== 'string') return false
+  if (!('files' in value)) return true
+  const files = value.files
+  const ids = new Set<string>()
+  return Array.isArray(files) && files.every(file => {
+    if (!file || typeof file !== 'object' || Array.isArray(file) || typeof file.id !== 'string' || !file.id.trim() || ids.has(file.id)) return false
+    ids.add(file.id)
+    return (!('description' in file) || typeof file.description === 'string') && (!input || typeof file.required === 'boolean') &&
+      Object.keys(file).every(key => key === 'id' || key === 'description' || (input && key === 'required'))
+  })
+}
+
+function hasValidMapRules(value: object): boolean {
+  return !('input_requirements' in value) && !('input_files' in value) &&
+    (!('map_input_rule' in value) || isMapRule(value.map_input_rule, true)) &&
+    (!('map_output_rule' in value) || isMapRule(value.map_output_rule, false))
+}
+
+export function nodeZoneProblem(zone: unknown, inputRule: unknown): string | null {
+  if (typeof zone === 'string') return null
+  if (typeof zone !== 'object' || zone === null || Array.isArray(zone) || !('type' in zone) || zone.type !== 'dynamic' || Object.keys(zone).some(key => key !== 'type' && key !== 'input_id')) {
+    return 'zone 必须是固定 ID、手动动态 zone 或输入驱动的动态 zone。'
+  }
+  if (!('input_id' in zone)) return null
+  const id = zone.input_id
+  if (typeof id !== 'string' || !id.trim()) return '请填写动态 zone 的节点输入 ID。'
+  if (!Array.isArray(inputRule) || !inputRule.some(rule => rule && typeof rule === 'object' && rule.id === id)) {
+    return '动态 zone 的节点输入 ID 必须存在于本节点的 input_rule。'
+  }
+  return null
 }
 
 function isMap(value: unknown): value is WorkflowMap {
   return typeof value === 'object' && value !== null && (!('group' in value) || value.group == null || (typeof value.group === 'string' && value.group.length > 0 && value.group.trim() === value.group)) && 'title' in value && typeof value.title === 'string' &&
-    (!('input_files' in value) || isMapFileInputs(value.input_files)) &&
-    (!('input_requirements' in value) || typeof value.input_requirements === 'string') &&
+    hasValidMapRules(value) &&
     'description' in value && typeof value.description === 'string' && 'nodes' in value && typeof value.nodes === 'object' && value.nodes !== null && !Array.isArray(value.nodes) &&
-    Object.values(value.nodes).every(node => node && typeof node.title === 'string' && typeof node.bot_id === 'string' && typeof node.input === 'string' && (!('end_node' in node) || typeof node.end_node === 'boolean') && !('inputs' in node) && (!('input_rule' in node) || isInputRule(node.input_rule)) && (!('output_rule' in node) || isOutputRule(node.output_rule)) && (typeof node.zone === 'string' || (typeof node.zone === 'object' && node.zone !== null && !Array.isArray(node.zone) && node.zone.type === 'dynamic' && Object.keys(node.zone).length === 1)) && Array.isArray(node.blocked_by) && node.blocked_by.every((id: unknown) => typeof id === 'string'))
+    Object.values(value.nodes).every(node => node && typeof node.title === 'string' && typeof node.bot_id === 'string' && typeof node.input === 'string' && (!('end_node' in node) || typeof node.end_node === 'boolean') && !('inputs' in node) && (!('input_rule' in node) || isInputRule(node.input_rule)) && (!('output_rule' in node) || isOutputRule(node.output_rule)) && !nodeZoneProblem(node.zone, node.input_rule) && Array.isArray(node.blocked_by) && node.blocked_by.every((id: unknown) => typeof id === 'string'))
 }
 
 function isCatalog(value: unknown): value is MapCatalog {
@@ -66,14 +98,14 @@ function isCatalog(value: unknown): value is MapCatalog {
     (!('titles' in value) || (typeof value.titles === 'object' && value.titles !== null && !Array.isArray(value.titles) && Object.values(value.titles).every(title => typeof title === 'string')))
 }
 
-export async function deleteMap(file: string, deleteHistory: boolean): Promise<MapCatalog> {
-  return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/delete`, { deleteHistory }, isCatalog, 'Map 删除') as MapCatalog
+export async function deleteMap(file: string): Promise<MapCatalog> {
+  return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/delete`, {}, isCatalog, 'Map 删除') as MapCatalog
 }
 
-export type InputRule = { id: string; type: 'file'; path: string; zone_id?: string } | { id: string; type: 'node'; node_id: string; output_id: string } | { id: string; type: 'run'; input_id: string }
+export type InputRule = { id: string; type: 'file'; path: string; zone_id?: string } | { id: string; type: 'node'; source_node_ref: string; node_output_ref: string } | { id: string; type: 'run'; run_file_ref: string }
 export type OutputRule = { id: string }
 
-export type NodeZone = string | { type: 'dynamic' }
+export type NodeZone = string | { type: 'dynamic'; input_id?: never } | { type: 'dynamic'; input_id: string }
 
 export type MapNode = {
   title: string
@@ -116,17 +148,16 @@ export async function deleteNode(file: string, target: { id: string; revision: B
   return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/nodes/delete`, target, isMap, 'node 删除') as WorkflowMap
 }
 
-export async function loadMapInputs(file: string): Promise<{ input_requirements: string; input_files: MapFileInput[]; revision: BotRevision }> {
+export async function loadMapRules(file: string): Promise<MapRulesDraft> {
   const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(file)}/inputs`)
   const value = await response.json()
-  if (!response.ok) throw new Error(value.message ?? `Map 输入声明读取失败：HTTP ${response.status}`)
-  if (typeof value.input_requirements !== 'string' || !isMapFileInputs(value.input_files) || typeof value.revision?.file !== 'string' || typeof value.revision?.original !== 'string') throw new Error('Map 输入声明响应无效。')
+  if (!response.ok) throw new Error(value?.message ?? `Map 公开规则读取失败：HTTP ${response.status}`)
+  if (!value || typeof value !== 'object' || !hasValidMapRules(value) || typeof value.revision?.file !== 'string' || typeof value.revision?.original !== 'string') throw new Error('Map 公开规则响应无效。')
   return value
 }
 
-export async function saveMapInputs(file: string, draft: { input_requirements: string; input_files: unknown; revision: BotRevision }): Promise<WorkflowMap> {
-  if (typeof draft.input_requirements !== 'string') throw new Error('Map 输入要求必须是 Markdown 文本。')
-  return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/inputs`, draft, isMap, 'Map 输入声明保存') as WorkflowMap
+export async function saveMapRules(file: string, draft: { map_input_rule?: unknown; map_output_rule?: unknown; revision: BotRevision }): Promise<WorkflowMap> {
+  return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/inputs`, draft, isMap, 'Map 公开规则保存') as WorkflowMap
 }
 
 export async function loadMapTitle(file: string): Promise<{ title: string; revision: BotRevision }> {
@@ -141,12 +172,10 @@ export async function saveMapTitle(file: string, draft: { title: string; revisio
   return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/title`, draft, isMap, 'Map 名称保存') as WorkflowMap
 }
 
-export type WorkflowMap = {
+export type WorkflowMap = MapRules & {
   group?: string | null
   title: string
   description: string
-  input_requirements?: string
-  input_files?: MapFileInput[]
   nodes: Record<string, MapNode>
 }
 

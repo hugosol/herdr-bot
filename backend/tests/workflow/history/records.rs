@@ -13,7 +13,7 @@ async fn rename(s: &Scenario, id: &str, body: Value) -> common::HttpResponse {
 #[tokio::test]
 async fn historical_run_rename_trims_preserves_records_and_survives_restart() {
     let s = Scenario::new().await;
-    let original = json!({"id":"rename-history","map":"removed-map.json","createdAt":100,"managerTaskId":"retired-task","zone":"C:/historical","workspaceName":"old-workspace","userInput":"original input","manager":null,"status":"completed","finished":null,"nodes":{}});
+    let original = json!({"id":"rename-history","map":"removed-map.json","createdAt":100,"managerTaskId":"retired-task","zone":"C:/historical","workspaceName":"old-workspace","mapInput":{"runInput":"original input","files":[]},"manager":null,"status":"completed","finished":null,"nodes":{}});
     for id in ["rename-history", "rename-duplicate"] {
         let root = s.config.scheduler.run_directory.join(id);
         fs::create_dir_all(&root).unwrap();
@@ -37,8 +37,8 @@ async fn historical_run_rename_trims_preserves_records_and_survives_restart() {
     let mut expected = original;
     expected["name"] = json!("历史 Run");
     expected["zoneBindings"] = json!({});
-    expected["fileInputs"] = json!([]); // Absent historical root inputs have no bindings.
     expected["inputsReady"] = json!(false);
+    expected["mapOutput"] = json!({"files":[]});
     assert_eq!(renamed["run"], expected);
     assert_eq!(renamed["managed"], false);
     assert_eq!(renamed["reports"], json!([]));
@@ -154,7 +154,7 @@ async fn independent_records_read_current_facts_without_replaying_history() {
     let manager = json!({"sessionId":"fixture-manager","workspaceId":"w-fixture","tabId":"tm","paneId":"pm","agentName":"am"});
     let old_chat = json!({"sessionId":"fixture-old","workspaceId":"w-fixture","tabId":"to","paneId":"po","agentName":"ao"});
     let chat = json!({"sessionId":"fixture-current","workspaceId":"w-fixture","tabId":"tc","paneId":"pc","agentName":"ac"});
-    let current = json!({"id":"independent-records","map":"work.json","createdAt":100,"managerTaskId":"fixture-manager-task","zone":"C:/fixture/manager","workspaceName":"fixture-workspace","userInput":"INDEPENDENT-INPUT","manager":manager,"status":"paused","finished":null,"nodes":{
+    let current = json!({"id":"independent-records","map":"work.json","createdAt":100,"managerTaskId":"fixture-manager-task","zone":"C:/fixture/manager","workspaceName":"fixture-workspace","mapInput":{"runInput":"INDEPENDENT-INPUT","files":[]},"manager":manager,"status":"paused","finished":null,"nodes":{
         "A":{"status":"failed","execution":{"id":"execution-current","taskId":"fixture-node-task","agent":"omp","zone":"C:/fixture/node","autoApproved":true,"approved":false,"approvalSource":null,"chat":chat},"failure":{"stage":"execution","message":"CURRENT dependency unavailable"},"completion":null,"previousExecutions":[{"execution":{"id":"execution-old","taskId":"fixture-node-task","agent":"omp","zone":"C:/fixture/node","autoApproved":true,"approved":false,"approvalSource":null,"chat":old_chat},"failure":{"stage":"execution","message":"OLD artifact invalid"}}]},
         "B":{"status":"completed","execution":null,"failure":null,"completion":{"id":"completion-fixture","at":120,"actor":manager,"reason":"User supplied verified results/B.md; manual limitation retained"},"previousExecutions":[]}
     }});
@@ -236,7 +236,7 @@ async fn operated_records_preserve_old_execution_recovery_completion_and_reports
     assert_eq!(["run.json", "history.jsonl", "messages.jsonl"].map(|name| fs::read(root.join(name)).unwrap()), before);
     let mut names = fs::read_dir(&root).unwrap().map(|entry| entry.unwrap().file_name().into_string().unwrap()).collect::<Vec<_>>();
     names.sort();
-    assert_eq!(names, vec!["history.jsonl", "messages.jsonl", "run.json"]);
+    assert_eq!(names, vec!["history.jsonl", "map.json", "messages.jsonl", "run.json"]);
     println!("P46.01 operated detail={detail} history={events:?} files={names:?}");
 }
 

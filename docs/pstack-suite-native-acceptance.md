@@ -1,13 +1,6 @@
 # pstack Suite 跨仓原生验收
 
-黑盒验收代码已迁至独立项目 `herdr-bot-tester`。本页验收命令使用显式设置的 `$TESTER` 与 `$BOT`，不要求两个项目相邻。产品构建与自身回归仍从产品根运行。
-
-```powershell
-$TESTER = 'E:/Developer/myhub/herdr-bot-tester'
-$BOT = 'E:/Developer/myhub/herdr-bot'
-```
-
-验收设施的 `scripts/` 路径现属于验证项目。参数、授权、覆盖及非零退出约束不变。完整入口见验证项目 `README.md`。
+按[测试指引](agents/testing.md)设置 `$TESTER`、`$BOT`，并遵守通用隔离和取证规则。
 
 在 Windows 上用实际安装的 Herdr TUI 和 OMP，从当前 herdr-bot worktree 的公开 Task／Chat HTTP 发起和恢复。Runner 使用真实 OMP 原生交互及 Session 历史，受控模型只返回明确的本地工具调用，不替宿主执行工具，也不填写历史、状态或工具结果。它不使用用户 credential、既有会话或全局配置。不要同时运行其他占用已经配对的原生／全仓验收。
 
@@ -77,9 +70,31 @@ bun run check:integrations
 bun run test
 ```
 
-离线[交付包与分层证据](pstack-delivery-evidence.md)与本专项分开运行：包检查不会启动宿主，本专项不重复检查整个资源闭包。
+Toolkit 的 dock 使用安全关机壳；原生专项的 `--backend` 使用生产后端。`OMP_BASELINE_RECORD_ROOT` 只定位基线依赖，不替换参与 worktree。工具版本、依赖及完整检查见 Toolkit 的 `docs/agents/testing.md` 和 `pstack-suite/README.md`。分别记录两个仓库的检查范围和结果，保留失败、过滤与未运行项。
 
-Toolkit 只对 dock 使用 safe shell，绝不将生产后端设为 `HERDR_BOT_BINARY`。`OMP_BASELINE_RECORD_ROOT` 仅用于解析历史 sibling 依赖；不会以旧工作区替代当前 worktree。依照 Toolkit worktree 的 `docs/agents/testing.md` 和 `pstack-suite/README.md` 选已安装的 OMP／Pi、可支持的 Node 及显式 Java、TLC 等配套工具。仓库检查失败、过滤和未运行项都必须保留；这两个检查组与专项互不替代。
+## 离线交付包检查
+
+用 Python 3.11+，将证据目录设为尚不存在的绝对路径：
+
+```powershell
+$Toolkit = 'C:/absolute/toolkit-worktree'
+$NewPackageEvidence = 'C:/absolute/pstack-package-evidence-new'
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" check-pstack-delivery `
+  --toolkit-worktree $Toolkit --evidence-dir $NewPackageEvidence
+$env:HERDR_BOT_WORKTREE = $BOT
+python "$TESTER/scripts/check-pstack-delivery.test.py" $Toolkit
+```
+
+检查只读交付文件，不调用生成器、不联网、不启动宿主，也不读取用户配置。它对照 Toolkit 的发布清单、所有权账本和独立审查的 `delivery-closure.json` 检查文件、引用、来源及字节。结果写入 `summary.json`；外层 `tester-run.json` 只记录调用身份和退出码。`0` 表示包检查通过，`1` 表示包检查失败并保留明细，`2` 表示用法错误或无法创建新的证据目录。
+
+包检查只记录当前 `pstack-omp` 声明，不要求资源数量、路径或顺序固定。文件完整不证明规则执行、依赖已安装、角色已绑定、原生功能可用或模型质量。来源和许可由 Toolkit 的发布清单、许可证及 README 维护。将生成、内容审查、装配、原生机制和人工确认分别取证，不用任何一层补齐另一层的缺项。
+
+## H1 与 H2 人工确认
+
+- **H1（P16–P17）**。按 Toolkit `pstack-suite/README.md` 的 H1 步骤，在已安装的 OMP TUI 中观察模式标记随开关变化，并确认退出后以新进程恢复同一会话时保留所选状态。原生事件、模型请求和自动恢复证据不能替代操作者看到的界面。
+- **H2（P38）**。由用户核对明确授权的自有测试仓库中的真实 forge 操作。预先明确仓库、命令、预期副作用和取证步骤。受控 forge 或本地 Git 结果不能代签，不接触生产仓库，也不从 Suite 或自动验收推导外部操作授权。
+
+两项在用户确认前保持未验证。人工签收不补齐未执行的自动检查。
 
 ## 场景和证据
 

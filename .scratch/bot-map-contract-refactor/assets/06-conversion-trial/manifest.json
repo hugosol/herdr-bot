@@ -1,0 +1,60 @@
+{
+  "kind": "planning-conversion-sample-not-deployed",
+  "sourceCommit": "43f957cdf823d5b514953e39fbfb85054e609144",
+  "sources": [
+    {
+      "path": "meta-data/bots/bot-1794388558375394800-31524-0.json",
+      "sha256": "eea579a5cbfd130762e1c2bb421400e26439ff5615a390ca6da4bbaaa3950540"
+    },
+    {
+      "path": "meta-data/bots/bot-1793304246857557100-58200-0.json",
+      "sha256": "ce90417bc4bbaf5e5efcb4ed55ffc36913713cd0bca07cb189f76847ea3fec19"
+    },
+    {
+      "path": "meta-data/bots/bot-1793305512701853300-58200-1.json",
+      "sha256": "180f7c1aedd55e806a6b576b88d4867501d1e33ea4780fd1b55a55fa28e10ff6"
+    },
+    {
+      "path": "meta-data/bots/bot-1794222010819446100-10104-0.json",
+      "sha256": "e7a6909b51a25455d1830b682e84a7fd08843b202e14808808de6a2b48ad50c9"
+    },
+    {
+      "path": "meta-data/tasks.json",
+      "sha256": "aff84715bf22a623943af333722d5d21299ef09c66760f68615ba1581992156a"
+    },
+    {
+      "path": "meta-data/workflow-maps/plan_workflow.json",
+      "sha256": "81fa276722c12fc46e53071c681e1e925a2112fc1cc1f0ed9048e871a45a8cc8"
+    },
+    {
+      "path": "docs/planning-deliverables.md",
+      "sha256": "53bd2090590cdb91386382b3128d2cf167662b55a921a55922317d3e4a74d839"
+    },
+    {
+      "path": "meta-data/task-options.toml",
+      "sha256": "16077970d2d42874df4386ffe433944aa6f66cca7de9c59a96c65949dcbc2979"
+    },
+    {
+      "path": "meta-data/suites.json",
+      "sha256": "c8b0a0b8e3390742684d37cc44800db5157a92bc4147fef955e1ef75120732e7"
+    }
+  ],
+  "authority": "../../lighthouse/04-coherent-prompts.md",
+  "taskSelection": [
+    "chief-bot",
+    "task-18e2c2827c484128-0",
+    "task-18e318b13b71a8bc-0",
+    "task-18e319d73777fc6c-1",
+    "task-18e65aed740825f8-0"
+  ],
+  "taskImport": "Merge selected objects by id; never replace production tasks.json with this subset.",
+  "targets": [
+    "meta-data/bots/bot-1794388558375394800-31524-0.json",
+    "meta-data/bots/bot-1793304246857557100-58200-0.json",
+    "meta-data/bots/bot-1793305512701853300-58200-1.json",
+    "meta-data/bots/bot-1794222010819446100-10104-0.json",
+    "meta-data/tasks.json",
+    "meta-data/workflow-maps/plan_workflow.json",
+    "meta-data/workflow-maps/plan_workflow/planning-deliverables.md"
+  ]
+}

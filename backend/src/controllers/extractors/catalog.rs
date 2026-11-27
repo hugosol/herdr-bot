@@ -1,5 +1,5 @@
 use axum::{body::to_bytes, extract::{FromRequest, Request}, http::StatusCode, response::{IntoResponse, Response}};
-use crate::{scheduler, suites::{Suite, SuiteError}, tasks};
+use crate::{scheduler, suites::{ResourceDefinition, Suite, SuiteError}, tasks};
 use crate::controllers::{rejected, rejected_owned, responses::HttpError};
 use super::CommandAction;
 
@@ -9,11 +9,14 @@ pub(crate) struct TaskInput(pub tasks::TaskInput);
 pub(crate) struct TaskDelete;
 pub(crate) struct SuiteInput(pub Suite);
 pub(crate) struct SuiteDelete;
+pub(crate) struct ResourceInput(pub ResourceDefinition);
 pub(crate) struct MapRead;
 pub(crate) struct MapList;
 pub(crate) struct BotList;
 pub(crate) struct NewDraft;
-pub(crate) struct DeleteMap;
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DeleteMap {}
 pub(crate) struct PreflightRun;
 
 impl CommandAction for DeleteMap { const ACTION: &'static str = "删除 Map"; }
@@ -57,6 +60,31 @@ impl<S: Send + Sync> FromRequest<S> for SuiteInput {
             .map_err(|error| HttpError(SuiteError::invalid(error.to_string())))?;
         serde_json::from_slice(&bytes).map(Self)
             .map_err(|error| HttpError(SuiteError::invalid(error.to_string())))
+    }
+}
+
+impl<S: Send + Sync> FromRequest<S> for ResourceInput {
+    type Rejection = Response;
+    async fn from_request(request: Request, _: &S) -> Result<Self, Self::Rejection> {
+        use axum::http::{Uri, header};
+        if let Some(origin) = request.headers().get(header::ORIGIN) {
+            let authority = request.uri().authority().map(|value| value.as_str())
+                .or_else(|| request.headers().get(header::HOST).and_then(|value| value.to_str().ok()));
+            let same_host = origin.to_str().ok().and_then(|value| value.parse::<Uri>().ok()).is_some_and(|uri| {
+                matches!(uri.scheme_str(), Some("http" | "https")) && uri.path() == "/" && uri.query().is_none()
+                    && uri.authority().zip(authority).is_some_and(|(origin, host)| origin.as_str().eq_ignore_ascii_case(host))
+            });
+            if !same_host {
+                return Err(rejected(StatusCode::FORBIDDEN, "suite-resource-cross-host", "只能从同一主机编辑 Suite 资源。"));
+            }
+        }
+        let invalid = |message: String| HttpError(SuiteError::invalid(message)).into_response();
+        if request.uri().query().is_some() {
+            return Err(invalid("编辑 Suite 资源不接受查询参数。".into()));
+        }
+        let bytes = to_bytes(request.into_body(), MAX_CATALOG_REQUEST_BYTES).await
+            .map_err(|error| invalid(error.to_string()))?;
+        ResourceDefinition::parse(&bytes).map(Self).map_err(invalid)
     }
 }
 

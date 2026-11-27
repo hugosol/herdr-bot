@@ -92,7 +92,7 @@ test('P13 P17 same-bot nodes show only current direct JSON parameters and prereq
   fs.mkdirSync(bots, { recursive: true })
   const outsidePath = path.join(server.cwd, 'must-not-read.txt')
   fs.writeFileSync(outsidePath, 'OUTSIDE_SECRET_MUST_NOT_APPEAR')
-  const botBytes = JSON.stringify({ id: 'shared', name: '共享业务能力', when: '测试复用', plan_guide: '不是 node 参数', node_guide: JSON.stringify({ inputs: { target: 'TEMPLATE_DEFAULT_MUST_NOT_APPEAR', template_only: '不可补入参数' }, outputs: {} }) })
+  const botBytes = JSON.stringify({ id: 'shared', name: '共享业务能力', when: '测试复用', description: '不是 node 参数', input_rule: JSON.stringify({ inputs: { target: 'TEMPLATE_DEFAULT_MUST_NOT_APPEAR', template_only: '不可补入参数' }, outputs: {} }), output_rule: '' })
   const mapBytes = JSON.stringify({ title: '<script>window.mapExecuted = true</script>', description: '<img src=x onerror="window.mapExecuted = true">', nodes: {
     A: { title: '第一项', bot_id: 'shared', input: ['alpha-only', 'zone-does-not-exist', 'bot-does-not-exist', 'extra_undeclared', '<svg onload="window.mapExecuted = true">', outsidePath, 'false 7 null'].join('\n'), zone: 'unregistered-zone', blocked_by: [] },
     B: { title: '第二项', bot_id: 'shared', input: JSON.stringify({ target: 'beta-only', list: ['two', 2] }), zone: 'unregistered-zone', blocked_by: ['A'] },

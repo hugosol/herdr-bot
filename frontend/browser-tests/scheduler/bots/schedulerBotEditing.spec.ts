@@ -6,7 +6,7 @@ import { startServer, type E2EServer } from '../../support/support'
 
 let server: E2EServer | null = null
 test.afterEach(async () => { await server?.cleanup(); server = null })
-const content = { name: '人工审计', when: '', plan_guide: '只核对账目，不查询天气', node_guide: JSON.stringify({ inputs: {}, outputs: {} }) }
+const content = { name: '人工审计', when: '', description: '只核对账目，不查询天气', input_rule: '已授权账目', output_rule: '差异报告' }
 async function open(page: Page) {
   await page.goto(`${server!.baseURL}?layout=expanded`)
   await page.getByTestId('tab-scheduler').click()
@@ -73,7 +73,7 @@ test('editing loads only real content, keeps immutable identity and original fil
   await expect(id).toHaveAttribute('readonly', '')
   const json = page.getByLabel('Bot 内容 JSON', { exact: true })
   expect(JSON.parse(await json.inputValue())).toEqual(content)
-  const updated = { ...content, name: '', plan_guide: '审计新版本', node_guide: '独立核对意见' }
+  const updated = { name: '', when: '按需核对', description: '审计新版本', input_rule: '原始凭据', output_rule: '独立核对意见' }
   await json.fill(JSON.stringify(updated))
   await page.getByRole('button', { name: 'save', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('审计新版本')
@@ -82,6 +82,13 @@ test('editing loads only real content, keeps immutable identity and original fil
   const response = await page.request.post(`${server.baseURL}/api/scheduler/bots/edit`, { data: { id: 'audit-only' } })
   expect(response.status()).toBe(200)
   expect(await response.json()).toMatchObject({ id: 'audit-only', content: updated, revision: { file: 'personal-filename.JSON' } })
+  await open(page)
+  await page.getByRole('button', { name: /audit-only$/ }).click()
+  const preview = page.getByRole('region', { name: 'Bot 预览', exact: true })
+  for (const field of ['when', 'description', 'input_rule', 'output_rule'] as const) {
+    await preview.getByRole('button', { name: field, exact: true }).click()
+    await expect(preview.getByRole('region', { name: field, exact: true })).toHaveText(updated[field])
+  }
 })
 
 // P7 P14 P17 S1/S2: independent malformed examples must fail without changing
@@ -104,6 +111,10 @@ test('invalid bot content cannot bypass validation and keeps the original ID and
     { raw: JSON.stringify({ ...content, schema_version: 8 }), diagnostic: 'schema_version' },
     { raw: JSON.stringify({ ...content, schema_version: 1.5 }), diagnostic: 'schema_version' },
     { raw: JSON.stringify({ ...content, typo: true }), diagnostic: 'typo' },
+    { raw: JSON.stringify({ ...content, plan_guide: 'old' }), diagnostic: 'plan_guide' },
+    { raw: JSON.stringify({ ...content, node_guide: 'old' }), diagnostic: 'node_guide' },
+    { raw: JSON.stringify({ ...content, script: '../outside.ts' }), diagnostic: 'script' },
+    { raw: JSON.stringify({ ...content, script: 'tools/worker.ts', map_file: 'work.json' }), diagnostic: '互斥' },
     { raw: JSON.stringify({ ...content, implementation: { type: 'shell' } }), diagnostic: 'implementation' },
     { raw: JSON.stringify({ ...content, implementation: { type: 'chat', command: 'no' } }), diagnostic: 'implementation' },
     { raw: JSON.stringify({ ...content, implementation: ['chat'] }), diagnostic: 'implementation' },
@@ -113,7 +124,7 @@ test('invalid bot content cannot bypass validation and keeps the original ID and
     const missing: Record<string, unknown> = { ...content }; delete missing[key]
     cases.push({ raw: JSON.stringify(missing), diagnostic: key })
   }
-  for (const [key, value] of [['name', null], ['when', 4], ['plan_guide', []], ['node_guide', {}], ['task_id', 2]] as const) {
+  for (const [key, value] of [['name', null], ['when', 4], ['description', []], ['input_rule', {}], ['output_rule', null], ['task_id', 2]] as const) {
     cases.push({ raw: JSON.stringify({ ...content, [key]: value }), diagnostic: key })
   }
   for (const item of cases) {
@@ -130,7 +141,7 @@ test('invalid bot content cannot bypass validation and keeps the original ID and
       expect(inventory(root)).toEqual(before)
     }
   }
-  const validEmpty = { name: '', when: '', plan_guide: '', node_guide: JSON.stringify({ inputs: {}, outputs: {} }) }
+  const validEmpty = { name: '', when: '', description: '', input_rule: '', output_rule: '' }
   await json.fill(JSON.stringify(validEmpty))
   await page.getByRole('button', { name: 'save', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('invalid-candidate')
@@ -173,7 +184,7 @@ test('confirmed Bot save ends the draft even when catalog delivery fails, and ex
   await open(page)
   await page.getByRole('button', { name: 'new', exact: true }).click()
   await page.getByLabel('Bot ID', { exact: true }).fill('saved-before-refresh-failure')
-  const saved = { ...content, name: '目录恢复后可见', plan_guide: '真实提交后的独立内容' }
+  const saved = { ...content, name: '目录恢复后可见', description: '真实提交后的独立内容' }
   await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(JSON.stringify(saved))
   await page.route('**/api/scheduler/bots', async route => {
     const response = await route.fetch()
@@ -184,7 +195,7 @@ test('confirmed Bot save ends the draft even when catalog delivery fails, and ex
   await expect(page.getByRole('form', { name: 'Bot 编辑', exact: true })).toHaveCount(0)
   await expect(page.getByRole('alert')).toContainText(/已保存/)
   await expect(page.getByRole('alert')).toContainText(/刷新/)
-  await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText(saved.plan_guide)
+  await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText(saved.description)
   const catalog = await page.request.get(`${server.baseURL}/api/scheduler/bots`)
   expect((await catalog.json()).bots).toEqual([{ ...saved, id: 'saved-before-refresh-failure' }])
   await page.getByRole('button', { name: 'refresh', exact: true }).click()
@@ -192,7 +203,7 @@ test('confirmed Bot save ends the draft even when catalog delivery fails, and ex
   await expect(listing.getByRole('button', { name: '目录恢复后可见 · saved-before-refresh-failure', exact: true })).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
   await listing.getByRole('button', { name: '目录恢复后可见 · saved-before-refresh-failure', exact: true }).click()
-  await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText(saved.plan_guide)
+  await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText(saved.description)
 })
 
 test('a committed Bot save whose response is lost retains the exact draft and reports an unconfirmed result', async ({ page }) => {
@@ -200,7 +211,7 @@ test('a committed Bot save whose response is lost retains the exact draft and re
   await open(page)
   await page.getByRole('button', { name: 'new', exact: true }).click()
   const id = 'committed-without-response'
-  const raw = '\n' + JSON.stringify({ ...content, plan_guide: '响应丢失但文件已提交' }, null, 3) + '\n'
+  const raw = '\n' + JSON.stringify({ ...content, description: '响应丢失但文件已提交' }, null, 3) + '\n'
   await page.getByLabel('Bot ID', { exact: true }).fill(id)
   await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(raw)
   await page.route('**/api/scheduler/bots/save', async route => {
@@ -227,15 +238,15 @@ test('global duplicate and concurrent same-ID creation reject without overwritin
   server = await startServer({ separateCwd: true })
   await open(page)
   const root = path.join(server.cwd, 'meta-data/bots')
-  const requests = await Promise.all(['first contender', 'second contender'].map(plan_guide => page.request.post(`${server!.baseURL}/api/scheduler/bots/save`, {
-    data: { id: 'one-global-id', content: JSON.stringify({ ...content, plan_guide }), revision: null },
+  const requests = await Promise.all(['first contender', 'second contender'].map(description => page.request.post(`${server!.baseURL}/api/scheduler/bots/save`, {
+    data: { id: 'one-global-id', content: JSON.stringify({ ...content, description }), revision: null },
   })))
   expect(requests.filter(response => response.ok())).toHaveLength(1)
   expect(requests.filter(response => !response.ok())).toHaveLength(1)
   const loser = requests.find(response => !response.ok())!
   expect((await loser.json()).message).toContain('ID 已存在')
   const winner = await requests.find(response => response.ok())!.json()
-  expect(['first contender', 'second contender']).toContain(winner.plan_guide)
+  expect(['first contender', 'second contender']).toContain(winner.description)
   const before = inventory(root)
   expect(Object.keys(before)).toHaveLength(1)
   expect(JSON.parse(Object.values(before)[0])).toEqual(winner)
@@ -267,7 +278,7 @@ test('two clients and external modification or removal reject stale bot drafts a
   const root = path.join(server.cwd, 'meta-data/bots')
   fs.mkdirSync(root, { recursive: true })
   const file = path.join(root, 'original.json')
-  const raw = '\n' + JSON.stringify({ ...content, plan_guide: '旧页面的未保存修改' }, null, 3) + '\n'
+  const raw = '\n' + JSON.stringify({ ...content, description: '旧页面的未保存修改' }, null, 3) + '\n'
   for (const mode of ['second-client', 'external-change', 'external-remove']) {
     fs.writeFileSync(file, JSON.stringify({ ...content, id: 'revision-id' }))
     await open(page)
@@ -281,12 +292,12 @@ test('two clients and external modification or removal reject stale bot drafts a
       await open(other)
       await other.getByRole('button', { name: '人工审计 · revision-id', exact: true }).click()
       await other.getByRole('button', { name: 'edit', exact: true }).click()
-      await other.getByLabel('Bot 内容 JSON', { exact: true }).fill(JSON.stringify({ ...content, plan_guide: '第二客户端的新版本' }))
+      await other.getByLabel('Bot 内容 JSON', { exact: true }).fill(JSON.stringify({ ...content, description: '第二客户端的新版本' }))
       await other.getByRole('button', { name: 'save', exact: true }).click()
       await expect(other.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('第二客户端的新版本')
       await other.close()
     } else if (mode === 'external-change') {
-      fs.writeFileSync(file, JSON.stringify({ ...content, id: 'revision-id', plan_guide: '外部编辑器的新版本' }) + '\n')
+      fs.writeFileSync(file, JSON.stringify({ ...content, id: 'revision-id', description: '外部编辑器的新版本' }) + '\n')
     } else fs.unlinkSync(file)
     const newer = inventory(root)
     await page.getByRole('button', { name: 'save', exact: true }).click()
@@ -443,7 +454,7 @@ test('saving a shared capability updates all references and tab refresh invalida
   await page.getByTestId('tab-bot').click()
   await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: '人工审计 · shared-audit', exact: true }).click()
   await page.getByRole('button', { name: 'edit', exact: true }).click()
-  await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(JSON.stringify({ ...content, name: '共享能力新版', plan_guide: '三个引用者均看到新版核对说明' }))
+  await page.getByLabel('Bot 内容 JSON', { exact: true }).fill(JSON.stringify({ ...content, name: '共享能力新版', description: '三个引用者均看到新版核对说明' }))
   await page.getByRole('button', { name: 'save', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Bot 预览', exact: true })).toContainText('三个引用者均看到新版核对说明')
   await page.getByTestId('tab-scheduler').click()
@@ -467,7 +478,7 @@ test('saving a shared capability updates all references and tab refresh invalida
   }
   expect(inventory(maps)).toEqual(mapBytes)
   expect(Object.keys(inventory(root))).toEqual(['shared-original.json'])
-  expect((await (await page.request.get(`${server.baseURL}/api/scheduler/bots`)).json()).bots).toEqual([{ ...content, id: 'shared-audit', name: '共享能力新版', plan_guide: '三个引用者均看到新版核对说明' }])
+  expect((await (await page.request.get(`${server.baseURL}/api/scheduler/bots`)).json()).bots).toEqual([{ ...content, id: 'shared-audit', name: '共享能力新版', description: '三个引用者均看到新版核对说明' }])
   await page.getByTestId('tab-bot').click()
   await page.getByRole('region', { name: '共享 Bot 列表', exact: true }).getByRole('button', { name: '共享能力新版 · shared-audit', exact: true }).click()
   fs.writeFileSync(path.join(maps, 'second.json'), JSON.stringify({ ...second, nodes: {} }))

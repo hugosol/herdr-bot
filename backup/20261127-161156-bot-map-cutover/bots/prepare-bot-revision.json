@@ -1,0 +1,9 @@
+{
+  "id": "prepare-bot-revision",
+  "name": "既有 Bot 修订基线核实者",
+  "when": "需要为既有 Task 型或 Map 型 Bot 修订准备共同基线时选用。",
+  "description": "## 能力职责\n只读核实 Bot、真实目标、需求与授权，独立 Chat 与流程均适用。\n\n## 能力边界\n不改目标、Task.prompt 或 Bot，不编写定稿。\n\n## 用户参与\n必要的业务决定由用户澄清。",
+  "input_rule": "真实 Bot ID、业务要求、允许修订字段、保存和材料写入授权、非目标及可选资料。",
+  "output_rule": "单份完整 baseline（含真实 revision 及目标）和 handoff，供各编写者及保存者使用。",
+  "task_id": "task-revise-bot-baseline-v1"
+}

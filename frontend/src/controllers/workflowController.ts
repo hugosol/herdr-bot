@@ -1,4 +1,4 @@
-import type { InputRule, OutputRule } from './schedulerController'
+import type { InputRule, OutputRule, WorkflowMap } from './schedulerController'
 
 export type RunFileInput = { id: string; path: string }
 export type RunPreflightInput = {
@@ -6,7 +6,7 @@ export type RunPreflightInput = {
   zone: string
   userInput: string
   fileInputs?: RunFileInput[]
-  githubExploration?: { githubUrl: string; parentDirectory: string; explorationDirection: string }
+  githubExploration?: { githubUrl: string; parentDirectory: string }
 }
 export type PreflightIssue = { code: string; target: 'map' | 'node' | 'bot' | 'task' | 'manager' | 'zone' | 'run-input'; message: string; nodeId?: string; botId?: string; taskId?: string; inputId?: string; callChain?: string[] }
 export type RunPreflightResult = { kind: 'valid'; workspaceName: string } | { kind: 'rejected'; message: string; issues: PreflightIssue[] }
@@ -48,7 +48,7 @@ export type NodeState = {
   completion: { id: string; at: number; actor: ChatReference; reason: string } | null
   previousExecutions: { execution: Execution | null; failure: Failure | null }[]
 }
-export type Run = { id: string; name?: string; map: string; createdAt: number; managerTaskId: string; zone: string; managerZoneId?: string; zoneBindings?: Record<string, string>; workspaceName: string; userInput: string; fileInputs?: FileAddress[]; inputsReady?: boolean; finished?: { reason?: 'handed-to-user' }; status: string; manager: ChatReference | null; nodes: Record<string, NodeState> }
+export type Run = { id: string; name?: string; map: string; createdAt: number; managerTaskId: string; zone: string; managerZoneId?: string; zoneBindings?: Record<string, string>; workspaceName: string; mapInput: { runInput: string; files: FileAddress[] }; mapOutput: { files: FileAddress[] }; inputsReady?: boolean; finished?: { reason?: 'handed-to-user' }; status: string; manager: ChatReference | null; nodes: Record<string, NodeState> }
 export type Report = { id: string; at: number; nodeId: string; executionId: string; body: string; from: ChatReference | null; source?: { kind: 'typescript'; script: string } | { kind: 'rust_script'; rustScript: string }; to: ChatReference; canComplete?: boolean; outputs: FileAddress[] }
 export type RunDetail = { id: string; run: Run | null; managed: boolean; readError: string | null; startupError: Failure | null; reports: Report[]; pendingReports: Record<string, string> }
 
@@ -66,6 +66,10 @@ export async function listRuns(): Promise<{ runs: RunEntry[]; pollIntervalSecond
 
 export async function loadRun(id: string): Promise<RunDetail> {
   return await readJSON(`/api/workflow/runs/${encodeURIComponent(id)}`)
+}
+
+export async function loadRunMap(id: string): Promise<WorkflowMap> {
+  return await readJSON(`/api/workflow/runs/${encodeURIComponent(id)}/map`)
 }
 
 export async function locateRunChat(id: string, executionId?: string): Promise<string> {

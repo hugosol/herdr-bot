@@ -1,0 +1,11 @@
+{
+  "name": "codebase-memory-mcp",
+  "description": "提供代码库索引、符号搜索与关系查询。",
+  "config": {
+    "command": "${roots.codebase_memory_mcp}/codebase-memory-mcp.exe",
+    "args": [
+      "--ui=true",
+      "--port=9749"
+    ]
+  }
+}

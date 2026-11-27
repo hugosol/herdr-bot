@@ -25,9 +25,9 @@ test('nested dispatch launches node-local manager and exposes success and requir
   }
   const maps = path.join(server.cwd, 'meta-data/workflow-maps'), bots = path.join(server.cwd, 'meta-data/bots')
   fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
-  fs.writeFileSync(path.join(bots, 'nested.json'), JSON.stringify({ id: 'nested', name: 'Nested', when: '', plan_guide: '', node_guide: '', map_file: 'inner.json' }))
-  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: 'Worker', when: '', plan_guide: '', node_guide: '', task_id: tasks.Worker }))
-  const inner = { title: 'Inner dispatch map', description: '', input_files: [{ id: 'material', required: false }], nodes: { A: { title: 'Internal work', bot_id: 'worker', input: 'INNER', zone: 'root-zone', blocked_by: [] } } }
+  fs.writeFileSync(path.join(bots, 'nested.json'), JSON.stringify({ id: 'nested', name: 'Nested', when: '', description: '', input_rule: '', output_rule: '', map_file: 'inner.json' }))
+  fs.writeFileSync(path.join(bots, 'worker.json'), JSON.stringify({ id: 'worker', name: 'Worker', when: '', description: '', input_rule: '', output_rule: '', task_id: tasks.Worker }))
+  const inner = { title: 'Inner dispatch map', description: '', map_input_rule: { files: [{ id: 'material', required: false }] }, nodes: { A: { title: 'Internal work', bot_id: 'worker', input: 'INNER', zone: 'root-zone', blocked_by: [] } } }
   fs.writeFileSync(path.join(maps, 'inner.json'), JSON.stringify(inner))
   const call = { title: 'Nested call', bot_id: 'nested', manager_task_id: tasks['Child manager'], input: 'CHILD 原始业务\nNo production access', zone: 'child-zone', blocked_by: [] }
   fs.writeFileSync(path.join(maps, 'outer.json'), JSON.stringify({ title: 'Outer dispatch map', description: '', nodes: { A: { ...call, zone: { type: 'dynamic' } }, B: { ...call, title: 'Required call' } } }))
@@ -57,8 +57,8 @@ test('nested dispatch launches node-local manager and exposes success and requir
   expect(child.run.parent).toEqual({ runId: rootId, nodeId: 'A', executionId: execution.id })
   expect(child.run.managerTaskId).toBe(tasks['Child manager'])
   expect(child.run.zone).toBe(childZone)
-  expect(child.run.userInput).toBe('CHILD 原始业务\nNo production access')
-  expect(child.run.fileInputs).toEqual([])
+  expect(child.run.mapInput.runInput).toBe('CHILD 原始业务\nNo production access')
+  expect(child.run.mapInput.files).toEqual([])
   await page.getByRole('button', { name: '刷新 Run', exact: true }).click()
   await expect(page.getByRole('region', { name: '当前节点详情', exact: true })).toContainText('page-child')
   await expect(page.getByRole('region', { name: '当前节点详情', exact: true })).toContainText('Child manager')
@@ -78,7 +78,7 @@ test('nested dispatch launches node-local manager and exposes success and requir
   await expect(page.getByRole('heading', { name: '[M]Outer dispatch map', exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: '当前执行事实', exact: true })).toContainText('child-zone')
   await expect(page.getByRole('region', { name: '当前执行事实', exact: true })).toContainText(childZone)
-  inner.input_files[0].required = true
+  inner.map_input_rule.files[0].required = true
   fs.writeFileSync(path.join(maps, 'inner.json'), JSON.stringify(inner))
   server.setHerdrBehavior({ native_session: { source: 'herdr:omp', agent: 'omp', kind: 'id', value: 'page-required-child' }, native_cwd: childZone })
   const required = await (await page.request.post(`${server.baseURL}/api/workflow/manager/dispatch`, { data: { sessionId: 'page-root', nodes: ['B'] } })).json()

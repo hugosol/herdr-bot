@@ -110,7 +110,7 @@ pub(crate) async fn manager_complete(
 pub(crate) async fn manager_finish(
     State(state): State<AppState>,
     _: LocalRunSource,
-    input: CommandJson<runs::StatusRequest, input::Finish>,
+    input: CommandJson<runs::completion::FinishRequest, input::Finish>,
 ) -> RunHttpResult {
     runs::completion::manager_finish(state, input.value).await.map(RunResponse).map_err(HttpError)
 }
@@ -152,6 +152,9 @@ pub(crate) async fn list_runs(State(state): State<AppState>) -> RunHttpResult {
 }
 pub(crate) async fn get_run(State(state): State<AppState>, Path(id): Path<String>) -> RunHttpResult {
     runs::get_run(state, id).await.map(RunResponse).map_err(HttpError)
+}
+pub(crate) async fn get_run_map(State(state): State<AppState>, RunId(id): RunId) -> RunHttpResult {
+    runs::get_run_map(state, id).await.map(RunResponse).map_err(HttpError)
 }
 pub(crate) async fn locate_chat(
     State(state): State<AppState>,

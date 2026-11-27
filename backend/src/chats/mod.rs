@@ -10,6 +10,7 @@
 
 pub mod history;
 pub mod resume;
+pub(crate) mod startup;
 
 use crate::{AppState, tasks, herdr};
 use crate::herdr::placement::WorkspaceTarget;
@@ -466,34 +467,6 @@ pub fn render_chat_name(rule: &str, zone: &str, task: &Task, chat_id: &str) -> S
     rendered
 }
 
-/// Join an already-rendered fixed prompt, literal input and common dictionary
-/// guidance. Render known fields before this join; never interpolate the result.
-/// A native Skill remains the single leading `/skill:<name>` invocation.
-pub fn compose_prompt(
-    fixed_prompt: &str,
-    native_skill: Option<&str>,
-    input: &str,
-    instructions: &str,
-) -> String {
-    let mut sections: Vec<&str> = Vec::new();
-    if !fixed_prompt.is_empty() {
-        sections.push(fixed_prompt);
-    }
-    if !input.is_empty() {
-        sections.push(input);
-    }
-    if !instructions.is_empty() {
-        sections.push(instructions);
-    }
-    let body = sections.join("\n\n");
-
-    match native_skill {
-        Some(skill) if body.is_empty() => format!("/skill:{skill}"),
-        Some(skill) => format!("/skill:{skill} {body}"),
-        None => body,
-    }
-}
-
 /// 目标 agent 的原生启动参数：只有显式配置时才传 `--model` / `--thinking`。
 ///
 /// 模型使用本次元数据快照中的完整 provider / model 映射；默认值不传覆盖。
@@ -587,35 +560,39 @@ pub(crate) async fn run_creation(
         });
         view.name.clone()
     };
-    let agent_name = new_agent_name();
-    let args = agent_launch_args(&preset.env, Some(&preset.trigger));
+    use startup::{Destination, Progress, StartError, TaskStartError};
     let kind = task.agent.label();
-    let launch = launches.begin(kind, Some(zone));
-    let target = match herdr.launch_tab(&workspace.id, Some(zone), &name, &agent_name, kind, &args, &launch).await {
-        Ok(target) => target,
-        Err(error) => {
-            fail(&job, FailureStage::Tab, &error, authority).await;
-            return;
+    let progress = |event: Progress<'_>| {
+        let tab = match event {
+            Progress::Tab(target) => Some((target.location.tab_id.clone(), target.location.pane_id.clone(), target.agent_name().map(str::to_owned))),
+            Progress::Started => None,
+        };
+        let job = job.as_ref();
+        async move {
+            let mut view = job.lock().await;
+            if let Some((tab_id, pane_id, alias)) = tab {
+                view.tab_id = Some(tab_id);
+                view.pane_id = Some(pane_id);
+                view.agent_name = alias;
+            } else {
+                view.stage = Stage::Initializing;
+            }
         }
     };
+    let started = match startup::start_task(&herdr, &launches,
+        Destination { workspace: &workspace.id, cwd: Some(zone), title: &name, kind }, &preset, progress).await
     {
-        let mut view = job.lock().await;
-        view.tab_id = Some(target.location.tab_id.clone());
-        view.pane_id = Some(target.location.pane_id.clone());
-        if !herdr.is_app() { view.agent_name = Some(agent_name); }
-    }
-    if let Err(error) = target.start_agent(&herdr, kind, &args).await {
-        fail(&job, FailureStage::Start, &error, authority).await;
-        return;
-    }
-    job.lock().await.stage = Stage::Initializing;
-    let identity = match launch.ready(&herdr).await {
-        Ok(identity) => identity,
+        Ok(started) => started,
         Err(error) => {
-            fail(&job, FailureStage::Start, &error, authority).await;
+            let (stage, error) = match error {
+                TaskStartError::Start(StartError::Tab(error)) => (FailureStage::Tab, error),
+                TaskStartError::Start(StartError::Agent { error, .. }) | TaskStartError::Ready(error) => (FailureStage::Start, error),
+            };
+            fail(&job, stage, &error, authority).await;
             return;
         }
     };
+    let identity = &started.identity;
 
     if chief.is_some() || delegation.is_some() {
         let creation_id = job.lock().await.id.clone();
@@ -648,26 +625,34 @@ pub(crate) async fn run_creation(
         view.stage = Stage::Submitting;
     }
     let composed;
-    let text = if let Some(delegation) = &delegation { delegation.prompt.as_str() } else { composed = match prompts.snapshot().and_then(|snapshot| {
-        let fixed = snapshot.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt)?;
-        Ok(compose_prompt(&fixed, preset.trigger.native_skill.as_deref(), &input, &snapshot.instructions(&task.trigger.prompt)))
-    }) {
-        Ok(text) => text,
-        Err(error) => {
-            let mut view = job.lock().await;
-            if let Some(chief) = authority {
-                if let Err(error) = chief.creation_failed(&view.id,false) { eprintln!("chief prompt failure persistence failed: {error:?}"); }
+    let text = if let Some(delegation) = &delegation {
+        delegation.prompt.as_str()
+    } else {
+        let skill = preset.trigger.native_skill.as_deref();
+        let message = if chief.is_some() {
+            prompts.chief(&task.trigger.prompt, skill, &input)
+        } else {
+            prompts.task(&task.trigger.prompt, skill, &input)
+        };
+        composed = match message {
+            Ok(text) => text,
+            Err(error) => {
+                let mut view = job.lock().await;
+                if let Some(chief) = authority {
+                    if let Err(error) = chief.creation_failed(&view.id,false) { eprintln!("chief prompt failure persistence failed: {error:?}"); }
+                }
+                view.stage = Stage::Failed;
+                view.input_outcome = Some(UnconfirmedInput::NotSubmitted);
+                view.failure = Some(Failure {
+                    stage: FailureStage::Submit,
+                    code: "prompt-dictionary-invalid".into(),
+                    message: format!("{error:#} 未提交初始指示；已创建的 Tab、Pane 与 agent 保留。"),
+                });
+                return;
             }
-            view.stage = Stage::Failed;
-            view.input_outcome = Some(UnconfirmedInput::NotSubmitted);
-            view.failure = Some(Failure {
-                stage: FailureStage::Submit,
-                code: "prompt-dictionary-invalid".into(),
-                message: format!("{error:#} 未提交初始指示；已创建的 Tab、Pane 与 agent 保留。"),
-            });
-            return;
-        }
-    }; &composed };
+        };
+        &composed
+    };
     // An empty trigger starts an interactive Chat without inventing a user
     // turn. Herdr rejects empty prompts; readiness already confirms startup.
     if !text.is_empty() {
@@ -685,7 +670,7 @@ pub(crate) async fn run_creation(
                 view.retry_reason = retry_reason;
             }
         };
-        match launch.submit_initial(&herdr, &target, text, progress).await {
+        match started.submit_retrying(text, progress).await {
             Ok(()) => {}
             Err(InitialInputError::BeforeSend(error)) => {
                 fail(&job, FailureStage::Start, &error, authority).await;
@@ -706,7 +691,6 @@ pub(crate) async fn run_creation(
         }
     }
 
-    if herdr.is_app() { launch.retain_app_target(); }
     let creation_id = {
         let mut view = job.lock().await;
         view.input_submitted = !text.is_empty();
@@ -715,6 +699,7 @@ pub(crate) async fn run_creation(
     };
     // History persistence remains independent of the ordinary creation result.
     if chief.is_none() && delegation.is_none() {
+        let identity = started.identity;
         tokio::spawn(async move {
             if let Err(error) = history.record_zone(
                 &identity.session_id, &name, kind, &identity.cwd, identity.session_file.as_deref(), Some(&workspace.id), &task.id, identity.startup_identity_path.as_deref(),
@@ -866,27 +851,5 @@ mod tests {
         for invalid in ["", "A7F3C2", "a7f3c", "a7f3c2x", "a7f3c\n"] {
             assert!(!is_valid_chat_id(invalid), "{invalid:?} 不应是合法短标识");
         }
-    }
-
-    /// 无 Skill、无 prompt、非空 input 时按字面提交本次任务。
-    #[test]
-    fn plain_input_is_submitted_once_without_extra_prefix() {
-        let task = task("{chat.id}");
-        assert_eq!(
-            compose_prompt(&task.trigger.prompt, task.trigger.skill.as_deref(), "检查登录\n第二行", ""),
-            "检查登录\n第二行"
-        );
-    }
-
-    /// 有 Skill 时只生成一次 `/skill:` 调用，名称后接普通空格与正文。
-    #[test]
-    fn skill_uses_one_native_invocation_prefix() {
-        let mut task = task("{chat.id}");
-        task.trigger.skill = Some("code-review".into());
-        task.trigger.prompt = "固定指示".to_string();
-        assert_eq!(
-            compose_prompt(&task.trigger.prompt, task.trigger.skill.as_deref(), "本次任务", ""),
-            "/skill:code-review 固定指示\n\n本次任务"
-        );
     }
 }

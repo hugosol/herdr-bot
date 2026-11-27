@@ -323,16 +323,18 @@ impl Default for ZonesConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct SuitesConfig {
     pub definition_file: PathBuf,
-    pub mcp_file: PathBuf,
-    pub dap_file: PathBuf,
+    pub mcp_directory: PathBuf,
+    pub lsp_directory: PathBuf,
+    pub dap_directory: PathBuf,
     pub generated_directory: PathBuf,
 }
 impl Default for SuitesConfig {
     fn default() -> Self {
         Self {
             definition_file: PathBuf::from("meta-data/suites.json"),
-            mcp_file: PathBuf::from("meta-data/mcp.json"),
-            dap_file: PathBuf::from("meta-data/dap.json"),
+            mcp_directory: PathBuf::from("meta-data/mcp"),
+            lsp_directory: PathBuf::from("meta-data/lsp"),
+            dap_directory: PathBuf::from("meta-data/dap"),
             generated_directory: PathBuf::from(".data/suites"),
         }
     }
@@ -717,8 +719,9 @@ impl Config {
             ("tasks.storage_file", &mut config.tasks.storage_file),
             ("tasks.metadata_file", &mut config.tasks.metadata_file),
             ("suites.definition_file", &mut config.suites.definition_file),
-            ("suites.mcp_file", &mut config.suites.mcp_file),
-            ("suites.dap_file", &mut config.suites.dap_file),
+            ("suites.mcp_directory", &mut config.suites.mcp_directory),
+            ("suites.lsp_directory", &mut config.suites.lsp_directory),
+            ("suites.dap_directory", &mut config.suites.dap_directory),
             ("suites.generated_directory", &mut config.suites.generated_directory),
             ("sessions.history_file", &mut config.sessions.history_file),
             ("scheduler.map_directory", &mut config.scheduler.map_directory),

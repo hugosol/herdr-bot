@@ -1036,10 +1036,9 @@ async fn app_launch_uses_task_environment_and_selected_terminal_without_tui_file
     fs::write(&config.tasks.metadata_file, toml::to_string(&catalog).unwrap()).unwrap();
     config.suites.definition_file = storage.path().join("suites.json");
     config.suites.generated_directory = storage.path().join("generated-suites");
-    config.suites.mcp_file = storage.path().join("mcp.json");
-    fs::write(&config.suites.mcp_file, json!({"mcpServers":{
-        "omp-fixture":{"command":"controlled-omp"}, "pi-fixture":{"command":"controlled-pi"}
-    }}).to_string()).unwrap();
+    config.suites.mcp_directory = storage.path().join("mcp");
+    common::write_suite_resource(&config.suites.mcp_directory, "omp-fixture", json!({"command":"./controlled-omp", "args":["./literal"]}));
+    common::write_suite_resource(&config.suites.mcp_directory, "pi-fixture", json!({"command":"controlled-pi", "cwd":"work"}));
     let pi_skill = storage.path().join("selected Pi skill");
     fs::create_dir(&pi_skill).unwrap();
     fs::write(pi_skill.join("SKILL.md"), "---\nname: selected-pi\ndescription: A selected native skill\n---\nSkill body\n").unwrap();
@@ -1096,7 +1095,9 @@ async fn app_launch_uses_task_environment_and_selected_terminal_without_tui_file
             assert!(argv.windows(2).any(|pair| pair == skill_arg));
             assert!(argv.windows(2).any(|pair| pair == prompt_arg));
             let delivered: Value = serde_json::from_slice(&fs::read(manifest).unwrap()).unwrap();
-            assert_eq!(delivered, json!({"version":1,"codemode":"only","mcpServers":{"pi-fixture":{"command":"controlled-pi"}}}));
+            assert_eq!(delivered, json!({"version":1,"codemode":"only","mcpServers":{
+                "pi-fixture":{"command":"controlled-pi", "cwd":storage.path().join("mcp").join("work")}
+            }}));
         } else {
             assert!(!argv.contains(&json!("--skill")));
             assert!(!argv.contains(&json!("--prompt-template")));
@@ -1104,7 +1105,9 @@ async fn app_launch_uses_task_environment_and_selected_terminal_without_tui_file
             let mcp_arg = [json!("--extension"), json!(mcp_dir)];
             assert!(argv.windows(2).any(|pair| pair == mcp_arg));
             let delivered: Value = serde_json::from_slice(&fs::read(mcp_dir.join(".mcp.json")).unwrap()).unwrap();
-            assert_eq!(delivered, json!({"mcpServers":{"omp-fixture":{"command":"controlled-omp"}}}));
+            assert_eq!(delivered, json!({"mcpServers":{
+                "omp-fixture":{"command":storage.path().join("mcp").join("controlled-omp"), "args":["./literal"]}
+            }}));
         }
         let paths = argv.iter().filter_map(Value::as_str).filter_map(|s| Path::new(s).file_name()?.to_str()).collect::<Vec<_>>();
         assert!(paths.contains(&format!("{agent}-test-suite.ts").as_str()), "{paths:?}");
