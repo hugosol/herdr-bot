@@ -525,7 +525,7 @@ App 的已保留启动归属由同一目标查找入口核实。原 core 的身�
 
 chief 先呈现已核实的复用方案。用户拒绝复用时，由用户决定是否另行创建能力或停止；同意创建不等于授权执行原业务。启动委派后，chief 不阻塞等待业务完成，也不把启动回执当作交付；收到报告后呈现结果，不自动发起下一项工作。
 
-默认 chief-bot 没有固定 prompt 或初始 Skill，可直接留空 input 发起；已关联的 chief Chat 发起时仍收到通用 chief 流程说明。最终初始指示为空时，agent 就绪后显示“创建成功，等待用户输入”，公开创建结果为 `inputSubmitted: false`；不向 Herdr 提交空消息、不补造用户指令。存在固定 prompt、Skill 或本次 input 时仍按原规则提交并确认，之后才显示初始指示已提交。
+默认 chief-bot 没有固定 prompt 或初始 Skill，可直接留空 input 发起。已关联的 chief Chat 仍会收到通用 chief 流程说明；该消息确认提交后，页面显示“创建成功，初始指示已提交”，公开创建结果为 `inputSubmitted: true`。空白 input 不补造用户指令。若合成后的初始指示为空（如无指示的独立普通 Task），则不向 Herdr 提交空消息，agent 就绪后显示“创建成功，等待用户输入”。
 
 ## 当前 chief 的后端权威
 

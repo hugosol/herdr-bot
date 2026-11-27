@@ -300,6 +300,6 @@ async fn shared_consumers_and_business_summary_receive_original_external_address
     assert_eq!(reports, vec![source_report["report"].clone(), summary_report["report"].clone()]);
     let mut records: Vec<_> = fs::read_dir(root).unwrap().map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned()).collect();
     records.sort();
-    assert_eq!(records, ["history.jsonl", "messages.jsonl", "run.json"]);
+    assert_eq!(records, ["history.jsonl", "map.json", "messages.jsonl", "run.json"]);
     println!("P4/P23/P24 run={} originalShared={} originalSummary={} businessHostInput={business_input} expectedAggregateInputs={expected:?} aggregateHostInput={aggregate_input} reports={}", run["id"], shared.display(), summary.display(), json!(reports));
 }

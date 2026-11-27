@@ -108,7 +108,8 @@ async function observeUnchangedBusiness(page: Page, s: CleanupScenario, result: 
   const completion = result.snapshot.nodes.A.completion
   expect(completion.reason).toBe('已核实交接结果')
   expect(Object.keys(completion).sort()).toEqual(['actor', 'at', 'id', 'reason'])
-  expect(Object.keys(result.snapshot).sort()).toEqual(['createdAt', 'fileInputs', 'inputsReady', 'finished', 'id', 'manager', 'managerTaskId', 'map', 'name', 'naming', 'nodes', 'status', 'userInput', 'workspaceName', 'zone', 'managerZoneId', 'zoneBindings'].sort())
+  expect(Object.keys(result.snapshot).sort()).toEqual(['createdAt', 'inputsReady', 'finished', 'id', 'manager', 'managerTaskId', 'map', 'mapInput', 'name', 'naming', 'nodes', 'status', 'workspaceName', 'zone', 'managerZoneId', 'zoneBindings'].sort())
+  expect(result.snapshot).toMatchObject({ mapInput: { runInput: '验收关闭隔离', files: [] } })
   expect(Object.keys(result.snapshot.nodes.A).sort()).toEqual(['completion', 'execution', 'failure', 'previousExecutions', 'status'])
   // No successful cleanup field; a failure is separate from completion.
   const expected = { ...s.before, nodes: { ...s.before.nodes, A: { ...s.before.nodes.A, status: 'completed', completion,

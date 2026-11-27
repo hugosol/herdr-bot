@@ -88,8 +88,10 @@ async fn startup_retry_ignores_unreadable_history_and_preserves_old_execution() 
     let prompts: Vec<_> = calls.iter().filter(|c| c["kind"] == "agent_prompt").collect();
     assert_eq!(prompts.len(), 3);
     let text = common::prompt_body(prompts[2]);
-    assert!(text.starts_with("/skill:teach NODE-FIXED\n\nNode ID: A\n"));
-    assert!(text.ends_with("\nNODE-INPUT\n第二行"));
+    assert!(text.starts_with("/skill:teach NODE-FIXED\n\n你负责本次派发的工作"));
+    assert!(text.contains("\n\nNode ID: A\n"));
+    assert!(text.contains("[Run background / runInput]\nMANAGER-USER-SECRET\n[/Run background / runInput]"));
+    assert!(text.ends_with("[Business input]\nNODE-INPUT\n第二行"));
     assert_eq!(fs::read(historical.join("run.json")).unwrap(), b"{}");
 }
 
@@ -362,8 +364,10 @@ async fn retry_saves_new_identity_before_full_trigger_and_retains_original_facts
     assert_retry_launch_calls(&calls[before_calls..], true);
     let prompt = calls.iter().filter(|c| c["kind"] == "agent_prompt").nth(2).unwrap();
     let text = common::prompt_body(prompt);
-    assert!(text.starts_with(&format!("/skill:teach NODE-FIXED\n\nNode ID: A\nNode: Worker A\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n", s.config.scheduler.run_instructions.display(), root.join("run.json").display(), root.join("history.jsonl").display(), root.join("messages.jsonl").display())));
-    assert!(text.ends_with("\nNODE-INPUT\n第二行"));
+    assert!(text.starts_with("/skill:teach NODE-FIXED\n\n你负责本次派发的工作"));
+    assert!(text.contains(&format!("\n\nNode ID: A\nNode: Worker A\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n", s.config.scheduler.run_instructions.display(), root.join("run.json").display(), root.join("history.jsonl").display(), root.join("messages.jsonl").display())));
+    assert!(text.contains("[Run background / runInput]\nMANAGER-USER-SECRET\n[/Run background / runInput]"));
+    assert!(text.ends_with("[Business input]\nNODE-INPUT\n第二行"));
     assert_eq!(new["autoApproved"], true);
     assert_eq!(new["approved"], false);
     assert_eq!(new["approvalSource"], Value::Null);
