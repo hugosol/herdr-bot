@@ -2,7 +2,7 @@
 use crate::files::FileAccess;
 use crate::scheduler::{DirectoryError, object_array, with_definitions};
 use crate::scheduler::bots::{BotCatalog, read_bots};
-use crate::scheduler::maps::{WorkflowMap, InputRule, MapFileInput, ResolvedFile, read_map};
+use crate::scheduler::maps::{WorkflowMap, InputRule, MapFileInput, ResolvedFile, parse_map, read_map, read_map_source};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 
@@ -54,9 +54,11 @@ pub(crate) struct RunPreflight {
     #[serde(skip)]
     pub naming: super::RunNaming,
     #[serde(skip)]
-    pub node_ids: Vec<String>,
+    pub(crate) map: WorkflowMap,
     #[serde(skip)]
     pub zone_bindings: BTreeMap<String, String>,
+    #[serde(skip)]
+    pub(super) map_source: String,
 }
 
 #[derive(Serialize)]
@@ -229,12 +231,9 @@ fn input_issues(map_name: &str, declarations: &[MapFileInput], files: &[Resolved
     issues
 }
 
-pub(crate) fn check_prepared_inputs(directory: &Path, name: &str, files: &[ResolvedFile], confirmed: bool) -> Result<Option<String>, String> {
-    with_definitions(&[directory.to_path_buf()], "map-read-failed", |access| {
-        let map = read_map(access, directory, name)?;
-        let issues = input_issues(name, map.input_files(), files, confirmed);
-        Ok((!issues.is_empty()).then(|| PreflightFailure(issues).message()))
-    }).map_err(|error| error.message)
+pub(crate) fn check_prepared_inputs(map: &WorkflowMap, name: &str, files: &[ResolvedFile], confirmed: bool) -> Option<String> {
+    let issues = input_issues(name, map.input_files(), files, confirmed);
+    (!issues.is_empty()).then(|| PreflightFailure(issues).message())
 }
 
 fn github_material_issues(name: &str, declarations: &[MapFileInput], input: &RunPreflightRequest) -> Vec<PreflightIssue> {
@@ -269,11 +268,12 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
     let map_name = name;
     let name = name.to_owned();
     let root_name = name.clone();
-    let (map, bots) = tokio::task::spawn_blocking(move || with_definitions(
+    let (map, map_source, bots) = tokio::task::spawn_blocking(move || with_definitions(
         &[map_directory.clone(), bot_directory.clone()], "map-read-failed", |access| {
-        let map = read_map(access, &map_directory, &name)?;
+        let source = read_map_source(access, &map_directory, &name)?;
+        let map = parse_map(&source)?;
         let bots = if map.nodes.is_empty() { BotCatalog { bots: Vec::new(), problems: Vec::new() } } else { read_bots(access, &bot_directory)? };
-        Ok::<_, DirectoryError>((map, bots))
+        Ok::<_, DirectoryError>((map, source, bots))
     })).await.map_err(|error| PreflightFailure(vec![PreflightIssue::new("definition-read-failed", "map", error.to_string())]))?
         .map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code, "map", error.message)]))?;
     if map.nodes.is_empty() {
@@ -312,8 +312,8 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
         }
     }
     let naming = super::RunNaming {
-        map_path: vec![map.title],
+        map_path: vec![map.title.clone()],
         node_titles: map.nodes.iter().map(|(id, node)| (id.clone(), node.0.title.clone())).collect(),
     };
-    Ok(RunPreflight { workspace_name, naming, node_ids: map.nodes.into_keys().collect(), zone_bindings })
+    Ok(RunPreflight { workspace_name, naming, map, zone_bindings, map_source })
 }

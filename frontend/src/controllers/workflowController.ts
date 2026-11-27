@@ -1,4 +1,4 @@
-import type { InputRule, OutputRule } from './schedulerController'
+import type { InputRule, OutputRule, WorkflowMap } from './schedulerController'
 
 export type RunFileInput = { id: string; path: string }
 export type RunPreflightInput = {
@@ -66,6 +66,10 @@ export async function listRuns(): Promise<{ runs: RunEntry[]; pollIntervalSecond
 
 export async function loadRun(id: string): Promise<RunDetail> {
   return await readJSON(`/api/workflow/runs/${encodeURIComponent(id)}`)
+}
+
+export async function loadRunMap(id: string): Promise<WorkflowMap> {
+  return await readJSON(`/api/workflow/runs/${encodeURIComponent(id)}/map`)
 }
 
 export async function locateRunChat(id: string, executionId?: string): Promise<string> {

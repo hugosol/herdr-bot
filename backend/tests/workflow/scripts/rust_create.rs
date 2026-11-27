@@ -258,7 +258,7 @@ async fn rust_create_returns_while_business_target_read_is_held_and_freezes_name
     map_for_request(&s, "First node.input must not become parameters").await;
     let run = s.start("held-rust-manager").await;
     let calls = s.herdr.calls();
-    let gate = super::history_integrity::file_gate::Gate::new(&path);
+    let gate = crate::common::file_gate::Gate::new(&path);
     let addr = s.server.addr();
     let dispatch = tokio::spawn(async move { post_json_over_tcp(addr, "/api/workflow/manager/dispatch", r#"{"sessionId":"held-rust-manager","nodes":["create"]}"#).await });
     let observation = std::panic::AssertUnwindSafe(async {
@@ -439,12 +439,12 @@ async fn rust_create_write_readback_and_material_failures_report_actual_effects(
         map_for_request(&s, "No input inference").await;
         let run = s.start(&format!("fault-{case}")).await;
         let original_tasks = fs::read(&s.config.tasks.storage_file).unwrap();
-        let task_gate = super::history_integrity::file_gate::Gate::new(&s.config.tasks.storage_file);
+        let task_gate = crate::common::file_gate::Gate::new(&s.config.tasks.storage_file);
         let dispatched = s.dispatch(&format!("fault-{case}"), &["create"]).await;
         assert_eq!(dispatched["results"][0]["status"], "running");
         assert!(common::wait_until(Duration::from_secs(5), || task_gate.reached()).await);
         let saved_bots = s.data.path().join("held-bots");
-        let bot_gate = if case == "readback" { Some(super::history_integrity::file_gate::Gate::new(&s.config.scheduler.bot_directory.join("worker.json"))) } else { None };
+        let bot_gate = if case == "readback" { Some(crate::common::file_gate::Gate::new(&s.config.scheduler.bot_directory.join("worker.json"))) } else { None };
         if case == "write" {
             fs::rename(&s.config.scheduler.bot_directory, &saved_bots).unwrap();
             fs::write(&s.config.scheduler.bot_directory, b"real file blocks legal Bot directory").unwrap();

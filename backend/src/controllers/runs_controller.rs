@@ -153,6 +153,9 @@ pub(crate) async fn list_runs(State(state): State<AppState>) -> RunHttpResult {
 pub(crate) async fn get_run(State(state): State<AppState>, Path(id): Path<String>) -> RunHttpResult {
     runs::get_run(state, id).await.map(RunResponse).map_err(HttpError)
 }
+pub(crate) async fn get_run_map(State(state): State<AppState>, RunId(id): RunId) -> RunHttpResult {
+    runs::get_run_map(state, id).await.map(RunResponse).map_err(HttpError)
+}
 pub(crate) async fn locate_chat(
     State(state): State<AppState>,
     RunId(id): RunId,

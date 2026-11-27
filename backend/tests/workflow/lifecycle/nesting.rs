@@ -118,6 +118,55 @@ async fn nested_chat_names_use_titles_frozen_at_each_run_creation() {
     }
 }
 
+// P14 / S1,S4: replacing the child graph and its worker Bot after the
+// parent starts distinguishes own-start freezing from recursive snapshots.
+#[tokio::test]
+async fn child_freezes_its_own_latest_map_without_freezing_referenced_bots() {
+    let s = Scenario::new().await;
+    nested(&s, &s.manager_task, "CHILD-BUSINESS");
+    let maps = &s.config.scheduler.map_directory;
+    let parent_source = fs::read(maps.join("work.json")).unwrap();
+    let initial_child = fs::read(maps.join("inner.json")).unwrap();
+    let parent = s.start("frozen-parent").await;
+    let original_child = maps.join("inner.json");
+    let updated_child = json!({"title":"Child at dispatch","description":"Updated after parent launch","nodes":{
+        "Z":{"title":"Late worker","bot_id":"worker","zone":"manager","input":"LATEST CHILD INPUT","blocked_by":[]}
+    }});
+    fs::write(&original_child, updated_child.to_string()).unwrap();
+    native(&s, "omp", "frozen-child", "node-zone");
+    let dispatched = s.dispatch("frozen-parent", &["A"]).await;
+    assert_eq!(dispatched["results"][0]["status"], "running", "{dispatched}");
+    let child_id = dispatched["snapshot"]["nodes"]["A"]["execution"]["childRunId"].as_str().unwrap();
+    let child = detail(&s, child_id).await;
+    let run_root = &s.config.scheduler.run_directory;
+    let parent_map = run_root.join(parent["id"].as_str().unwrap()).join("map.json");
+    let child_map = run_root.join(child_id).join("map.json");
+    assert_eq!(fs::read(parent_map).unwrap(), parent_source);
+    assert_eq!(fs::read(&child_map).unwrap(), updated_child.to_string().as_bytes());
+    assert_eq!(child["run"]["name"], "[S]Child at dispatch-Outer");
+    assert_eq!(child["run"]["manager"]["sessionId"], "frozen-child");
+    assert_eq!(child["run"]["nodes"]["Z"]["status"], "pending");
+    assert!(child["run"]["nodes"].get("A").is_none());
+
+    fs::write(original_child, initial_child).unwrap();
+    let new_task = role_request(&s, "/api/tasks", json!({"name":"Fresh child worker","taskType":"normal","agent":"omp","chatName":"{chat.id}","model":"default","thinking":"default","prompt":"LIVE BOT TARGET"}), 200).await;
+    let task_id = &new_task["tasks"].as_array().unwrap().iter().find(|task| task["name"] == "Fresh child worker").unwrap()["id"];
+    let worker = s.config.scheduler.bot_directory.join("worker.json");
+    let mut bot: Value = serde_json::from_slice(&fs::read(&worker).unwrap()).unwrap();
+    bot["task_id"] = task_id.clone();
+    fs::write(worker, bot.to_string()).unwrap();
+    native(&s, "omp", "frozen-child-worker", "");
+    let executed = s.dispatch("frozen-child", &["Z"]).await;
+    assert_eq!(executed["results"][0]["status"], "running", "{executed}");
+    assert_eq!(executed["snapshot"]["nodes"]["Z"]["execution"]["taskId"], *task_id);
+    let calls = s.herdr.calls();
+    let mut prompts = calls.iter().filter(|call| call["kind"] == "agent_prompt");
+    let manager_prompt = common::prompt_body(prompts.nth(1).unwrap());
+    assert!(child_map.is_absolute() && manager_prompt.contains(&child_map.display().to_string()));
+    let worker_prompt = common::prompt_body(prompts.next().unwrap());
+    assert!(worker_prompt.contains("LIVE BOT TARGET") && worker_prompt.contains("LATEST CHILD INPUT"));
+}
+
 #[tokio::test]
 async fn dynamic_zone_selects_only_nested_manager_and_preserves_internal_fixed_zones() {
     let s = Scenario::new().await;

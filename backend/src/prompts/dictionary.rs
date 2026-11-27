@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn every_known_field_reports_its_missing_key() {
-        for field in [Field::TaskPrompt, Field::BotWhen, Field::BotPlanGuide, Field::BotNodeGuide, Field::MapDescription, Field::NodeInput] {
+        for field in [Field::TaskPrompt, Field::BotWhen, Field::BotDescription, Field::BotInputRule, Field::BotOutputRule, Field::MapDescription, Field::NodeInput] {
             let message = snapshot().render(field, "${unknown}").unwrap_err().to_string();
             assert!(message.contains(field.name()));
             assert!(message.contains("unknown"));

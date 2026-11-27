@@ -293,6 +293,12 @@ V2 保留专用 authorization／confirmation 材料，独立运行并比较实�
 
 Windows 子进程保留普通启动方式；分离进程会改变 Git/MSYS 行为。正常 Ctrl+C 由终端输入处理，保留在途测试的清理机会。OMP／Pi 的临界场景在公开状态进入初始化后使用真实时钟，第 29 秒发布原生 header 和匹配的启动事件，核对事件前没有初始输入。缺失、无效或过期的启动证据阻止输入；写入历史失败仍不会撤销已提交的输入。
 
+### Run 冻结 Map 与历史保留（P11–P14、P30、P32、P55）
+
+定向后端：`cargo test --manifest-path backend/Cargo.toml --test workflow_start manager_trigger_and_status_follow_committed_identity -- --exact` 检查副本先于外部启动及管理者实际收到的绝对路径；`initialization_and_identity_failures_stop_before_initial_instructions` 检查真实保存或外部失败。`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch frozen_map::` 检查旧／新定义、破坏副本及原样隔离归档；同目标的 `nesting::child_freezes_its_own_latest_map_without_freezing_referenced_bots`、`map_deletion::` 和 `history_integrity::deleting_source_maps_preserves_both_sides_of_nested_history` 检查子 Run 独立冻结及删除原定义保留整份历史。
+
+真实页面：`npm --prefix frontend run test:browser:build -- workflowCurrent.spec.ts workflowRefresh.spec.ts workflowHistory.spec.ts --workers=1`；另用 `npm --prefix frontend run test:browser -- schedulerNodeDeletion.spec.ts --workers=1 --grep 'P30 deleting a Map'` 核对实际删除请求。新公开输入或成果门禁加入后，复跑同一冻结反例和显示场景，不用旧通过记录代替。隔离归档不代表执行过现场切换。
+
 ### 普通节点成果批准（S1）
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval:: -- --nocapture` 从公开 HTTP 分别检查批准、最新报告及约定交付三项门禁。夹具通过 `node/context` 和 `node/approve` 显式建立批准，不在 report 或 dispatch 中静默补齐。无交付约定时用空 `output_rule`；不能用旧 execution 或另一节点的输出补足。脚本仅在本次成功并通过输出校验后自动批准。人工 HTTP 只证明后端保存，不代替原生 Yes。
@@ -355,7 +361,7 @@ V1 入口及 Codex wrapper 支持 `--cases v1|outer|revision|planning|investigat
 
 ### 批准持久化、失败与执行隔离（S1）
 
-`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval -- --nocapture` 包含普通批准、`report_policy::approval_mode_is_frozen_recovery_keeps_approval_and_retry_reads_current_map` 及 `approval_restart::approved_execution_survives_actual_backend_exit_without_reclaim_or_input_replay`。冻结场景从公开派发、Map 文件修改、批准、fail/recover 到合法 retry，核对旧事实保留、新 execution 未批准且不继承报告资格；不再测试旧 reportPolicy 默认或兼容升级。现有 `retry::` 的执行／报告隔离、失败与材料回归继续保留。
+`cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch approval -- --nocapture` 包含普通批准、`report_policy::approval_mode_is_frozen_recovery_keeps_approval_and_retry_reads_run_map` 及 `approval_restart::approved_execution_survives_actual_backend_exit_without_reclaim_or_input_replay`。冻结场景从公开派发、Map 文件修改、批准、fail/recover 到合法 retry，核对旧事实保留、新 execution 未批准且不继承报告资格；不再测试旧 reportPolicy 默认或兼容升级。现有 `retry::` 的执行／报告隔离、失败与材料回归继续保留。
 
 `approval::approval_save_failure_preserves_original_error_and_cannot_authorize_complete` 用独占 Run 文件的 Windows deny-delete 句柄让真实原子替换失败；核对原生 OS 错误、HTTP 500、公开未批准及 ready 报告仍不能 complete。`repeated_and_concurrent_approval_has_one_fact_and_no_business_effects` 同时提交真实 HTTP，比较完整 Run／报告／外部调用；`approval_only_changes_the_callers_current_execution` 实际发起同 Task 独立 Chat、普通节点、另一 node／Run 及合法 retry，与根 manager／无关联身份对比。`material_changes_and_later_reports_keep_approval_without_bypassing_latest_report` 实际修改材料字节、追加 false／true 报告并验证独立完成门禁。
 

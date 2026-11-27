@@ -1,6 +1,6 @@
 //! Run startup, manager queries, explicit node dispatch and handoff/finish.
 //! Manager startup errors are process-local; node dispatch failures are persisted.
-use crate::{AppState, files::FileStore};
+use crate::{AppState, files::FileStore, scheduler::maps::WorkflowMap};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -145,7 +145,7 @@ impl Run {
     pub(crate) fn manager_context<'a>(&'a self, state: &'a AppState) -> crate::prompts::ManagerContext<'a> {
         crate::prompts::ManagerContext {
             id: &self.id,
-            map: state.map_directory.join(&self.map),
+            map: Runs::map_path(state, &self.id),
             files: self.prompt_files(state),
         }
     }
@@ -280,115 +280,8 @@ pub struct Runs {
     operations: Mutex<BTreeMap<String, std::sync::Arc<Mutex<()>>>>,
     signals: Mutex<BTreeMap<String, std::sync::Arc<collect::Signals>>>,
     script_output: script_output::Store,
-    map_operations: Mutex<BTreeMap<String, std::sync::Arc<Mutex<()>>>>,
-    registered_maps: Mutex<BTreeMap<String, String>>,
-    // Serializes reference publication with history scans/removal, never host effects.
-    history_references: Mutex<()>,
-    deleted: Mutex<std::collections::BTreeSet<String>>,
 }
 impl Runs {
-    pub(crate) async fn map_lock(&self, map: &str) -> std::sync::Arc<Mutex<()>> {
-        self.map_operations.lock().await.entry(map.to_owned()).or_default().clone()
-    }
-
-    async fn ensure_retained(&self, id: &str) -> Result<(), String> {
-        if self.deleted.lock().await.contains(id) { return Err("Run 历史已删除。".into()); }
-        Ok(())
-    }
-
-    /// Caller holds this Map's registration gate, never a Chat/operation lock.
-    pub(crate) async fn delete_map_history(&self, state: &AppState, map: &str) -> Result<(), String> {
-        let _references = self.history_references.lock().await;
-        let mut ids: std::collections::BTreeSet<String> = self.registered_maps.lock().await.iter()
-            .filter(|(_, name)| name.as_str() == map).map(|(id, _)| id.clone()).collect();
-        let root = std::path::absolute(&state.run_directory).map_err(|e| e.to_string())?;
-        let candidates = self.files.with_async(&[root.clone()], move |access| Box::pin(async move {
-        for ancestor in root.ancestors() {
-            match access.symlink_metadata(ancestor) {
-                Ok(metadata) if crate::zones::browse::is_link_like(&metadata) || !metadata.is_dir() =>
-                    return Err(format!("Run 目录不能经过链接或非目录：{}", ancestor.display())),
-                Ok(_) => {},
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
-                Err(e) => return Err(e.to_string()),
-            }
-        }
-        let mut candidates = Vec::new();
-        match access.read_dir(&root) {
-            Ok(entries) => for entry in entries {
-                let metadata = access.symlink_metadata(entry.path()).map_err(|e| e.to_string())?;
-                if crate::zones::browse::is_link_like(&metadata) {
-                    return Err(format!("无法安全检查 Run 关联：{} 是链接或重解析点。", entry.path().display()));
-                }
-                if !metadata.is_dir() { continue; }
-                let id = entry.file_name().into_string().map_err(|_| "Run 目录名无效。".to_owned())?;
-                if id.is_empty() || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') { continue; }
-                candidates.push(id);
-            },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
-            Err(e) => return Err(e.to_string()),
-        }
-        candidates.sort_unstable();
-        Ok::<_, String>(candidates)
-        })).await.map_err(|e| e.to_string())??;
-        let mut records = Vec::with_capacity(candidates.len());
-        for id in candidates {
-            let paths = Self::paths(state, &id);
-            let directory = paths[0].parent().unwrap().to_path_buf();
-            let record = self.files.with_async(&[directory.clone()], move |access| Box::pin(async move {
-                // Detail JSONL may be damaged, but the association must be fully readable.
-                validate_history_tree(access, &directory)?;
-                access.read_json::<Run>(&paths[0])
-            })).await.map_err(|e| e.to_string())??;
-            if record.id != id { return Err(format!("Run {id} 保存身份不一致：{}。", record.id)); }
-            if record.map == map { ids.insert(id); }
-            records.push(record);
-        }
-        // Check the complete selection before removing anything. Either side
-        // alone is sufficient evidence; a missing counterpart is not permission
-        // to delete, and retired executions keep their original child links.
-        for run in &records {
-            if let Some(parent) = &run.parent {
-                if ids.contains(&run.id) || ids.contains(&parent.run_id) {
-                    return Err(format!("Run 历史仍有父子引用，禁止删除：父 Run {} / node {} / execution {} → child Run {}。", parent.run_id, parent.node_id, parent.execution_id, run.id));
-                }
-            }
-            for (node_id, node) in &run.nodes {
-                for execution in node.executions() {
-                    if let Some(child) = execution.child_run_id() {
-                        if ids.contains(&run.id) || ids.contains(child) {
-                            return Err(format!("Run 历史仍有父子引用，禁止删除：父 Run {} / node {} / execution {} → child Run {}。", run.id, node_id, execution.id, child));
-                        }
-                    }
-                }
-            }
-        }
-        for id in ids {
-            let paths = Self::paths(state, &id);
-            let directory = paths[0].parent().unwrap().to_path_buf();
-            let owned = state.clone();
-            self.files.with_async(&[directory.clone()], move |access| Box::pin(async move {
-                match access.symlink_metadata(&directory) {
-                    Ok(_) => validate_history_tree(access, &directory)?,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
-                    Err(e) => return Err(e.to_string()),
-                }
-                // This scope also excludes launch initialization and late saves.
-                owned.runs.deleted.lock().await.insert(id.clone());
-                owned.runs.script_output.remove(&id);
-                match access.remove_dir_all(&directory) {
-                    Ok(()) => {},
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
-                    Err(e) => return Err(format!("Run {id} 历史删除失败：{e}")),
-                }
-                owned.runs.active.lock().await.remove(&id);
-                owned.runs.registered_maps.lock().await.remove(&id);
-                owned.runs.changed(&id, false).await;
-                Ok::<_, String>(())
-            })).await.map_err(|e| e.to_string())??;
-        }
-        Ok(())
-    }
-
     fn paths(state: &AppState, id: &str) -> [PathBuf; 3] {
         let root = state.run_directory.join(id);
         [
@@ -397,6 +290,33 @@ impl Runs {
             root.join("messages.jsonl"),
         ]
     }
+    fn map_path(state: &AppState, id: &str) -> PathBuf {
+        state.run_directory.join(id).join("map.json")
+    }
+
+    async fn read_map(&self, state: &AppState, run: &Run) -> Result<WorkflowMap, String> {
+        let path = Self::map_path(state, &run.id);
+        let source = self.files.with_async(std::slice::from_ref(&path), |access| {
+            let path = path.clone();
+            Box::pin(async move {
+                for ancestor in path.ancestors() {
+                    let metadata = access.symlink_metadata(ancestor)?;
+                    if crate::zones::browse::is_link_like(&metadata)
+                        || !(if ancestor == path { metadata.is_file() } else { metadata.is_dir() }) {
+                        return Err(std::io::Error::other(format!("冻结定义路径不能经过链接或不匹配的文件类型：{}", ancestor.display())));
+                    }
+                }
+                access.read_to_string(&path)
+            })
+        }).await.and_then(|result| result).map_err(|error| format!("冻结 Map {} 无法读取：{error}", path.display()))?;
+        let map = crate::scheduler::maps::parse_map(&source)
+            .map_err(|error| format!("冻结 Map {} 无效：{}", path.display(), error.message))?;
+        if !map.nodes.keys().eq(run.nodes.keys()) {
+            return Err(format!("冻结 Map {} 与已保存 Run 的节点标识不一致。", path.display()));
+        }
+        Ok(map)
+    }
+
     /// Recover role from persisted execution identity, including retired attempts.
     pub(crate) async fn chat_role(&self, state: &AppState, session_id: &str, task_id: Option<&str>, agent: crate::tasks::Agent) -> Result<Option<crate::tasks::catalog::ExecutionRole>, String> {
         let root = state.run_directory.clone();
@@ -463,15 +383,16 @@ impl Runs {
     }
 
     async fn read(&self, state: &AppState, id: &str) -> Result<Run, String> {
-        self.read_record(state, id).await
+        let run: Run = self.read_record(state, id).await?;
+        if run.id != id {
+            return Err(format!("Run {id} 保存身份不一致：{}。", run.id));
+        }
+        Ok(run)
     }
 
     async fn read_record<T: serde::de::DeserializeOwned + Send>(&self, state: &AppState, id: &str) -> Result<T, String> {
         let paths = Self::paths(state, id);
-        let owned = state.clone();
-        let id = id.to_owned();
         self.files.with_async(&paths.clone(), move |access| Box::pin(async move {
-            owned.runs.ensure_retained(&id).await?;
             // Required files are never silently recreated. JSONL is independently readable.
             for path in &paths[1..] {
                 access.check_readable(path).map_err(|error| format!("{}：{error}", path.display()))?;
@@ -479,20 +400,6 @@ impl Runs {
             access.read_json(&paths[0])
         })).await.map_err(|e| e.to_string())?
     }
-}
-fn validate_history_tree(access: &crate::files::FileAccess, path: &std::path::Path) -> Result<(), String> {
-    let metadata = access.symlink_metadata(path).map_err(|e| format!("{}：{e}", path.display()))?;
-    if crate::zones::browse::is_link_like(&metadata) {
-        return Err(format!("Run 历史不能包含链接或重解析点：{}", path.display()));
-    }
-    if metadata.is_dir() {
-        for entry in access.read_dir(path).map_err(|e| e.to_string())? {
-            validate_history_tree(access, &entry.path())?;
-        }
-    } else if !metadata.is_file() {
-        return Err(format!("Run 历史文件类型无效：{}", path.display()));
-    }
-    Ok(())
 }
 
 pub(crate) enum RunOutcome {
@@ -582,6 +489,17 @@ pub(crate) async fn get_run(state: AppState, id: String) -> RunResult {
             &message,
         )),
     }
+}
+
+pub(crate) async fn get_run_map(state: AppState, id: String) -> RunResult {
+    validate_id(&id)?;
+    let run = state.runs.read(&state, &id).await
+        .map_err(|message| error(FailureKind::Failed, "run-read-failed", &message))?;
+    let map = state.runs.read_map(&state, &run).await
+        .map_err(|message| error(FailureKind::Failed, "run-map-read-failed", &message))?;
+    let value = serde_json::to_value(map)
+        .map_err(|cause| error(FailureKind::Failed, "run-map-read-failed", &cause.to_string()))?;
+    Ok(RunOutcome::Value(value))
 }
 
 #[derive(Deserialize)]
@@ -688,8 +606,6 @@ pub(crate) async fn rename_run(state: AppState, id: String, input: RenameRequest
 }
 
 pub(crate) async fn start_run(state: AppState, map: String, input: crate::runs::preflight::RunPreflightRequest) -> RunResult {
-    let map_lock = state.runs.map_lock(&map).await;
-    let map_operation = map_lock.lock().await;
     let checked = match crate::runs::preflight::check_run_preflight(&state, &map, &input).await {
         Ok(v) => v,
         Err(e) => return Err(RunError::Preflight(e)),
@@ -728,9 +644,12 @@ pub(crate) async fn start_run(state: AppState, map: String, input: crate::runs::
         }
     }
     let run = root_run(map, input, checked, &task, id);
-    register_root(&state, &run).await;
-    drop(map_operation);
     launch_root(state, run, task, preset, None).await
+}
+
+pub(crate) struct PreparedRun {
+    pub(crate) run: Run,
+    map_source: String,
 }
 
 /// Construct a root Run from the same preflight for UI and chief delegation.
@@ -741,9 +660,9 @@ pub(crate) fn root_run(
     checked: crate::runs::preflight::RunPreflight,
     task: &crate::tasks::Task,
     id: String,
-) -> Run {
-    Run {
-        id: id.clone(),
+) -> PreparedRun {
+    let run = Run {
+        id,
         name: Some(checked.naming.manager_title()),
         naming: Some(checked.naming),
         map,
@@ -764,8 +683,8 @@ pub(crate) fn root_run(
         status: "running".into(),
         finished: None,
         nodes: checked
-            .node_ids
-            .into_iter()
+            .map.nodes
+            .into_keys()
             .map(|id| {
                 (
                     id,
@@ -780,31 +699,26 @@ pub(crate) fn root_run(
                 )
             })
             .collect(),
-    }
-}
-
-pub(crate) async fn register_root(state: &AppState, run: &Run) {
-    state.runs.registered_maps.lock().await.insert(run.id.clone(), run.map.clone());
-    state.runs.active.lock().await.insert(run.id.clone(), None);
+    };
+    PreparedRun { run, map_source: checked.map_source }
 }
 
 pub(crate) async fn launch_root(
     state: AppState,
-    run: Run,
+    prepared: PreparedRun,
     task: crate::tasks::Task,
     preset: crate::tasks::catalog::ResolvedPreset,
     delegation: Option<crate::chief_delegation::Launch>,
 ) -> RunResult {
-    let id = run.id.clone();
+    let id = prepared.run.id.clone();
+    state.runs.active.lock().await.insert(id.clone(), None);
     // Own accepted work independently of the browser request. A disconnected page
     // must not cancel a started native Chat or cause an implicit retry.
     let owned = state.clone();
-    let result = tokio::spawn(async move { startup::manager(&owned, run, task, preset, delegation).await }).await;
+    let result = tokio::spawn(async move { startup::manager(&owned, prepared, task, preset, delegation).await }).await;
     let failed = !matches!(result, Ok(Ok(())));
     if let Err(join) = result {
-        if let Err(message) = startup::manager_interrupted(&state, &id, join).await {
-            return Err(error(FailureKind::Failed, "run-read-failed", &message));
-        }
+        startup::manager_interrupted(&state, &id, join).await;
     }
     match detail(&state, &id).await {
         Ok(value) => Ok(RunOutcome::Started { failed, value }),
@@ -821,13 +735,11 @@ pub(crate) struct StatusRequest {
     pub(crate) session_id: String,
 }
 pub(crate) async fn manager_status(state: AppState, input: StatusRequest) -> RunResult {
-    match manager_run(&state, &input.session_id).await {
-        Ok(run) => match snapshot(&state, &run, true).await {
-            Ok(value) => Ok(RunOutcome::Value(value)),
-            Err(message) => Err(error(FailureKind::Failed, "definition-read-failed", &message)),
-        },
-        Err(response) => Err(response),
-    }
+    let run = manager_run(&state, &input.session_id).await?;
+    let map = state.runs.read_map(&state, &run).await
+        .map_err(|message| error(FailureKind::Failed, "definition-read-failed", &message))?;
+    snapshot(&state, &run, &map, true).await.map(RunOutcome::Value)
+        .map_err(|message| error(FailureKind::Failed, "definition-read-failed", &message))
 }
 
 fn nested_pair(child: &Run, parent: &Run, node_id: &str, execution: &NodeExecution) -> bool {
@@ -909,7 +821,7 @@ async fn manager_run(state: &AppState, session_id: &str) -> Result<Run, RunError
     }
 }
 
-fn blocked(run: &Run, id: &str, dependencies: &BTreeMap<String, Vec<String>>) -> Vec<String> {
+fn blocked(run: &Run, id: &str, map: &WorkflowMap) -> Vec<String> {
     let mut reasons = Vec::new();
     if run.status != "running" { reasons.push(format!("Run 状态为 {}", run.status)); }
     if !run.inputs_ready { reasons.push("Run 输入尚未由管理者检查并确认；请先 prepare_inputs。".into()); }
@@ -918,25 +830,26 @@ fn blocked(run: &Run, id: &str, dependencies: &BTreeMap<String, Vec<String>>) ->
         Some(node) if node.status != "pending" => reasons.push(format!("node 状态为 {}，仅 pending 可派发", node.status)),
         _ => {}
     }
-    match dependencies.get(id) {
-        None => reasons.push("node 不在当前 Map 中".into()),
-        Some(ids) => for dependency in ids {
-            if !run.nodes.get(dependency).is_some_and(|node| node.status == "completed") {
-                reasons.push(format!("前置 {dependency} 尚未 completed"));
-            }
+    let mut check = |dependency: &str| {
+        if !run.nodes.get(dependency).is_some_and(|node| node.status == "completed") {
+            reasons.push(format!("前置 {dependency} 尚未 completed"));
         }
+    };
+    match map.nodes.get(id) {
+        None => reasons.push("node 不在本次 Run 的 Map 中".into()),
+        Some(node) if node.0.end_node => map.nodes.keys().filter(|other| other.as_str() != id).for_each(|dependency| check(dependency)),
+        Some(node) => node.0.blocked_by.iter().for_each(|dependency| check(dependency)),
     }
     reasons
 }
-async fn snapshot(state: &AppState, run: &Run, include_reports: bool) -> Result<serde_json::Value, String> {
-    let dependencies = crate::scheduler::maps::node_dependencies(&state.map_directory, &run.map)?;
-    let blocked_by: BTreeMap<_, _> = run.nodes.keys().map(|id| (id, blocked(run, id, &dependencies))).collect();
+async fn snapshot(state: &AppState, run: &Run, map: &WorkflowMap, include_reports: bool) -> Result<serde_json::Value, String> {
+    let blocked_by: BTreeMap<_, _> = run.nodes.keys().map(|id| (id, blocked(run, id, map))).collect();
     let ready: Vec<_> = blocked_by.iter().filter(|(_, reasons)| reasons.is_empty()).map(|(id, _)| *id).collect();
     let mut value = reports::summary(state, run, include_reports).await?;
     value["snapshot"] = serde_json::to_value(run).map_err(|e| e.to_string())?;
     value["ready"] = serde_json::json!(ready);
     value["blocked"] = serde_json::json!(blocked_by);
-    value["canFinish"] = serde_json::json!(completion::can_finish(run));
+    value["canFinish"] = serde_json::json!(completion::can_finish(run, map));
     Ok(value)
 }
 
@@ -959,20 +872,20 @@ pub(crate) async fn manager_dispatch(state: AppState, input: DispatchRequest) ->
         let lock = state.runs.operations.lock().await.entry(run.id.clone()).or_default().clone();
         let _operation = lock.lock().await;
         let mut run = state.runs.read(&state, &run.id).await?;
+        let map = state.runs.read_map(&state, &run).await?;
         // Validate every dynamic selection before starting any external execution.
-        let mut zones = crate::scheduler::validate_zone_selections(&state, &run, &input.nodes, &input.zone_ids).await?;
+        let mut zones = crate::scheduler::validate_zone_selections(&state, &run, &map, &input.nodes, &input.zone_ids).await?;
         let mut results = Vec::with_capacity(input.nodes.len());
         for id in input.nodes {
-            let dependencies = crate::scheduler::maps::node_dependencies(&state.map_directory, &run.map)?;
-            let reasons = blocked(&run, &id, &dependencies);
+            let reasons = blocked(&run, &id, &map);
             if !reasons.is_empty() {
                 results.push(serde_json::json!({"nodeId":id,"status":"rejected","reasons":reasons}));
                 continue;
             }
-            let target = crate::scheduler::dispatch_target(&state, &run, &id, zones.remove(&id)).await;
+            let target = crate::scheduler::dispatch_target(&state, &run, &map, &id, zones.remove(&id)).await;
             results.push(startup::node(&state, &mut run, &id, None, target).await);
         }
-        let mut response = snapshot(&state, &run, true).await?;
+        let mut response = snapshot(&state, &run, &map, true).await?;
         response["results"] = serde_json::Value::Array(results);
         Ok::<_, String>(response)
     }).await;
@@ -1001,7 +914,6 @@ async fn save_run(state: &AppState, run: &Run) -> Result<(), String> {
     let owned = state.clone();
     let run = run.clone();
     state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
-        owned.runs.ensure_retained(&run.id).await?;
         access.replace(&paths[0], &serde_json::to_vec_pretty(&run).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
         owned.runs.script_output.retain_current(&run);
         owned.runs.changed(&run.id, false).await;

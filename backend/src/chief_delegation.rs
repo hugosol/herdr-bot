@@ -51,7 +51,7 @@ struct Prepared {
     facts: Facts,
     preset: ResolvedPreset,
     chat_id: String,
-    run: Option<crate::runs::Run>,
+    run: Option<crate::runs::PreparedRun>,
     material_contents: Vec<Vec<u8>>,
 }
 #[derive(Clone, Serialize, Deserialize)]
@@ -266,13 +266,12 @@ async fn resolve(
             github_exploration: None,
         };
         let checked = crate::runs::preflight::check_run_preflight(state, file, &input).await.map_err(Error::Preflight)?;
-        if let Some(message) = crate::runs::preflight::check_prepared_inputs(&state.map_directory, file, &input.file_inputs, true)
-            .map_err(|message| rejected("delegation-material-invalid", message))? {
+        if let Some(message) = crate::runs::preflight::check_prepared_inputs(&checked.map, file, &input.file_inputs, true) {
             return Err(rejected("delegation-material-invalid", message));
         }
         Some(crate::runs::root_run(file.clone(), input, checked, &task, id.to_owned()))
     } else { None };
-    let name = run.as_ref().and_then(|run| run.name.clone())
+    let name = run.as_ref().and_then(|prepared| prepared.run.name.clone())
         .unwrap_or_else(|| chats::render_chat_name(&task.chat_name, &cwd, &task, chat_id));
     if name.trim().is_empty() || name.contains(['\n', '\r']) {
         return Err(rejected("chat-name-required", "命名规则必须生成有效单行名称。"));
@@ -317,7 +316,8 @@ async fn resolve(
     } else { None };
     let fixed = &task.trigger.prompt;
     let skill = preset.trigger.native_skill.as_deref();
-    let prompt = if let Some(run) = &run {
+    let prompt = if let Some(prepared) = &run {
+        let run = &prepared.run;
         state.prompts.manager(fixed, skill, &run.manager_context(state), &run.user_input)
     } else {
         state.prompts.chief_delegated_task(fixed, skill, &crate::prompts::ChiefDelegationContext {
@@ -390,9 +390,6 @@ pub(crate) async fn commit(state: AppState, input: CommitRequest) -> Result<Outc
     if prepared.facts.request.session_id != input.session_id {
         return Err(rejected("chief-not-current", "预览不属于当前调用会话。"));
     }
-    let map_operation = if let Some(run) = &prepared.run {
-        Some(state.runs.map_lock(&run.map).await.lock_owned().await)
-    } else { None };
     let fresh = match resolve(
         &state,
         prepared.facts.request.clone(),
@@ -435,13 +432,11 @@ pub(crate) async fn commit(state: AppState, input: CommitRequest) -> Result<Outc
         facts: prepared.facts.clone(),
         creation: view.clone(),
         session_id: None,
-        run_id: prepared.run.as_ref().map(|run| run.id.clone()),
+        run_id: prepared.run.as_ref().map(|prepared| prepared.run.id.clone()),
     }) {
         return Err(Error::Storage(error));
     }
     if let Some(run) = prepared.run {
-        crate::runs::register_root(&state, &run).await;
-        drop(map_operation);
         return crate::runs::launch_root(state.clone(), run, prepared.facts.task, prepared.preset, Some(Launch {
             store: Arc::clone(&state.delegations), id: input.preview_id,
             prompt: prepared.facts.prompt, name: prepared.facts.name,

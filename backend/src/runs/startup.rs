@@ -91,31 +91,42 @@ pub(super) async fn write_github_materials(
     })).await.map_err(|e| format!("无法写入 Run 启动材料，未发起管理者 Chat：{e}"))?.and_then(|result| result).map_err(failed)
 }
 
-pub(super) async fn manager_interrupted(
-    state: &AppState,
-    id: &str,
-    join: tokio::task::JoinError,
-) -> Result<(), String> {
-    let paths = Runs::paths(state, id);
-    let owned = state.clone();
-    let retained_id = id.to_owned();
-    state.runs.files.with_async(&paths, move |_access| Box::pin(async move {
-        if owned.runs.ensure_retained(&retained_id).await.is_ok() {
-            owned.runs.active.lock().await.insert(
-                retained_id,
-                Some(StartupFailure {
-                    stage: "internal".into(),
-                    message: join.to_string(),
-                    effects: Some(Effects::default()),
-                }),
-            );
+pub(super) async fn manager_interrupted(state: &AppState, id: &str, join: tokio::task::JoinError) {
+    state.runs.active.lock().await.insert(id.to_owned(), Some(StartupFailure {
+        stage: "internal".into(),
+        message: join.to_string(),
+        effects: Some(Effects::default()),
+    }));
+}
+
+async fn initialize_records(state: &AppState, run: &Run, map_source: String) -> Result<(), String> {
+    let paths = Runs::paths(state, &run.id);
+    let directory = paths[0].parent().unwrap().to_path_buf();
+    let map_file = Runs::map_path(state, &run.id);
+    let record = serde_json::to_vec_pretty(run).map_err(|e| e.to_string())?;
+    state.runs.files.with_async(&[directory.clone()], move |access| Box::pin(async move {
+        let root = directory.parent().unwrap();
+        for ancestor in root.ancestors() {
+            match access.symlink_metadata(ancestor) {
+                Ok(metadata) if metadata.is_dir() && !crate::zones::browse::is_link_like(&metadata) => {},
+                Ok(_) => return Err(format!("Run 目录不能经过链接或非目录：{}", ancestor.display())),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+                Err(e) => return Err(e.to_string()),
+            }
         }
-    })).await.map_err(|e| e.to_string())
+        access.create_dir_all(root).map_err(|e| e.to_string())?;
+        access.create_dir(&directory).map_err(|e| e.to_string())?;
+        access.create(&map_file, map_source.as_bytes()).map_err(|e| format!("冻结 Map {} 写入失败：{e}", map_file.display()))?;
+        access.create(&paths[0], &record).map_err(|e| e.to_string())?;
+        access.create(&paths[1], b"").map_err(|e| e.to_string())?;
+        access.create(&paths[2], b"").map_err(|e| e.to_string())?;
+        Ok(())
+    })).await.map_err(|e| e.to_string())?
 }
 
 pub(super) async fn manager(
     state: &AppState,
-    mut run: Run,
+    PreparedRun { mut run, map_source }: PreparedRun,
     task: crate::tasks::Task,
     preset: crate::tasks::catalog::ResolvedPreset,
     delegation: Option<crate::chief_delegation::Launch>,
@@ -123,20 +134,7 @@ pub(super) async fn manager(
     let mut effects = Effects::default();
     let mut stage = "initialize";
     let result: Result<(), String> = async {
-        let paths = Runs::paths(state, &run.id);
-        {
-            let owned = state.clone();
-            let initial = run.clone();
-            let initial_paths = paths.clone();
-            state.runs.files.with_async(&[paths[0].parent().unwrap().to_path_buf()], move |access| Box::pin(async move {
-                owned.runs.ensure_retained(&initial.id).await?;
-                access.create_dir_all(initial_paths[0].parent().unwrap()).map_err(|e| e.to_string())?;
-                access.create(&initial_paths[0], &serde_json::to_vec_pretty(&initial).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-                access.create(&initial_paths[1], b"").map_err(|e| e.to_string())?;
-                access.create(&initial_paths[2], b"").map_err(|e| e.to_string())?;
-                Ok::<_, String>(())
-            })).await.map_err(|e| e.to_string())??;
-        }
+        initialize_records(state, &run, map_source).await?;
         effects.records_initialized = true;
         protocol(state, &mut run, &task, &preset, Role::Manager, None, delegation.as_ref(), &mut effects, &mut stage).await
     }
@@ -155,23 +153,15 @@ pub(super) async fn manager(
             serde_json::to_string(&effects).unwrap_or_default(),
             message
         );
-        let paths = Runs::paths(state, &run.id);
-        let owned = state.clone();
-        let stage = stage.to_owned();
-        state.runs.files.with_async(&paths, move |_access| Box::pin(async move {
-            if owned.runs.ensure_retained(&run.id).await.is_ok() {
-                owned.runs.active.lock().await.insert(
-                    run.id,
-                    Some(StartupFailure { stage, message, effects: Some(effects) }),
-                );
-            }
-        })).await.map_err(|_| ())?;
+        state.runs.active.lock().await.insert(run.id,
+            Some(StartupFailure { stage: stage.to_owned(), message, effects: Some(effects) }),
+        );
         return Err(());
     }
     Ok(())
 }
 
-pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason: Option<&str>, target: Result<crate::scheduler::DispatchTarget, String>) -> serde_json::Value {
+pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason: Option<&str>, target: Result<crate::scheduler::DispatchTarget<'_>, String>) -> serde_json::Value {
     let mut effects = Effects { records_initialized: true, ..Effects::default() };
     let mut stage = "resolve";
     let mut candidate = run.clone();
@@ -198,14 +188,14 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
             }
         };
         let node = candidate.nodes.get_mut(id).unwrap();
-        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), target: identity, zone_id: Some(target.zone_id.clone()), zone: target.zone.clone(), input_rule: Some(target.input_rule.clone()), output_rule: Some(target.output_rule.clone()), inputs: Some(Vec::new()), auto_approved: target.auto_approved, approved: false, approval_source: None, auto_close: target.auto_close, end_node: target.end_node });
-        let inputs = resolve_inputs(state, &candidate, &target.input_rule).await?;
+        node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), target: identity, zone_id: Some(target.zone_id.clone()), zone: target.zone.clone(), input_rule: Some(target.input_rule.to_vec()), output_rule: Some(target.output_rule.to_vec()), inputs: Some(Vec::new()), auto_approved: target.auto_approved, approved: false, approval_source: None, auto_close: target.auto_close, end_node: target.end_node });
+        let inputs = resolve_inputs(state, &candidate, target.input_rule).await?;
         candidate.nodes.get_mut(id).unwrap().execution.as_mut().unwrap().inputs = Some(inputs);
         if let Some(prepared) = prepared {
             candidate.nodes.get_mut(id).unwrap().status = "running".into();
             save_run(state, &candidate).await?;
             *run = candidate.clone();
-            scripts::launch(state.clone(), candidate.clone(), id.to_owned(), prepared, target.input.clone()).await;
+            scripts::launch(state.clone(), candidate.clone(), id.to_owned(), prepared, target.input.to_owned());
             return Ok(());
         }
         let task = target.task.as_ref().ok_or("缺少 Chat 执行 Task")?;
@@ -264,20 +254,15 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
     value
 }
 
-async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &str, target: &crate::scheduler::DispatchTarget, effects: &mut Effects, stage: &mut &'static str) -> Result<Run, String> {
+async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &str, target: &crate::scheduler::DispatchTarget<'_>, effects: &mut Effects, stage: &mut &'static str) -> Result<Run, String> {
     *stage = "child-preflight";
     let zone_id = target.zone_id.clone();
     let execution = parent.nodes[node_id].execution.as_ref().ok_or("缺少父 execution")?;
     let input = crate::runs::preflight::RunPreflightRequest {
-        manager_task_id: target.task.as_ref().ok_or("子 Run 缺少 manager Task")?.id.clone(), zone: zone_id.clone(), user_input: target.input.clone(),
+        manager_task_id: target.task.as_ref().ok_or("子 Run 缺少 manager Task")?.id.clone(), zone: zone_id.clone(), user_input: target.input.to_owned(),
         file_inputs: execution.inputs.clone().ok_or("缺少父执行输入")?,
         github_exploration: None,
     };
-    let gate = state.runs.map_lock(map).await;
-    let _registration = gate.lock().await;
-    // Keep parent reference + child initialization indivisible to deletion,
-    // but release both gates before any Herdr call or association wait.
-    let _references = state.runs.history_references.lock().await;
     let checked = crate::runs::preflight::check_run_preflight(state, map, &input).await.map_err(|failure| failure.message())?;
     // Legacy trees retain their original naming behavior; do not invent ancestry.
     let naming = parent.naming.as_ref().map(|parent_naming| {
@@ -294,27 +279,17 @@ async fn prepare_child(state: &AppState, parent: &mut Run, node_id: &str, map: &
         parent: Some(ParentExecution { run_id: parent.id.clone(), node_id: node_id.to_owned(), execution_id: execution.id.clone() }),
         manager_zone_id: Some(zone_id.clone()), zone: target.zone.clone(),
         zone_bindings: { let mut bindings = checked.zone_bindings; bindings.insert(zone_id, target.zone.clone()); bindings },
-        workspace_name: parent.workspace_name.clone(), user_input: target.input.clone(), file_inputs: input.file_inputs,
+        workspace_name: parent.workspace_name.clone(), user_input: input.user_input, file_inputs: input.file_inputs,
         inputs_ready: false, manager: None, status: "running".into(), finished: None,
-        nodes: checked.node_ids.into_iter().map(|id| (id, NodeState { status: "pending".into(), execution: None, failure: None, completion: None, auto_close_failure: None, previous_executions: Vec::new() })).collect(),
+        nodes: checked.map.nodes.into_keys().map(|id| (id, NodeState { status: "pending".into(), execution: None, failure: None, completion: None, auto_close_failure: None, previous_executions: Vec::new() })).collect(),
     };
     *stage = "child-register";
     *parent.nodes.get_mut(node_id).unwrap().execution.as_mut().unwrap().child_run_id_mut() = Some(child.id.clone());
     save_run(state, parent).await?;
     effects.child_run_id = Some(child.id.clone());
-    state.runs.registered_maps.lock().await.insert(child.id.clone(), child.map.clone());
     state.runs.active.lock().await.insert(child.id.clone(), None);
     *stage = "child-initialize";
-    let paths = Runs::paths(state, &child.id);
-    let initial = child.clone();
-    let initialized = state.runs.files.with_async(&[paths[0].parent().unwrap().to_path_buf()], move |access| Box::pin(async move {
-        access.create_dir_all(paths[0].parent().unwrap()).map_err(|e| e.to_string())?;
-        access.create(&paths[0], &serde_json::to_vec_pretty(&initial).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-        access.create(&paths[1], b"").map_err(|e| e.to_string())?;
-        access.create(&paths[2], b"").map_err(|e| e.to_string())?;
-        Ok::<_, String>(())
-    })).await.map_err(|e| e.to_string()).and_then(|result| result);
-    if let Err(message) = initialized {
+    if let Err(message) = initialize_records(state, &child, checked.map_source).await {
         state.runs.active.lock().await.insert(child.id, Some(StartupFailure { stage: (*stage).into(), message: message.clone(), effects: Some(effects.clone()) }));
         return Err(message);
     }
@@ -328,7 +303,7 @@ enum Role<'a> {
     Manager,
     Node {
         id: &'a str,
-        target: &'a crate::scheduler::DispatchTarget,
+        target: &'a crate::scheduler::DispatchTarget<'a>,
         committed: &'a mut Run,
     },
 }
@@ -370,7 +345,7 @@ async fn protocol(
     crate::zones::browse::checked_root(zone).map_err(|e| e.message())?;
     let naming = child.as_deref().unwrap_or(run).naming.as_ref();
     let name = match (naming, &role) {
-        (Some(naming), Role::Node { id, target, .. }) if child.is_none() => naming.node_title(id, &target.title),
+        (Some(naming), Role::Node { id, target, .. }) if child.is_none() => naming.node_title(id, target.title),
         (Some(naming), _) => naming.manager_title(),
         (None, _) => delegation.map(|launch| launch.name.clone()).unwrap_or_else(|| crate::chats::render_chat_name(&task.chat_name, zone, task, &crate::chats::new_chat_id())),
     };
@@ -428,11 +403,9 @@ async fn protocol(
             let lock = state.runs.operations.lock().await.entry(run.id.clone()).or_default().clone();
             let _operation = lock.lock().await;
             let paths = Runs::paths(state, &run.id);
-            let owned = state.clone();
             let mut associated = run.clone();
             let association_paths = paths.clone();
             *run = state.runs.files.with_async(&paths, move |access| Box::pin(async move {
-                owned.runs.ensure_retained(&associated.id).await?;
                 associated.name = access.read_json::<Run>(&association_paths[0])?.name;
                 access.replace(&association_paths[0], &serde_json::to_vec_pretty(&associated).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
                 Ok::<_, String>(associated)
@@ -465,7 +438,7 @@ async fn protocol(
                 let execution = run.nodes[*id].execution.as_ref().ok_or("缺少冻结执行。")?;
                 state.prompts.node(fixed, skill, &NodeContext {
                     background: &run.user_input,
-                    input: &target.input,
+                    input: target.input,
                     files: execution.inputs.as_deref().ok_or("缺少冻结输入地址。")?,
                     role: (!execution.end_node).then(|| NodeRole {
                         id,
@@ -512,10 +485,7 @@ async fn record_dispatch(state: &AppState, run: &Run, id: &str, retry_reason: Op
             entry["previousFailure"] = serde_json::json!(previous.failure);
         }
     }
-    let owned = state.clone();
-    let run_id = run.id.clone();
     state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
-        owned.runs.ensure_retained(&run_id).await?;
         access.append_jsonl::<BTreeMap<String, serde_json::Value>>(&paths[1], &entry)
     })).await.map_err(|e| e.to_string())?
 }

@@ -133,8 +133,9 @@ describe('App navigation', () => {
     expect(screen.getByRole('region', { name: '共享 Bot 列表' })).toBeVisible()
   })
 
-  it('keeps the application heading', () => {
+  it('keeps the application brand and the active page heading', () => {
     render(<App />)
-    expect(screen.getByRole('heading', { level: 1, name: 'herdr-bot' })).toBeVisible()
+    expect(screen.getByText('herdr-bot', { exact: true })).toBeVisible()
+    expect(screen.getByRole('heading', { level: 1, name: 'Chat' })).toBeVisible()
   })
 })

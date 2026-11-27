@@ -146,7 +146,7 @@ async fn rust_save_refuses_concurrent_bot_target_and_old_revision() {
             assert_eq!(response.status, 200, "{}", response.body);
         }
         let target_before = fs::read(&s.config.tasks.storage_file).unwrap();
-        let gate = (case == "concurrent-bot").then(|| super::history_integrity::file_gate::Gate::new(&s.config.tasks.storage_file));
+        let gate = (case == "concurrent-bot").then(|| crate::common::file_gate::Gate::new(&s.config.tasks.storage_file));
         let dispatch = s.dispatch(&format!("conflict-{case}"), &["save"]).await;
         assert_eq!(dispatch["results"][0]["status"], "running");
         let reached = if let Some(gate) = &gate { common::wait_until(Duration::from_secs(5), || gate.reached()).await } else { true };
@@ -179,7 +179,7 @@ async fn rust_save_material_failure_preserves_saved_effect_and_original_baseline
         let baseline = setup(&s).await;
         let baseline_bytes = fs::read(s.data.path().join("baseline.json")).unwrap();
         let run = s.start(&format!("partial-{case}")).await;
-        let gate = super::history_integrity::file_gate::Gate::new(&s.config.tasks.storage_file);
+        let gate = crate::common::file_gate::Gate::new(&s.config.tasks.storage_file);
         let dispatch = s.dispatch(&format!("partial-{case}"), &["save"]).await;
         let reached = common::wait_until(Duration::from_secs(5), || gate.reached()).await;
         let blocked = s.data.path().join(".manager-zone");
@@ -240,11 +240,11 @@ async fn rust_save_write_and_complete_readback_failures_preserve_actual_effects(
         let tasks_before = fs::read(&s.config.tasks.storage_file).unwrap();
         let run = s.start(&format!("failure-{case}")).await;
         let locked = if case == "write" { Some(fs::OpenOptions::new().read(true).share_mode(1).open(s.config.scheduler.bot_directory.join(before["revision"]["file"].as_str().unwrap())).unwrap()) } else { None };
-        let gate = if case == "readback" { Some(super::history_integrity::file_gate::Gate::new(&s.config.tasks.storage_file)) } else { None };
+        let gate = if case == "readback" { Some(crate::common::file_gate::Gate::new(&s.config.tasks.storage_file)) } else { None };
         s.dispatch(&format!("failure-{case}"), &["save"]).await;
         if let Some(gate) = gate {
             let reached = common::wait_until(Duration::from_secs(5), || gate.reached()).await;
-            let bot_gate = reached.then(|| super::history_integrity::file_gate::Gate::new(&s.config.scheduler.bot_directory.join("worker.json")));
+            let bot_gate = reached.then(|| crate::common::file_gate::Gate::new(&s.config.scheduler.bot_directory.join("worker.json")));
             drop(gate);
             assert!(reached);
             if let Some(bot_gate) = bot_gate {

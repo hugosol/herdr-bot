@@ -95,9 +95,9 @@ pub async fn save_node(
 pub async fn delete_map(
     axum::extract::State(state): axum::extract::State<crate::AppState>,
     axum::extract::Path(name): axum::extract::Path<String>,
-    input: CommandJson<scheduler::maps::MapDelete, DeleteMap>,
+    _: CommandJson<scheduler::JsonObject<DeleteMap>, DeleteMap>,
 ) -> Response {
-    result(scheduler::maps::delete_map(state, name, input.value).await)
+    result(scheduler::maps::delete_map(state, name).await)
 }
 
 pub(crate) async fn set_map_group(

@@ -27,11 +27,11 @@ impl Action {
         }
     }
 
-    async fn apply(self, state: &AppState, run: &mut Run) -> Result<Decision, String> {
+    async fn apply(self, state: &AppState, run: &mut Run, map: &WorkflowMap) -> Result<Decision, String> {
         match self {
-            Self::PrepareInputs { files, confirmed, reason } => preparation::prepare(state, run, files, confirmed, reason),
+            Self::PrepareInputs { files, confirmed, reason } => preparation::prepare(run, map, files, confirmed, reason),
             Self::Complete { node_id, reason } => completion::complete(state, run, node_id, reason).await,
-            Self::Finish => completion::finish(run),
+            Self::Finish => completion::finish(run, map),
             Self::Pause => completion::eligibility(run, "pause", "paused"),
             Self::Resume => completion::eligibility(run, "resume", "running"),
             Self::Fail { node_id, reason } => recovery::fail(run, node_id, reason),
@@ -68,14 +68,15 @@ pub(super) async fn execute(state: AppState, session_id: &str, action: Action) -
         let lock = state.runs.operations.lock().await.entry(run.id.clone()).or_default().clone();
         let _operation = lock.lock().await;
         let mut run = state.runs.read(&state, &run.id).await?;
+        let map = state.runs.read_map(&state, &run).await?;
         let completed_node = match &action {
             Action::Complete { node_id, .. } => Some(node_id.clone()),
             _ => None,
         };
-        let decision = action.apply(&state, &mut run).await?;
+        let decision = action.apply(&state, &mut run, &map).await?;
         let (changed, event) = match decision {
-            Decision::Rejected { code, message } => return rejection(&state, &run, code, &message).await,
-            Decision::Unchanged => return outcome(&state, &run, false, None).await,
+            Decision::Rejected { code, message } => return rejection(&state, &run, &map, code, &message).await,
+            Decision::Unchanged => return outcome(&state, &run, &map, false, None).await,
             Decision::HistoryOnly(event) => (false, event),
             Decision::Commit(event) => {
                 // save_run publishes the current fact and notifies observers
@@ -88,7 +89,7 @@ pub(super) async fn execute(state: AppState, session_id: &str, action: Action) -
             }
         };
         let history_error = record_transition(&state, &run.id, &event).await.err();
-        outcome(&state, &run, changed, history_error).await
+        outcome(&state, &run, &map, changed, history_error).await
     }).await;
     match work {
         Ok(Ok(response)) => Ok(response),
@@ -97,8 +98,8 @@ pub(super) async fn execute(state: AppState, session_id: &str, action: Action) -
     }
 }
 
-async fn outcome(state: &AppState, run: &Run, changed: bool, history_error: Option<String>) -> Result<RunOutcome, String> {
-    let mut value = snapshot(state, run, true).await?;
+async fn outcome(state: &AppState, run: &Run, map: &WorkflowMap, changed: bool, history_error: Option<String>) -> Result<RunOutcome, String> {
+    let mut value = snapshot(state, run, map, true).await?;
     value["changed"] = serde_json::json!(changed);
     history_feedback(&mut value, history_error);
     Ok(RunOutcome::Value(value))
@@ -115,8 +116,8 @@ pub(super) fn history_feedback(value: &mut serde_json::Value, history_error: Opt
     value["historyError"] = serde_json::json!(history_error);
 }
 
-pub(super) async fn rejection(state: &AppState, run: &Run, code: &str, message: &str) -> Result<RunOutcome, String> {
-    let mut value = snapshot(state, run, true).await?;
+pub(super) async fn rejection(state: &AppState, run: &Run, map: &WorkflowMap, code: &str, message: &str) -> Result<RunOutcome, String> {
+    let mut value = snapshot(state, run, map, true).await?;
     value["changed"] = serde_json::json!(false);
     value["code"] = serde_json::json!(code);
     value["message"] = serde_json::json!(message);
@@ -125,11 +126,8 @@ pub(super) async fn rejection(state: &AppState, run: &Run, code: &str, message: 
 
 async fn record_transition(state: &AppState, id: &str, event: &serde_json::Value) -> Result<(), String> {
     let paths = Runs::paths(state, id);
-    let owned = state.clone();
-    let id = id.to_owned();
     let event = event.clone();
     state.runs.files.with_async(&paths.clone(), move |access| Box::pin(async move {
-        owned.runs.ensure_retained(&id).await?;
         access.append_jsonl::<BTreeMap<String, serde_json::Value>>(&paths[1], &event)
     })).await.map_err(|e| e.to_string())?
 }

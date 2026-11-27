@@ -31,6 +31,7 @@ async fn check(state: &AppState, id: &str, signals: &Signals, expired: bool) -> 
     let lock = state.runs.operations.lock().await.entry(id.to_owned()).or_default().clone();
     let _operation = lock.lock().await;
     let run = state.runs.read(state, id).await?;
+    let map = state.runs.read_map(state, &run).await?;
     let generation = *signals.changed.borrow();
     let mut checked = signals.checked.lock().await;
     let reason = if run.status == "paused" { "paused" }
@@ -39,7 +40,7 @@ async fn check(state: &AppState, id: &str, signals: &Signals, expired: bool) -> 
         else if !run.nodes.values().any(|node| node.status == "running") { "no-running" }
         else if expired { "timeout" }
         else { return Ok(None); };
-    let mut value = snapshot(state, &run, false).await?;
+    let mut value = snapshot(state, &run, &map, false).await?;
     value["reason"] = serde_json::json!(reason);
     *checked = generation;
     Ok(Some(value))

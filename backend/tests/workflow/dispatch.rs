@@ -15,6 +15,8 @@ mod retry;
 mod nested_retry;
 #[path = "history/records.rs"]
 mod records;
+#[path = "history/frozen_map.rs"]
+mod frozen_map;
 #[path = "history/integrity.rs"]
 mod integrity;
 #[path = "security/security.rs"]

@@ -84,8 +84,8 @@ function isCatalog(value: unknown): value is MapCatalog {
     (!('titles' in value) || (typeof value.titles === 'object' && value.titles !== null && !Array.isArray(value.titles) && Object.values(value.titles).every(title => typeof title === 'string')))
 }
 
-export async function deleteMap(file: string, deleteHistory: boolean): Promise<MapCatalog> {
-  return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/delete`, { deleteHistory }, isCatalog, 'Map 删除') as MapCatalog
+export async function deleteMap(file: string): Promise<MapCatalog> {
+  return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/delete`, {}, isCatalog, 'Map 删除') as MapCatalog
 }
 
 export type InputRule = { id: string; type: 'file'; path: string; zone_id?: string } | { id: string; type: 'node'; node_id: string; output_id: string } | { id: string; type: 'run'; input_id: string }
