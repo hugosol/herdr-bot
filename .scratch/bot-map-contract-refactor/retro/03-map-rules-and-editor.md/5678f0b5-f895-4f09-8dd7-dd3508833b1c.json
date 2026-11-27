@@ -1,0 +1,66 @@
+{
+  "feature": "bot-map-contract-refactor",
+  "ticket": "03-map-rules-and-editor.md",
+  "run_id": "5678f0b5-f895-4f09-8dd7-dd3508833b1c",
+  "parent_session_id": "01a219c2-b655-73fe-b79a-9d1f4fbbf05e",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e.jsonl",
+  "workspace": "E:/Developer/myhub/herdr-bot",
+  "tool_call_id": "f5eda6d5-87dc-47b0-97b8-2a2f8a442804",
+  "started_at": "2026-11-27T05:25:41.508Z",
+  "tdd_status": "completed",
+  "retro_status": "failed",
+  "tdd_finished_at": "2026-11-27T05:50:28.832Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "03-map-rules-and-editormd-f5eda6d5-87dc-47b0-97b",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\implementation\\03-map-rules-and-editor.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"bot\",\n    \"branch\": \"hyper/bot-map-contract-refactor/03-map-rules-and-editor-fe1d52-f1cebc6ae7d6\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-3Eqpp8\"\n  }\n]\n协调仓集成分支：feature/bot-map-contract-refactor\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\implementation\\03-map-rules-and-editor.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"bot\",\n    \"branch\": \"hyper/bot-map-contract-refactor/03-map-rules-and-editor-fe1d52-f1cebc6ae7d6\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-3Eqpp8\"\n  }\n]\n协调仓集成分支：feature/bot-map-contract-refactor\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement map rules and editor ticket",
+    "lastIntent": "Committing tested scheduler Map rules",
+    "exitCode": 0,
+    "output": "票据 03 已提交 `a9dd09bce0`，未合入集成分支。\n\n- **P5／P29**：Map 规则可分别省略，输入 `required` 必须是显式布尔值，输出声明即必交。旧字段、未知字段和非法字面对象被拒绝；HTTP 读回与实际文件确认拒绝未改写定义。\n- **P6／P7**：保留三类材料来源、固定／动态 zone、空 `input`、策略与图校验，材料引用不补 `blocked_by`。父节点保存时只按子 Map 的公开 ID 对接，可选输出子集，无需匹配内部输出 ID。\n- **P31**：真实浏览器已验证编辑、保存和重载，并与 HTTP 读回及实际文件核对；仅有输出说明不会生成文件要求。已同步类型、示例、文档和词汇。\n\n定向验证：`workflow_dispatch` 的 `map_rules::` 及相关 node 保存回归共 **10 通过**；`workflow_start` 的 `named_input_declarations_are_local_and_duplicate_save_preserves_map` **1 通过**；指定 `schedulerNodeEditing.spec.ts --workers=1` **11 通过**；前端两文件回归 **26 通过**。\n\n未迁移仍使用旧格式的发布资产，也未验证其可在新解析器下运行；选定资产迁移归 08，现场切换归 14。P7 的运行时成果交付不在本票验证范围内。",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 1487112,
+    "tokens": 309512,
+    "requests": 82,
+    "contextTokens": 251130,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.2-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.2-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.2-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 268010,
+      "output": 41502,
+      "cacheRead": 14902528,
+      "cacheWrite": 0,
+      "totalTokens": 15212040,
+      "reasoningTokens": 10601,
+      "cost": {
+        "input": 0.5360200000000005,
+        "output": 0.41501999999999994,
+        "cacheRead": 1.4902528000000002,
+        "cacheWrite": 0,
+        "total": 2.4412928000000003
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e\\03-map-rules-and-editormd-f5eda6d5-87dc-47b0-97b.md",
+    "outputMeta": {
+      "lineCount": 9,
+      "charCount": 632
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "03-map-rules-and-editormd-f5eda6d5-87dc-47b0-97b",
+  "session_id": "01a21b77-6e1b-70fe-9ee2-180128c5f1ad",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e\\03-map-rules-and-editormd-f5eda6d5-87dc-47b0-97b.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-3Eqpp8",
+  "retro_error": "schema_violation: retro_markdown: expected string, received object",
+  "retro_finished_at": "2026-11-27T05:50:33.113Z"
+}

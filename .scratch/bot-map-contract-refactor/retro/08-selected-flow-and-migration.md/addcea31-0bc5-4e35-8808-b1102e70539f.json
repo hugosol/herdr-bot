@@ -1,0 +1,66 @@
+{
+  "feature": "bot-map-contract-refactor",
+  "ticket": "08-selected-flow-and-migration.md",
+  "run_id": "addcea31-0bc5-4e35-8808-b1102e70539f",
+  "parent_session_id": "01a219c2-b655-73fe-b79a-9d1f4fbbf05e",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e.jsonl",
+  "workspace": "E:/Developer/myhub/herdr-bot",
+  "tool_call_id": "848efebc-beb4-43ad-afdc-2df98cfe1416",
+  "started_at": "2026-11-27T06:59:26.612Z",
+  "tdd_status": "completed",
+  "retro_status": "failed",
+  "tdd_finished_at": "2026-11-27T07:16:13.209Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "08-selected-flow-and-migrationmd-848efebc-beb4-4",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\implementation\\08-selected-flow-and-migration.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"bot\",\n    \"branch\": \"hyper/bot-map-contract-refactor/08-selected-flow-and-migration-adf246-f1cebc6ae7d6\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-Mgc9rs\"\n  }\n]\n协调仓集成分支：feature/bot-map-contract-refactor\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\implementation\\08-selected-flow-and-migration.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"bot\",\n    \"branch\": \"hyper/bot-map-contract-refactor/08-selected-flow-and-migration-adf246-f1cebc6ae7d6\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-Mgc9rs\"\n  }\n]\n协调仓集成分支：feature/bot-map-contract-refactor\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement ticket 08 selected flow and migration",
+    "lastIntent": "Committing the completed isolated ticket",
+    "exitCode": 0,
+    "output": "08 已完成并提交 `14a6a0a60c`，worktree 交由独立集成代理，未合入集成分支。\n\n「创建map」已采用批准正文，保留四个 Bot、三个 Task 和三阶段接线。需求仅通过 `runInput` 提供，不声明公开文件接口；独立 Task 与节点共用唯一业务资料，管理者不加载专属验收。已交付 [9 张 Map 的迁移清单](docs/workflow-migration-inventory.md)和[切换与验收报告](docs/bot-map-contract-refactor-delivery.md)。\n\n**实测：**21 项定向 Rust 检查、1 项真实 Chrome 检查通过；独立核对了批准正文和配置引用。隔离演练验证了暂停、退出与在途效果的区别，旧副本和 chief 记录的精确清理，以及首条流程不依赖清单即可运行。最终内部 Map、实际保存文件和完整 HTTP 读回一致，未启动生成的业务。\n\n11 跨仓联调待验，12/13 tester 专项延期，14 用户业务验收和现场切换未执行。未操作生产数据，未将首条流程标为「迁移完成」。",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 1006452,
+    "tokens": 299727,
+    "requests": 61,
+    "contextTokens": 248163,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.2-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.2-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.2-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 261188,
+      "output": 38539,
+      "cacheRead": 10919936,
+      "cacheWrite": 0,
+      "totalTokens": 11219663,
+      "reasoningTokens": 6687,
+      "cost": {
+        "input": 0.522376,
+        "output": 0.38539,
+        "cacheRead": 1.0919936000000001,
+        "cacheWrite": 0,
+        "total": 1.9997595999999993
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e\\08-selected-flow-and-migrationmd-848efebc-beb4-4.md",
+    "outputMeta": {
+      "lineCount": 7,
+      "charCount": 485
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "08-selected-flow-and-migrationmd-848efebc-beb4-4",
+  "session_id": "01a21bcd-434a-76d1-aed8-ccb1b2a3dc7a",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e\\08-selected-flow-and-migrationmd-848efebc-beb4-4.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-Mgc9rs",
+  "retro_error": "Subagent submitted invalid yield results 6 times; stopping to avoid an infinite submit loop. Last yield error: key must be one of: 1",
+  "retro_finished_at": "2026-11-27T07:16:37.598Z"
+}

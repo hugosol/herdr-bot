@@ -1,0 +1,66 @@
+{
+  "feature": "bot-map-contract-refactor",
+  "ticket": "06-finish-and-nested-handoff.md",
+  "run_id": "65755e6f-ae61-4356-bbfe-b65dc718f736",
+  "parent_session_id": "01a219c2-b655-73fe-b79a-9d1f4fbbf05e",
+  "parent_session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e.jsonl",
+  "workspace": "E:/Developer/myhub/herdr-bot",
+  "tool_call_id": "b2856c1f-18a6-4eda-b957-e71eba30d566",
+  "started_at": "2026-11-27T06:59:26.162Z",
+  "tdd_status": "completed",
+  "retro_status": "completed",
+  "tdd_finished_at": "2026-11-27T07:14:51.473Z",
+  "tdd_result": {
+    "index": 0,
+    "id": "06-finish-and-nested-handoffmd-b2856c1f-18a6-4ed",
+    "agent": "tdd",
+    "agentSource": "user",
+    "task": "Complete assignment thoroughly:\n\n在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\implementation\\06-finish-and-nested-handoff.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"bot\",\n    \"branch\": \"hyper/bot-map-contract-refactor/06-finish-and-nested-handoff-033c7a-f1cebc6ae7d6\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-6dxGBm\"\n  }\n]\n协调仓集成分支：feature/bot-map-contract-refactor\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "assignment": "在当前 worktree 实现唯一票据：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\implementation\\06-finish-and-nested-handoff.md。\n本票唯一实现代理拥有下列全部仓库 worktrees；先读取每个 worktree 的项目指令，可在任意列出的仓库完成本票，勿修改未列出的仓库：\n[\n  {\n    \"repository\": \"bot\",\n    \"branch\": \"hyper/bot-map-contract-refactor/06-finish-and-nested-handoff-033c7a-f1cebc6ae7d6\",\n    \"cwd\": \"C:\\\\Users\\\\hugos\\\\AppData\\\\Local\\\\Temp\\\\hyper-ticket-6dxGBm\"\n  }\n]\n协调仓集成分支：feature/bot-map-contract-refactor\nspec：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\spec.md\ncontract：E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\contract.md\n这是本票首次执行。\n遵守 tdd skill，自行负责本票验收并报告实际验证与未完成事项。完成后尽快提交本票实现，交出 worktree，由独立集成子代理接管。不要修改其他票据或工作流报告，不操作集成分支工作区，不自行合入集成分支，不调用 retro、不派发其他票据。不得 reset 丢弃既有工作。",
+    "description": "Implement ticket 06 finish and nested handoff",
+    "lastIntent": "Committing ticket implementation",
+    "exitCode": 0,
+    "output": "票据 06 已实现并提交：`31810c3c3b`。未合入集成分支。\n\n- **P15–P17、P21**：`finish` 按本 Run 的冻结 Map 一次校验并保存 `mapOutput.files`。错误绑定不完成 Run，重复调用保留首次成果。结束节点交给用户后，管理者仍须显式 finish，且不能欠交公开文件。\n- **P7、P18–P20**：子 Run 保存全部公开成果；父报告只取冻结规则要求的同名子集，拒绝覆盖地址。中途报告可以不附文件，批准、报告、父节点完成与下游派发仍是独立动作。\n- **P12、P27、P29、P32**：验证了冻结规则、持久化部分生效、父报告保存与通知失败分离，以及页面刷新只读。运行协议已更新。\n\n定向验证通过：后端 **46** 项、前端单元 **14** 项、真实浏览器 **6** 项。未运行跨仓原生工具联调或延期 tester 专项。",
+    "stderr": "",
+    "truncated": false,
+    "durationMs": 925155,
+    "tokens": 297256,
+    "requests": 69,
+    "contextTokens": 250554,
+    "contextWindow": 922000,
+    "modelOverride": [
+      "openai-codex/gpt-6.2-sol:high"
+    ],
+    "resolvedModel": "openai-codex/gpt-6.2-sol:high",
+    "resolvedModelIdentity": "openai-codex/gpt-6.2-sol",
+    "resolvedThinkingLevel": "high",
+    "aborted": false,
+    "usage": {
+      "input": 264413,
+      "output": 32843,
+      "cacheRead": 12176128,
+      "cacheWrite": 0,
+      "totalTokens": 12473384,
+      "reasoningTokens": 4771,
+      "cost": {
+        "input": 0.5288260000000001,
+        "output": 0.32842999999999994,
+        "cacheRead": 1.2176128000000002,
+        "cacheWrite": 0,
+        "total": 2.0748688
+      }
+    },
+    "outputPath": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e\\06-finish-and-nested-handoffmd-b2856c1f-18a6-4ed.md",
+    "outputMeta": {
+      "lineCount": 7,
+      "charCount": 396
+    }
+  },
+  "agent": "tdd",
+  "agent_id": "06-finish-and-nested-handoffmd-b2856c1f-18a6-4ed",
+  "session_id": "01a21bcd-4170-7259-ad8d-509bc56cf927",
+  "session_file": "C:\\Users\\hugos\\.omp\\agent\\sessions\\--E--Developer-myhub-herdr-bot--\\2026-11-26T21-28-40-789Z_01a219c2-b655-73fe-b79a-9d1f4fbbf05e\\06-finish-and-nested-handoffmd-b2856c1f-18a6-4ed.jsonl",
+  "execution_cwd": "C:\\Users\\hugos\\AppData\\Local\\Temp\\hyper-ticket-6dxGBm",
+  "retro_document": "E:\\Developer\\myhub\\herdr-bot\\.scratch\\bot-map-contract-refactor\\retro\\06-finish-and-nested-handoff.md\\65755e6f-ae61-4356-bbfe-b65dc718f736.md",
+  "retro_finished_at": "2026-11-27T07:15:12.725Z"
+}
