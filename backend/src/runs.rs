@@ -119,6 +119,17 @@ pub struct MapInput {
     #[serde(deserialize_with = "crate::scheduler::object_array")]
     pub files: Vec<crate::scheduler::maps::ResolvedFile>,
 }
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MapOutput {
+    #[serde(default, deserialize_with = "crate::scheduler::object_array")]
+    pub files: Vec<crate::scheduler::maps::ResolvedFile>,
+}
+
+fn map_output_object<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<MapOutput, D::Error> {
+    crate::scheduler::JsonObject::<MapOutput>::deserialize(deserializer).map(|value| value.0)
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Run {
@@ -139,6 +150,8 @@ pub struct Run {
     pub zone: String,
     pub workspace_name: String,
     pub map_input: MapInput,
+    #[serde(default, deserialize_with = "map_output_object")]
+    pub map_output: MapOutput,
     #[serde(default)]
     pub inputs_ready: bool,
     pub manager: Option<ChatReference>,
@@ -683,6 +696,7 @@ pub(crate) fn root_run(
         zone_bindings: checked.zone_bindings,
         workspace_name: checked.workspace_name,
         map_input: MapInput { run_input: input.user_input, files: input.file_inputs },
+        map_output: MapOutput::default(),
         inputs_ready: false,
         manager: None,
         status: "running".into(),

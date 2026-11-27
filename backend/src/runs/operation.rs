@@ -5,7 +5,7 @@ use std::borrow::Cow;
 pub(super) enum Action {
     PrepareInputs { files: Vec<crate::scheduler::maps::ResolvedFile>, confirmed: bool, reason: String },
     Complete { node_id: String, reason: String },
-    Finish,
+    Finish(MapOutput),
     Pause,
     Resume,
     Fail { node_id: String, reason: String },
@@ -18,7 +18,7 @@ impl Action {
         match self {
             Self::PrepareInputs { .. } => "prepare_inputs",
             Self::Complete { .. } => "complete",
-            Self::Finish => "finish",
+            Self::Finish(_) => "finish",
             Self::Pause => "pause",
             Self::Resume => "resume",
             Self::Fail { .. } => "fail",
@@ -31,7 +31,7 @@ impl Action {
         match self {
             Self::PrepareInputs { files, confirmed, reason } => preparation::prepare(run, map, files, confirmed, reason),
             Self::Complete { node_id, reason } => completion::complete(state, run, node_id, reason).await,
-            Self::Finish => completion::finish(run, map),
+            Self::Finish(output) => completion::finish(run, map, output),
             Self::Pause => completion::eligibility(run, "pause", "paused"),
             Self::Resume => completion::eligibility(run, "resume", "running"),
             Self::Fail { node_id, reason } => recovery::fail(run, node_id, reason),

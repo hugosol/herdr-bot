@@ -70,7 +70,7 @@ async fn parent_approval_requires_finished_child_and_independent_frozen_mode() {
         submit_report(&s, "approval-inside", "Internal work delivered", true).await;
         action(&s, "approval-child", "complete", json!({"nodeId":"inside","reason":"Accept internal work"}), 200).await;
         assert_eq!(request(&s, "/api/workflow/node/approve", approval.clone(), 400).await["code"], "child-run-not-finished");
-        action(&s, "approval-child", "finish", json!({}), 200).await;
+        finish_public(&s, "approval-child").await;
         let child_before = read_run(&s, &execution["childRunId"]).await;
         assert_eq!(child_before["run"]["nodes"]["inside"]["execution"]["approved"], true);
         assert_eq!(read_run(&s, &root["id"]).await["run"]["nodes"]["call"]["execution"]["approved"], false);
@@ -115,19 +115,28 @@ async fn nested_completion_requires_explicit_child_finish_before_ready_report() 
     assert_eq!(rejected["code"], "child-run-not-finished");
     assert_eq!(s.herdr.calls(), calls);
     assert_eq!(read_run(&s, &root["id"]).await["reports"], json!([]));
+    let attempted = request(&s, "/api/workflow/node/report", json!({"sessionId":"finish-child","body":"Do not register a preliminary result","canComplete":false,"outputs":[{"id":"result","path":s.data.path().join("premature.txt") }]}), 400).await;
+    assert_eq!(attempted["code"], "child-output-override");
+    assert_eq!(s.herdr.calls(), calls);
     let progress = request(&s, "/api/workflow/node/report", json!({"sessionId":"finish-child","body":"Progress only","canComplete":false}), 200).await;
     assert_eq!(progress["report"]["runId"], root["id"]);
+    assert_eq!(progress["report"]["outputs"], json!([]));
+    assert_eq!(progress["report"]["canComplete"], false);
+    assert_eq!(read_run(&s, &child).await["run"]["mapOutput"], json!({"files":[]}));
     let rejected = action(&s, "finish-root", "complete", json!({"nodeId":"call","reason":"Progress is insufficient"}), 409).await;
     assert_eq!(rejected["code"], "node-not-approved");
     native(&s, "finish-inside");
     s.dispatch("finish-child", &["inside"]).await;
     // Chief ticket 01: the internal node still notifies its own manager,
     // never the outer manager, and does not complete the internal work itself.
+    let ordinary_progress = submit_report(&s, "finish-inside", "Internal progress, no file", false).await;
+    assert_eq!(ordinary_progress["outputs"], json!([]));
+    assert_eq!(ordinary_progress["canComplete"], false);
     let internal = submit_report(&s, "finish-inside", "Internal done", true).await;
     assert_eq!(internal["runId"], child);
     assert_eq!(internal["to"]["sessionId"], "finish-child");
     let child_detail = read_run(&s, &child).await;
-    assert_eq!(child_detail["reports"], json!([internal]));
+    assert_eq!(child_detail["reports"], json!([ordinary_progress, internal]));
     assert_eq!(child_detail["run"]["nodes"]["inside"]["status"], "running");
     let calls = s.herdr.calls();
     let notification = calls.iter().rev().find(|call| call["kind"] == "agent_prompt").unwrap();
@@ -142,24 +151,33 @@ async fn nested_completion_requires_explicit_child_finish_before_ready_report() 
     assert_eq!(rejected["code"], "child-run-not-finished");
     assert_eq!(read_run(&s, &root["id"]).await, before);
     assert_eq!(s.herdr.calls(), calls);
-    let finished = action(&s, "finish-child", "finish", json!({}), 200).await;
+    let finished = finish_public(&s, "finish-child").await;
     assert_eq!(finished["snapshot"]["status"], "completed");
     assert_eq!(read_run(&s, &child).await["run"]["status"], "completed");
     assert_eq!(read_run(&s, &root["id"]).await, before);
-    request(&s, "/api/workflow/node/report", json!({"sessionId":"finish-child","body":"Finished, no registered outputs","canComplete":true}), 200).await;
+    assert_eq!(s.herdr.calls(), calls);
+    request(&s, "/api/workflow/node/report", json!({"sessionId":"finish-child","body":"Finished with public outputs","canComplete":true}), 200).await;
     let after = read_run(&s, &root["id"]).await;
     assert_eq!(after["run"]["nodes"]["call"]["status"], "running");
     assert_eq!(after["run"]["nodes"]["consumer"]["status"], "pending");
     assert!(!s.herdr.calls().iter().any(|call| call["kind"] == "tab_close"));
 }
 
-async fn finish_child(s: &Scenario, child: &str, inside: &str) {
+async fn complete_child_work(s: &Scenario, child: &str, inside: &str) {
     native(s, inside);
     s.dispatch(child, &["inside"]).await;
     submit_report(s, inside, "Internal delivery", true).await;
     approve_execution(s, inside).await;
     action(s, child, "complete", json!({"nodeId":"inside","reason":"Accepted internal delivery"}), 200).await;
-    action(s, child, "finish", json!({}), 200).await;
+}
+
+async fn finish_public(s: &Scenario, session: &str) -> Value {
+    let files: Vec<_> = ["result", "missing", "new-only"].into_iter().map(|id| {
+        let path = s.data.path().join(format!("{session}-{id}.txt"));
+        fs::write(&path, format!("PUBLIC-{session}-{id}")).unwrap();
+        json!({"id":id,"path":path})
+    }).collect();
+    action(s, session, "finish", json!({"mapOutput":{"files":files}}), 200).await
 }
 
 async fn add_node(s: &Scenario, id: &str, content: Value) {
@@ -169,13 +187,25 @@ async fn add_node(s: &Scenario, id: &str, content: Value) {
     request(s, "/api/scheduler/maps/work.json/nodes/save", json!({"id":id,"content":content.to_string(),"revision":draft["revision"],"create":true}), 200).await;
 }
 
-// P17/P18: frozen parent output IDs, report deltas and omission survive nested
-// delivery; both target kinds bind the newest registered address. A live-Map
-// validator, replace-all registry or recursive child-output lookup fails here.
+// P7/P18/P19 (S1/S3/S4): only the immutable public delivery crosses the
+// boundary. Internal addresses, explicit report overrides and newly edited
+// parent output IDs must never determine the downstream paths.
 #[tokio::test]
 async fn nested_outputs_use_frozen_parent_rules_and_feed_both_downstream_kinds() {
     let s = Scenario::new().await;
     setup(&s).await;
+    let inner_path = s.config.scheduler.map_directory.join("inner.json");
+    let mut inner: Value = serde_json::from_slice(&fs::read(&inner_path).unwrap()).unwrap();
+    inner["map_input_rule"] = json!({"files":[{"id":"brief","required":true}]});
+    inner["nodes"]["inside"]["input_rule"] = json!([{"id":"working-input","type":"run","input_id":"brief"}]);
+    inner["nodes"]["inside"]["output_rule"] = json!([{"id":"internal"}]);
+    fs::write(inner_path, inner.to_string()).unwrap();
+    let supplied = s.data.path().join("node-zone").join("caller-brief.txt");
+    fs::write(&supplied, b"CALLER-BRIEF-407").unwrap();
+    let draft = request(&s, "/api/scheduler/maps/work.json/nodes/edit", json!({"id":"call"}), 200).await;
+    let mut content = draft["content"].clone();
+    content["input_rule"] = json!([{"id":"brief","type":"file","zone_id":"node","path":"caller-brief.txt"}]);
+    request(&s, "/api/scheduler/maps/work.json/nodes/save", json!({"id":"call","content":content.to_string(),"revision":draft["revision"],"create":false}), 200).await;
     fs::write(s.config.scheduler.map_directory.join("sink.json"), json!({"title":"Sink","description":"","map_input_rule":{"files":[{"id":"renamed","required":true}]},"nodes":{"sink-work":{"title":"Sink work","bot_id":"worker","input":"Sink","zone":"node","blocked_by":[]}}}).to_string()).unwrap();
     request(&s, "/api/scheduler/bots/save", json!({"id":"sink","content":json!({"name":"Sink","when":"","description":"","input_rule":"","output_rule":"","map_file":"sink.json"}).to_string(),"revision":null}), 200).await;
     add_node(&s, "map-consumer", json!({"title":"Map consumer","bot_id":"sink","manager_task_id":s.manager_task,"input":"MAP-CONSUME","zone":"node","blocked_by":["call"],"input_rule":[{"type":"node","id":"renamed","node_id":"call","output_id":"result"}]})).await;
@@ -184,57 +214,82 @@ async fn nested_outputs_use_frozen_parent_rules_and_feed_both_downstream_kinds()
     native(&s, "output-child");
     let launched = s.dispatch("output-root", &["call"]).await;
     let execution = launched["snapshot"]["nodes"]["call"]["execution"].clone();
-    finish_child(&s, "output-child", "output-inside").await;
+    let child_id = &execution["childRunId"];
+    assert_eq!(execution["inputs"], json!([{"id":"brief","path":supplied}]));
+    assert_eq!(read_run(&s, child_id).await["run"]["mapInput"]["files"], json!([{"id":"brief","path":supplied}]));
+    let internal = s.data.path().join("internal-work.txt");
+    fs::write(&internal, b"INTERNAL-ONLY-632").unwrap();
+    native(&s, "output-inside");
+    let inside = s.dispatch("output-child", &["inside"]).await;
+    assert_eq!(inside["snapshot"]["nodes"]["inside"]["execution"]["inputs"], json!([{"id":"working-input","path":supplied}]));
+    approve_execution(&s, "output-inside").await;
+    request(&s, "/api/workflow/node/report", json!({"sessionId":"output-inside","body":"Internal delivery","canComplete":true,"outputs":[{"id":"internal","path":internal}]}), 200).await;
+    action(&s, "output-child", "complete", json!({"nodeId":"inside","reason":"Accepted internal delivery"}), 200).await;
     let draft = request(&s, "/api/scheduler/maps/work.json/nodes/edit", json!({"id":"call"}), 200).await;
     let mut content = draft["content"].clone();
     content["output_rule"] = json!([{"id":"result"},{"id":"missing"},{"id":"new-only"}]);
     request(&s, "/api/scheduler/maps/work.json/nodes/save", json!({"id":"call","content":content.to_string(),"revision":draft["revision"],"create":false}), 200).await;
-    let old = s.data.path().join("old.txt");
-    let new = s.data.path().join("new.txt");
+    let public = s.data.path().join("public.txt");
     let retained = s.data.path().join("retained.txt");
-    for (path, bytes) in [(&old,"OLD-371"),(&new,"NEW-849"),(&retained,"RETAINED-562")] { fs::write(path, bytes).unwrap(); }
+    let extra = s.data.path().join("child-only.txt");
+    for (path, bytes) in [(&public,"PUBLIC-849"),(&retained,"RETAINED-562"),(&extra,"CHILD-ONLY-544")] { fs::write(path, bytes).unwrap(); }
+    let parent_before = read_run(&s, &root["id"]).await;
     let calls = s.herdr.calls();
-    for outputs in [json!([{"id":"new-only","path":new}]), json!([{"id":"result","path":old},{"id":"result","path":new}])] {
-        request(&s, "/api/workflow/node/report", json!({"sessionId":"output-child","body":"Invalid","canComplete":true,"outputs":outputs}), 400).await;
-    }
+    let full = json!({"files":[{"id":"result","path":public},{"id":"missing","path":retained},{"id":"new-only","path":extra}]});
+    let finished = action(&s, "output-child", "finish", json!({"mapOutput":full}), 200).await;
+    assert_eq!(finished["snapshot"]["mapOutput"], full);
+    let child_record = s.config.scheduler.run_directory.join(child_id.as_str().unwrap()).join("run.json");
+    assert_eq!(serde_json::from_slice::<Value>(&fs::read(child_record).unwrap()).unwrap()["mapOutput"], full);
+    assert_eq!(read_run(&s, child_id).await["run"]["mapOutput"], full);
+    assert_eq!(read_run(&s, &root["id"]).await, parent_before);
+    assert_eq!(s.herdr.calls(), calls, "finish must not deliver to or advance the parent");
+    let rejected = request(&s, "/api/workflow/node/report", json!({"sessionId":"output-child","body":"Override","canComplete":true,"outputs":[{"id":"result","path":internal}]}), 400).await;
+    assert_eq!(rejected["code"], "child-output-override");
+    assert_eq!(read_run(&s, &root["id"]).await, parent_before);
     assert_eq!(s.herdr.calls(), calls);
-    assert_eq!(read_run(&s, &root["id"]).await["reports"], json!([]));
-    for outputs in [Some(json!([{"id":"result","path":old},{"id":"missing","path":retained}])),Some(json!([{"id":"result","path":new}])),None] {
-        let mut body = json!({"sessionId":"output-child","body":"Delivery delta","canComplete":true});
-        if let Some(outputs) = outputs { body["outputs"] = outputs; }
-        request(&s, "/api/workflow/node/report", body, 200).await;
-    }
+    approve_execution(&s, "output-child").await;
+    let approved = read_run(&s, &root["id"]).await;
+    assert_eq!(approved["run"]["nodes"]["call"]["execution"]["approved"], true);
+    assert_eq!(approved["reports"], json!([]));
+    assert_eq!(approved["run"]["nodes"]["consumer"]["status"], "pending");
+    assert_eq!(s.herdr.calls(), calls);
+    let delivered = request(&s, "/api/workflow/node/report", json!({"sessionId":"output-child","body":"Public delivery","canComplete":true}), 200).await;
+    assert_eq!(delivered["report"]["outputs"], json!([{"id":"result","path":public},{"id":"missing","path":retained}]));
     let before = read_run(&s, &root["id"]).await;
-    assert_eq!(before["reports"][2]["outputs"], json!([]));
-    assert_eq!(before["run"]["nodes"]["call"]["execution"], execution);
+    assert_eq!(before["reports"], json!([delivered["report"]]));
+    assert_eq!(before["run"]["nodes"]["call"], approved["run"]["nodes"]["call"]);
+    assert_eq!(before["run"]["nodes"]["consumer"]["status"], "pending");
+    assert_eq!(s.herdr.calls().len(), calls.len() + 1, "explicit report attempts exactly one notification");
     let blocked = s.dispatch("output-root", &["consumer","map-consumer"]).await;
     assert_eq!(blocked["snapshot"]["nodes"]["consumer"]["status"], "pending");
     assert_eq!(blocked["snapshot"]["nodes"]["map-consumer"]["status"], "pending");
-    approve_execution(&s, "output-child").await;
     action(&s, "output-root", "complete", json!({"nodeId":"call","reason":"Accept parent delivery"}), 200).await;
+    wait_for_close(&s).await;
+    let accepted = read_run(&s, &root["id"]).await;
+    assert_eq!(accepted["run"]["nodes"]["call"]["status"], "completed");
+    assert_eq!(accepted["run"]["nodes"]["consumer"]["status"], "pending");
+    assert_eq!(s.herdr.calls().iter().filter(|call| call["kind"] == "agent_start").count(), 3);
     native(&s, "output-consumer");
     let ordinary = s.dispatch("output-root", &["consumer"]).await;
-    assert_eq!(ordinary["snapshot"]["nodes"]["consumer"]["execution"]["inputs"], json!([{"id":"material","path":new}]));
+    assert_eq!(ordinary["snapshot"]["nodes"]["consumer"]["execution"]["inputs"], json!([{"id":"material","path":public}]));
     native(&s, "output-map-consumer");
     let mapped = s.dispatch("output-root", &["map-consumer"]).await;
     let consumer = &mapped["snapshot"]["nodes"]["map-consumer"]["execution"];
-    assert_eq!(consumer["inputs"], json!([{"id":"renamed","path":new}]));
-    assert_eq!(read_run(&s, &consumer["childRunId"]).await["run"]["mapInput"]["files"], json!([{"id":"renamed","path":new}]));
+    assert_eq!(consumer["inputs"], json!([{"id":"renamed","path":public}]));
+    assert_eq!(read_run(&s, &consumer["childRunId"]).await["run"]["mapInput"]["files"], json!([{"id":"renamed","path":public}]));
     native(&s, "output-retained-consumer");
     let bound = s.dispatch("output-root", &["retained-consumer"]).await;
     assert_eq!(bound["snapshot"]["nodes"]["retained-consumer"]["execution"]["inputs"], json!([{"id":"retained","path":retained}]));
-    assert_eq!(fs::read_to_string(new).unwrap(), "NEW-849");
-    assert_eq!(fs::read_to_string(retained).unwrap(), "RETAINED-562");
-    assert!(read_run(&s, &execution["childRunId"]).await["run"].get("outputFiles").is_none());
-    wait_for_close(&s).await;
+    for (path, bytes) in [(&public,"PUBLIC-849"),(&retained,"RETAINED-562"),(&extra,"CHILD-ONLY-544"),(&internal,"INTERNAL-ONLY-632"),(&supplied,"CALLER-BRIEF-407")] {
+        assert_eq!(fs::read(path).unwrap(), bytes.as_bytes());
+    }
+    assert_eq!(read_run(&s, child_id).await["run"]["mapOutput"], full);
 }
 
-// A previous child delivered a required file; its replacement finishes
-// without outputs. Overall approval does not inherit old deliveries: parent
-// complete must reject the missing current output, leaving consumers blocked.
-// Child finish itself still never requires parent output IDs.
+// A previous child delivered all required files; their presence does not let
+// a replacement finish without its own explicit complete public delivery.
 #[tokio::test]
-async fn finished_child_without_current_output_cannot_reuse_previous_delivery() {
+async fn unfinished_replacement_cannot_reuse_previous_public_delivery() {
     let s = Scenario::new().await;
     setup(&s).await;
     let inner_path = s.config.scheduler.map_directory.join("inner.json");
@@ -245,19 +300,24 @@ async fn finished_child_without_current_output_cannot_reuse_previous_delivery() 
     let root = s.start("missing-root").await;
     native(&s, "missing-old-child");
     let first = s.dispatch("missing-root", &["call"]).await;
-    finish_child(&s, "missing-old-child", "missing-old-inside").await;
-    let old = s.data.path().join("previous-delivery.txt");
-    fs::write(&old, "DO-NOT-INHERIT-631").unwrap();
-    request(&s, "/api/workflow/node/report", json!({"sessionId":"missing-old-child","body":"Old delivery","canComplete":true,"outputs":[{"id":"result","path":old}]}), 200).await;
+    complete_child_work(&s, "missing-old-child", "missing-old-inside").await;
+    finish_public(&s, "missing-old-child").await;
+    let old = s.data.path().join("missing-old-child-result.txt");
+    request(&s, "/api/workflow/node/report", json!({"sessionId":"missing-old-child","body":"Old delivery","canComplete":true}), 200).await;
     action(&s, "missing-root", "fail", json!({"nodeId":"call","reason":"Explicit replacement"}), 200).await;
     native(&s, "missing-new-child");
     let retry = action(&s, "missing-root", "retry", json!({"nodeId":"call","confirmed":true,"reason":"Approved independent work"}), 200).await;
     assert_ne!(retry["snapshot"]["nodes"]["call"]["execution"]["id"], first["snapshot"]["nodes"]["call"]["execution"]["id"]);
-    finish_child(&s, "missing-new-child", "missing-new-inside").await;
-    request(&s, "/api/workflow/node/report", json!({"sessionId":"missing-new-child","body":"Finished with explicit limitation","canComplete":true}), 200).await;
-    approve_execution(&s, "missing-new-child").await;
+    complete_child_work(&s, "missing-new-child", "missing-new-inside").await;
+    let refused = action(&s, "missing-new-child", "finish", json!({}), 409).await;
+    assert_eq!(refused["code"], "output-missing");
+    assert_eq!(refused["snapshot"]["mapOutput"], json!({"files":[]}));
+    assert_eq!(refused["snapshot"]["status"], "running");
+    let progress = request(&s, "/api/workflow/node/report", json!({"sessionId":"missing-new-child","body":"Replacement still preparing outputs","canComplete":false}), 200).await;
+    assert_eq!(progress["report"]["outputs"], json!([]));
+    assert_eq!(request(&s, "/api/workflow/node/report", json!({"sessionId":"missing-new-child","body":"Old result is not a current delivery","canComplete":true}), 400).await["code"], "child-run-not-finished");
     let denied = action(&s, "missing-root", "complete", json!({"nodeId":"call","reason":"Old delivery cannot fill current requirements"}), 409).await;
-    assert_eq!(denied["code"], "output-missing");
+    assert_eq!(denied["code"], "node-not-approved");
     let calls = s.herdr.calls();
     let rejected = s.dispatch("missing-root", &["consumer","missing-map"]).await;
     for id in ["consumer","missing-map"] {
@@ -269,7 +329,7 @@ async fn finished_child_without_current_output_cannot_reuse_previous_delivery() 
     let current = read_run(&s, &root["id"]).await;
     assert_eq!(current["run"]["nodes"]["call"]["status"], "running");
     assert_eq!(current["reports"][1]["outputs"], json!([]));
-    assert_eq!(fs::read_to_string(old).unwrap(), "DO-NOT-INHERIT-631");
+    assert_eq!(fs::read_to_string(old).unwrap(), "PUBLIC-missing-old-child-result");
     assert!(!s.herdr.calls().iter().any(|call| call["kind"] == "tab_close"));
 }
 
@@ -289,23 +349,42 @@ async fn nested_saved_notification_failure_latest_report_and_exact_close_are_ind
     native(&s, "notify-child");
     let launched = s.dispatch("notify-root", &["call"]).await;
     let execution = launched["snapshot"]["nodes"]["call"]["execution"].clone();
-    finish_child(&s, "notify-child", "notify-inside").await;
+    complete_child_work(&s, "notify-child", "notify-inside").await;
+    finish_public(&s, "notify-child").await;
     approve_execution(&s, "notify-child").await;
-    let output = s.data.path().join("notify-delivery.txt");
-    fs::write(&output, "OVERALL-DELIVERY-837").unwrap();
+    let output = s.data.path().join("notify-child-result.txt");
+    assert_eq!(fs::read(&output).unwrap(), b"PUBLIC-notify-child-result");
     let child_before = read_run(&s, &execution["childRunId"]).await;
     let tabs_before = s.herdr.tabs();
     assert_eq!(tabs_before.len(), 3);
     assert!(!s.herdr.calls().iter().any(|call| call["kind"] == "tab_close"));
+    let path = s.config.scheduler.run_directory.join(root["id"].as_str().unwrap()).join("messages.jsonl");
+    let before = fs::read(&path).unwrap();
+    let calls = s.herdr.calls();
+    let parent_before = read_run(&s, &root["id"]).await;
+    use std::os::windows::fs::OpenOptionsExt;
+    let held = fs::OpenOptions::new().read(true).share_mode(1).open(&path).unwrap();
+    let failed = request(&s, "/api/workflow/node/report", json!({"sessionId":"notify-child","body":"Parent append unavailable","canComplete":true}), 500).await;
+    assert_eq!(failed["code"], "report-save-failed");
+    assert_eq!(failed["saved"], false);
+    assert_eq!(failed["notification"]["status"], "not-attempted");
+    assert_eq!(fs::read(&path).unwrap(), before);
+    assert_eq!(read_run(&s, &root["id"]).await, parent_before);
+    assert_eq!(read_run(&s, &execution["childRunId"]).await, child_before);
+    assert_eq!(s.herdr.calls(), calls);
+    drop(held);
     s.herdr.set_behavior(json!({"fail_prompt":true}));
     let offset = s.herdr.calls().len();
-    let saved = request(&s, "/api/workflow/node/report", json!({"sessionId":"notify-child","body":"Saved despite real host rejection","canComplete":true,"outputs":[{"id":"result","path":output},{"id":"missing","path":output}]}), 200).await;
+    let saved = request(&s, "/api/workflow/node/report", json!({"sessionId":"notify-child","body":"Saved despite real host rejection","canComplete":true}), 200).await;
     assert_eq!(saved["saved"], true);
     assert_eq!(saved["notification"]["status"], "failed");
     assert!(saved["notification"]["reason"].as_str().is_some_and(|reason| !reason.is_empty()));
     assert_eq!(saved["report"]["executionId"], execution["id"]);
     let read = read_run(&s, &root["id"]).await;
     assert_eq!(read["reports"], json!([saved["report"]]));
+    assert_eq!(common::read_json_lines(&path), vec![saved["report"].clone()]);
+    assert_eq!(saved["report"]["outputs"][0], json!({"id":"result","path":output}));
+    assert_eq!(fs::read(output).unwrap(), b"PUBLIC-notify-child-result");
     assert_eq!(read["run"]["nodes"]["call"]["status"], "running");
     assert_eq!(read["run"]["nodes"]["consumer"]["status"], "pending");
     assert_eq!(read_run(&s, &execution["childRunId"]).await, child_before);
@@ -347,7 +426,7 @@ async fn nested_saved_notification_failure_latest_report_and_exact_close_are_ind
 async fn nested_end_node_handoff_finishes_child_but_still_requires_parent_report_and_acceptance() {
     let s = Scenario::new().await;
     setup(&s).await;
-    fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner end","description":"","nodes":{"inside":{"title":"End conversation","bot_id":"worker","input":"USER HANDOFF","zone":"node","blocked_by":[],"end_node":true,"auto_close":true}}}).to_string()).unwrap();
+    fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner end","description":"","map_output_rule":{"files":[{"id":"result"},{"id":"missing"},{"id":"new-only"}]},"nodes":{"inside":{"title":"End conversation","bot_id":"worker","input":"USER HANDOFF","zone":"node","blocked_by":[],"end_node":true,"auto_close":true}}}).to_string()).unwrap();
     s.start("end-root").await;
     native(&s, "end-child");
     let dispatched = s.dispatch("end-root", &["call"]).await;
@@ -356,15 +435,13 @@ async fn nested_end_node_handoff_finishes_child_but_still_requires_parent_report
     let dispatched = s.dispatch("end-child", &["inside"]).await;
     assert_eq!(dispatched["canFinish"], true);
     request(&s, "/api/workflow/node/report", json!({"sessionId":"end-child","body":"Before explicit finish","canComplete":true}), 400).await;
-    let finished = action(&s, "end-child", "finish", json!({}), 200).await;
+    let finished = finish_public(&s, "end-child").await;
     assert_eq!(finished["snapshot"]["finished"]["reason"], "handed-to-user");
     assert_eq!(finished["snapshot"]["nodes"]["inside"]["status"], "running");
     assert_eq!(action(&s, "end-root", "complete", json!({"nodeId":"call","reason":"No overall approval yet"}), 409).await["code"], "node-not-approved");
     approve_execution(&s, "end-child").await;
     assert_eq!(action(&s, "end-root", "complete", json!({"nodeId":"call","reason":"No report yet"}), 409).await["code"], "report-not-completable");
-    let output = s.data.path().join("end-delivery.txt");
-    fs::write(&output, "END-HANDOFF-482").unwrap();
-    let report = request(&s, "/api/workflow/node/report", json!({"sessionId":"end-child","body":"Child handed to user","canComplete":true,"outputs":[{"id":"result","path":output},{"id":"missing","path":output}]}), 200).await;
+    let report = request(&s, "/api/workflow/node/report", json!({"sessionId":"end-child","body":"Child handed to user","canComplete":true}), 200).await;
     assert_eq!(report["report"]["nodeId"], "call");
     let accepted = action(&s, "end-root", "complete", json!({"nodeId":"call","reason":"Accepted child handoff"}), 200).await;
     assert_eq!(accepted["snapshot"]["nodes"]["call"]["status"], "completed");

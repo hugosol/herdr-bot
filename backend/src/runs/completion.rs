@@ -1,6 +1,7 @@
 //! Explicit handoff requires a current ready report, never Chat activity or downstream launch.
 use super::*;
 use super::operation::{Action, Decision};
+use std::path::Path;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -14,8 +15,16 @@ pub(crate) async fn manager_complete(state: AppState, input: CompleteRequest) ->
     operation::execute(state, &input.session_id, Action::Complete { node_id: input.node_id, reason: input.reason }).await
 }
 
-pub(crate) async fn manager_finish(state: AppState, input: StatusRequest) -> RunResult {
-    operation::execute(state, &input.session_id, Action::Finish).await
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct FinishRequest {
+    session_id: String,
+    #[serde(default, deserialize_with = "map_output_object")]
+    map_output: MapOutput,
+}
+
+pub(crate) async fn manager_finish(state: AppState, input: FinishRequest) -> RunResult {
+    operation::execute(state, &input.session_id, Action::Finish(input.map_output)).await
 }
 
 pub(crate) async fn manager_pause(state: AppState, input: StatusRequest) -> RunResult {
@@ -151,7 +160,7 @@ fn handed_to_user(node: &NodeState) -> bool {
     node.status == "running" && node.failure.is_none() && node.execution.as_ref().is_some_and(|execution| execution.end_node && execution.chat().is_some())
 }
 
-pub(super) fn finish(run: &mut Run, map: &WorkflowMap) -> Result<Decision, String> {
+pub(super) fn finish(run: &mut Run, map: &WorkflowMap, output: MapOutput) -> Result<Decision, String> {
     if run.status == "completed" {
         return Ok(Decision::Unchanged);
     }
@@ -164,6 +173,25 @@ pub(super) fn finish(run: &mut Run, map: &WorkflowMap) -> Result<Decision, Strin
     if !can_finish(run, map) {
         return Decision::reject("nodes-incomplete", "仍有 node 未 completed；请显式完成交接后再 finish。");
     }
+    let declarations = map.map_output_rule.as_ref().map_or(&[][..], |rule| rule.files.as_slice());
+    let mut provided = std::collections::BTreeSet::new();
+    for file in &output.files {
+        if !provided.insert(file.id.as_str()) {
+            return Decision::reject("invalid-output-id", format!("公开文件输出 ID 重复：{}。", file.id));
+        }
+        if !declarations.iter().any(|rule| rule.id == file.id) {
+            return Decision::reject("undeclared-output", format!("本 Run 的冻结 Map 未声明公开文件输出 {}。", file.id));
+        }
+        if file.path.contains('\0') || !Path::new(&file.path).is_absolute() {
+            return Decision::reject("invalid-output-path", format!("公开文件输出 {} 必须使用本机绝对文件地址。", file.id));
+        }
+        if let Err(error) = preflight::check_input_file(&file.path) {
+            return Decision::reject("output-unreadable", format!("公开文件输出 {}：{error}", file.id));
+        }
+    }
+    if let Some(missing) = declarations.iter().find(|rule| !provided.contains(rule.id.as_str())) {
+        return Decision::reject("output-missing", format!("缺少必交公开文件输出 {}。", missing.id));
+    }
     let finished = Finished {
         reason: handed_to_user.then(|| "handed-to-user".into()),
         id: crate::chats::new_creation_id(),
@@ -172,6 +200,7 @@ pub(super) fn finish(run: &mut Run, map: &WorkflowMap) -> Result<Decision, Strin
     };
     let before = std::mem::replace(&mut run.status, "completed".into());
     run.finished = Some(finished);
+    run.map_output = output;
     let finished = run.finished.as_ref().unwrap();
     let mut event = serde_json::json!({"id":finished.id,"at":finished.at,"actor":finished.actor,"action":"finish","before":before,"after":"completed"});
     if let Some(reason) = &finished.reason { event["reason"] = serde_json::json!(reason); }
