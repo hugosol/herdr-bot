@@ -37,7 +37,9 @@
 - P2/P8/P9/P12：`input_preparation::`、`missing_required_child_material_does_not_block_manager_but_blocks_work`、`map_accepts_missing_required_materials_but_rejects_invalid_supplied_materials` 及 `frozen_map::` 核对三种启动、公开及持久 `mapInput`、整批替换和派发/重试门禁。保留启动/预检的既有请求参数；`prepare_inputs` 仍用 `fileInputs`，没有修改原始要求的入口。
 - P29/P34/P35：`manager_trigger_and_status_follow_committed_identity`、`nested_dispatch_uses_node_manager_business_zone_and_independent_runs` 和 chief Map/Task 委派分别核对实际初始消息；`p42`、`app_delegated_map_binds_manager_before_approved_input`、`end_node::` 核对原角色与关联。`partial_child_submission_distinguishes_rejected_and_unknown_without_replaying` 和 `map_startup_failure_retains_run_provenance_and_real_submission_outcome` 将已经保存的身份、实际启动、明确拒绝和已写入但回执未知分开验证。
 - 定向 Cargo 主轮为 38 项通过；准备、冻结、原角色恢复和初始提交的补测轮为 12 项通过；最终独立 Task/普通节点实际提交对照 1 项通过（有重叠）。浏览器构建命令选 `workflowStart.spec.ts workflowCurrent.spec.ts --workers=1`，13 项通过；冻结图/刷新失败恢复另通过 2 项，嵌套、历史详情、子 Run 入口和 Map 删除另通过 7 项。Vitest 的 `runDetails`、`runExecutionZone`、`runLaunchForm` 共 15 项通过。首次浏览器构建因 Bun 链接安装缺 `picocolors` 未进入测试，改用同一冻结锁文件的本地 hoisted/copyfile 安装后通过。
-- 受控宿主和页面结果只证明产品装配、实际受控发送和公开/文件事实。不计为 tester 原生扩展加载、真实模型遵从或现场切换验收。
+- 集成 worktree 验收：前端生产构建、后端及安全关机壳构建、Vitest（308 项）通过。后端全量首轮 74 个目标通过（含 `chat_creation`、`workflow_start`、`chief_delegation`）；`workflow_dispatch` 210 项通过、13 项失败，runner 因此未派发 `zone_watch`、未运行 doctest。13 项涉及冻结副本、重试规则、审批夹具配置时机、实际节点消息和三项发布定义夹具；按新契约修正后，定向首轮 13 项通过、独立 Map 信封的材料声明用例修正后另 1 项通过。正向公开往返使用合法测试夹具，旧字段拒绝由独立字面对象验证，未改真实发布定义；「创建map」发布资产的迁移及验证归 08。
+- 浏览器全量首轮 387 项通过、1 项跳过、7 项失败（chief 空用户输入时提交角色说明，以及自动关闭结果中的 `mapInput`）；按已批准契约修正断言后，chief、自动关闭与本票启动/详情定向 23 项通过，最终 chief 断言再定向 1 项通过。不把分轮结果称作全量命令重跑通过。
+- 本票仅列 bot 仓，无另列跨仓联调；受控宿主和页面结果只证明产品装配、实际受控发送和公开/文件事实，不计为 tester 原生扩展加载、真实模型遵从或现场切换验收。
 
 ## 覆盖及测试所有权
 

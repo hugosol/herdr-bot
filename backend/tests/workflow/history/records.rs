@@ -235,7 +235,7 @@ async fn operated_records_preserve_old_execution_recovery_completion_and_reports
     assert_eq!(["run.json", "history.jsonl", "messages.jsonl"].map(|name| fs::read(root.join(name)).unwrap()), before);
     let mut names = fs::read_dir(&root).unwrap().map(|entry| entry.unwrap().file_name().into_string().unwrap()).collect::<Vec<_>>();
     names.sort();
-    assert_eq!(names, vec!["history.jsonl", "messages.jsonl", "run.json"]);
+    assert_eq!(names, vec!["history.jsonl", "map.json", "messages.jsonl", "run.json"]);
     println!("P46.01 operated detail={detail} history={events:?} files={names:?}");
 }
 

@@ -164,11 +164,13 @@ async fn approval_only_changes_the_callers_current_execution() {
 #[tokio::test]
 async fn inflight_old_approval_does_not_block_run_or_approve_retry() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let s = dispatched(false, json!([])).await;
+    let s = Scenario::new().await;
+    configure(&s, false, json!([]));
     let path = s.config.scheduler.map_directory.join("work.json");
     let mut map: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     map["nodes"]["B"]["output_rule"] = json!([]);
     fs::write(path, map.to_string()).unwrap();
+    start_and_dispatch(&s).await;
     let context = command(&s, "/api/workflow/node/context", json!({"sessionId":"approval-node"}), 200).await;
     let body = json!({"sessionId":"approval-node","executionId":context["executionId"],"source":"manual"}).to_string();
     let mut stream = tokio::net::TcpStream::connect(s.server.addr()).await.unwrap();
@@ -237,10 +239,14 @@ async fn status(s: &Scenario) -> Value {
 async fn dispatched(auto: bool, outputs: Value) -> Scenario {
     let s = Scenario::new().await;
     configure(&s, auto, outputs);
+    start_and_dispatch(&s).await;
+    s
+}
+
+async fn start_and_dispatch(s: &Scenario) {
     s.start("approval-manager").await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"approval-node"},"native_cwd":s.data.path().join("node-zone")}));
     s.dispatch("approval-manager", &["A"]).await;
-    s
 }
 
 // P21/P18/P19: a ready report cannot substitute for approval; approval alone

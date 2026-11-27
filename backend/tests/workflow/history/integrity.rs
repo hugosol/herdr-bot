@@ -94,7 +94,7 @@ async fn integrity_windows_replace_failure_keeps_formal_record_and_next_replace_
     assert_eq!(serde_json::from_slice::<Value>(&fs::read(&path).unwrap()).unwrap(), next["snapshot"]);
     let mut files = fs::read_dir(&root).unwrap().map(|entry| entry.unwrap().file_name().into_string().unwrap()).collect::<Vec<_>>();
     files.sort();
-    assert_eq!(files, vec!["history.jsonl", "messages.jsonl", "run.json"]);
+    assert_eq!(files, vec!["history.jsonl", "map.json", "messages.jsonl", "run.json"]);
     println!("P48.01 Windows deny-delete failure={} originalBytes={} next={} files={files:?}", response.body, original.len(), next);
 }
 
