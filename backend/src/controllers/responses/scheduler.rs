@@ -7,7 +7,8 @@ impl IntoResponse for HttpError<DirectoryError> {
     fn into_response(self) -> Response {
         let error = self.0;
         let status = match error.code {
-            "map-input-invalid" | "map-title-invalid" | "group-invalid" => StatusCode::BAD_REQUEST,
+            "map-input-invalid" | "map-title-invalid" | "group-invalid" |
+            "node-map-input-unknown" | "node-map-output-unknown" => StatusCode::BAD_REQUEST,
             "map-conflict" | "bot-conflict" | "script-policy-invalid" => StatusCode::CONFLICT,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };

@@ -232,7 +232,7 @@ fn input_issues(map_name: &str, declarations: &[MapFileInput], files: &[Resolved
 pub(crate) fn check_prepared_inputs(directory: &Path, name: &str, files: &[ResolvedFile], confirmed: bool) -> Result<Option<String>, String> {
     with_definitions(&[directory.to_path_buf()], "map-read-failed", |access| {
         let map = read_map(access, directory, name)?;
-        let issues = input_issues(name, &map.input_files, files, confirmed);
+        let issues = input_issues(name, map.input_files(), files, confirmed);
         Ok((!issues.is_empty()).then(|| PreflightFailure(issues).message()))
     }).map_err(|error| error.message)
 }
@@ -281,8 +281,8 @@ pub(crate) async fn check_run_preflight(state: &crate::AppState, name: &str, inp
     }
     let tasks = state.tasks.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "task", error.message())]))?;
     let zones = state.zones.list().await.map_err(|error| PreflightFailure(vec![PreflightIssue::new(error.code(), "zone", error.message())]))?;
-    let mut issues = github_material_issues(map_name, &map.input_files, input);
-    issues.extend(input_issues(map_name, &map.input_files, &input.file_inputs, false));
+    let mut issues = github_material_issues(map_name, map.input_files(), input);
+    issues.extend(input_issues(map_name, map.input_files(), &input.file_inputs, false));
     if let Some(issue) = check_role(&tasks, &input.manager_task_id, crate::tasks::TaskType::Manager, "manager") { issues.push(issue); }
     let manager_zone = match check_zone(&zones, &input.zone, "manager") {
         Ok(zone) => Some(zone),

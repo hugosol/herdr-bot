@@ -43,6 +43,75 @@ async function save(page: Page, id: string, content: unknown, revision: unknown,
   return page.request.post(`${server!.baseURL}/api/scheduler/maps/${name}/nodes/save`, { data: { id, content: typeof content === 'string' ? content : JSON.stringify(content), revision, create } })
 }
 
+// S1/S2/S4, P5/P31: actual edits must survive reload without turning an
+// omitted rule or prose-only output into a required public file.
+test('public Map rules save and reload independently without inventing files', async ({ page }) => {
+  const base = { title: '公开规则样例', description: '保留用途原文', nodes: {} }
+  const root = await setup(page, base)
+  const untouched = inventory(root)['untouched.json']
+  const reopen = async () => {
+    await page.reload()
+    await page.getByTestId('tab-scheduler').click()
+    await page.locator('[data-map-file="work.JSON"]').click()
+  }
+  const openRules = () => page.getByRole('button', { name: '编辑 Map 公开规则', exact: true }).click()
+  const form = page.getByRole('form', { name: 'Map 公开规则', exact: true })
+  const input = form.getByRole('checkbox', { name: '声明 Map 输入规则', exact: true })
+  const output = form.getByRole('checkbox', { name: '声明 Map 输出规则', exact: true })
+  const inputProse = form.getByRole('textbox', { name: 'Map 输入要求 Markdown', exact: true })
+  const inputFiles = form.getByRole('textbox', { name: 'Map 文件输入声明 JSON', exact: true })
+  const outputProse = form.getByRole('textbox', { name: 'Map 输出说明 Markdown', exact: true })
+  const outputFiles = form.getByRole('textbox', { name: 'Map 文件输出声明 JSON', exact: true })
+  const commitRules = async (expected: object) => {
+    await form.getByRole('button', { name: '保存公开规则', exact: true }).click()
+    await expect(form).toHaveCount(0)
+    expect(await readMap(page)).toEqual(expected)
+    expect(JSON.parse(inventory(root)['work.JSON'])).toEqual(expected)
+    expect(inventory(root)['untouched.json']).toBe(untouched)
+  }
+
+  await openRules()
+  await expect(input).not.toBeChecked()
+  await expect(output).not.toBeChecked()
+  await expect(inputFiles).toBeDisabled()
+  await expect(outputFiles).toBeDisabled()
+  await input.check()
+  await output.check()
+  await inputProse.fill('**先确认范围**\n\n保留尾随空格。  \n')
+  await inputFiles.fill('[{"id":"brief","required":false,"description":"参考附件"}]')
+  await outputProse.fill('**交付核对记录**')
+  await outputFiles.fill('[{"id":"brief","description":"已核对记录"}]')
+  await commitRules({ ...base,
+    map_input_rule: { description: '**先确认范围**\n\n保留尾随空格。  \n', files: [{ id: 'brief', required: false, description: '参考附件' }] },
+    map_output_rule: { description: '**交付核对记录**', files: [{ id: 'brief', description: '已核对记录' }] },
+  })
+
+  await reopen()
+  const preview = page.getByRole('region', { name: 'Map 预览', exact: true })
+  await expect(preview.getByText('先确认范围', { exact: true })).toBeVisible()
+  await expect(preview.getByText('已核对记录', { exact: false })).toBeVisible()
+  await openRules()
+  await expect(input).toBeChecked()
+  await expect(output).toBeChecked()
+  await expect(inputProse).toHaveValue('**先确认范围**\n\n保留尾随空格。  \n')
+  expect(JSON.parse(await inputFiles.inputValue())).toEqual([{ id: 'brief', required: false, description: '参考附件' }])
+  expect(JSON.parse(await outputFiles.inputValue())).toEqual([{ id: 'brief', description: '已核对记录' }])
+  await input.uncheck()
+  await outputProse.fill('交给用户继续对话，不交付文件。')
+  await outputFiles.fill('[]')
+  await commitRules({ ...base, map_output_rule: { description: '交给用户继续对话，不交付文件。', files: [] } })
+
+  await reopen()
+  await expect(preview.getByText('交给用户继续对话，不交付文件。', { exact: true })).toBeVisible()
+  await openRules()
+  await expect(input).not.toBeChecked()
+  await expect(output).toBeChecked()
+  await expect(outputFiles).toHaveValue('[]')
+  await output.uncheck()
+  await commitRules(base)
+  expect(server!.herdrCalls()).toEqual([])
+})
+
 test('dynamic zone editor saves no preset and reloads all unrelated node fields', async ({ page }) => {
   const configured = { ...audit, end_node: false, auto_approved: false, auto_close: true, input_rule: [{ id: 'source', type: 'file', path: 'input.txt', zone_id: 'materials-zone' }], output_rule: [{ id: 'result' }] }
   const root = await setup(page, { ...original, nodes: { ...original.nodes, A: configured } })

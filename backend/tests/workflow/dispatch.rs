@@ -33,6 +33,8 @@ mod approval_restart;
 mod map_deletion;
 #[path = "../scheduler/maps/map_title.rs"]
 mod map_title;
+#[path = "../scheduler/maps/map_rules.rs"]
+mod map_rules;
 #[path = "history/history_integrity.rs"]
 mod history_integrity;
 #[path = "scripts/typescript.rs"]

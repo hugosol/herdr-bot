@@ -1,6 +1,10 @@
 import type { BotRevision } from './botController'
 
-export type MapFileInput = { id: string; required: boolean; description?: string }
+type MapFileRule = { id: string; description?: string }
+export type MapFileInput = MapFileRule & { required: boolean }
+type MapRule<File> = { description?: string; files?: File[] }
+type MapRules = { map_input_rule?: MapRule<MapFileInput>; map_output_rule?: MapRule<MapFileRule> }
+type MapRulesDraft = MapRules & { revision: BotRevision }
 
 /** Only a membership-only write may advance an open draft's optimistic revision. */
 export function groupOnlyRevision(previous: BotRevision | null, next: BotRevision): boolean {
@@ -47,15 +51,29 @@ function isOutputRule(value: unknown): value is OutputRule[] {
     typeof rule === 'object' && rule !== null && !Array.isArray(rule) && typeof rule.id === 'string' && Object.keys(rule).every(key => key === 'id'))
 }
 
-function isMapFileInputs(value: unknown): value is MapFileInput[] {
-  return Array.isArray(value) && new Set(value.map(input => input?.id)).size === value.length && value.every(input =>
-    typeof input === 'object' && input !== null && !Array.isArray(input) && typeof input.id === 'string' && input.id.trim() !== '' && typeof input.required === 'boolean' && (!('description' in input) || typeof input.description === 'string') && Object.keys(input).every(key => ['id', 'required', 'description'].includes(key)))
+function isMapRule(value: unknown, input: boolean): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => key !== 'description' && key !== 'files')) return false
+  if ('description' in value && typeof value.description !== 'string') return false
+  if (!('files' in value)) return true
+  const files = value.files
+  const ids = new Set<string>()
+  return Array.isArray(files) && files.every(file => {
+    if (!file || typeof file !== 'object' || Array.isArray(file) || typeof file.id !== 'string' || !file.id.trim() || ids.has(file.id)) return false
+    ids.add(file.id)
+    return (!('description' in file) || typeof file.description === 'string') && (!input || typeof file.required === 'boolean') &&
+      Object.keys(file).every(key => key === 'id' || key === 'description' || (input && key === 'required'))
+  })
+}
+
+function hasValidMapRules(value: object): boolean {
+  return !('input_requirements' in value) && !('input_files' in value) &&
+    (!('map_input_rule' in value) || isMapRule(value.map_input_rule, true)) &&
+    (!('map_output_rule' in value) || isMapRule(value.map_output_rule, false))
 }
 
 function isMap(value: unknown): value is WorkflowMap {
   return typeof value === 'object' && value !== null && (!('group' in value) || value.group == null || (typeof value.group === 'string' && value.group.length > 0 && value.group.trim() === value.group)) && 'title' in value && typeof value.title === 'string' &&
-    (!('input_files' in value) || isMapFileInputs(value.input_files)) &&
-    (!('input_requirements' in value) || typeof value.input_requirements === 'string') &&
+    hasValidMapRules(value) &&
     'description' in value && typeof value.description === 'string' && 'nodes' in value && typeof value.nodes === 'object' && value.nodes !== null && !Array.isArray(value.nodes) &&
     Object.values(value.nodes).every(node => node && typeof node.title === 'string' && typeof node.bot_id === 'string' && typeof node.input === 'string' && (!('end_node' in node) || typeof node.end_node === 'boolean') && !('inputs' in node) && (!('input_rule' in node) || isInputRule(node.input_rule)) && (!('output_rule' in node) || isOutputRule(node.output_rule)) && (typeof node.zone === 'string' || (typeof node.zone === 'object' && node.zone !== null && !Array.isArray(node.zone) && node.zone.type === 'dynamic' && Object.keys(node.zone).length === 1)) && Array.isArray(node.blocked_by) && node.blocked_by.every((id: unknown) => typeof id === 'string'))
 }
@@ -116,17 +134,16 @@ export async function deleteNode(file: string, target: { id: string; revision: B
   return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/nodes/delete`, target, isMap, 'node 删除') as WorkflowMap
 }
 
-export async function loadMapInputs(file: string): Promise<{ input_requirements: string; input_files: MapFileInput[]; revision: BotRevision }> {
+export async function loadMapRules(file: string): Promise<MapRulesDraft> {
   const response = await fetch(`/api/scheduler/maps/${encodeURIComponent(file)}/inputs`)
   const value = await response.json()
-  if (!response.ok) throw new Error(value.message ?? `Map 输入声明读取失败：HTTP ${response.status}`)
-  if (typeof value.input_requirements !== 'string' || !isMapFileInputs(value.input_files) || typeof value.revision?.file !== 'string' || typeof value.revision?.original !== 'string') throw new Error('Map 输入声明响应无效。')
+  if (!response.ok) throw new Error(value?.message ?? `Map 公开规则读取失败：HTTP ${response.status}`)
+  if (!value || typeof value !== 'object' || !hasValidMapRules(value) || typeof value.revision?.file !== 'string' || typeof value.revision?.original !== 'string') throw new Error('Map 公开规则响应无效。')
   return value
 }
 
-export async function saveMapInputs(file: string, draft: { input_requirements: string; input_files: unknown; revision: BotRevision }): Promise<WorkflowMap> {
-  if (typeof draft.input_requirements !== 'string') throw new Error('Map 输入要求必须是 Markdown 文本。')
-  return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/inputs`, draft, isMap, 'Map 输入声明保存') as WorkflowMap
+export async function saveMapRules(file: string, draft: { map_input_rule?: unknown; map_output_rule?: unknown; revision: BotRevision }): Promise<WorkflowMap> {
+  return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/inputs`, draft, isMap, 'Map 公开规则保存') as WorkflowMap
 }
 
 export async function loadMapTitle(file: string): Promise<{ title: string; revision: BotRevision }> {
@@ -141,12 +158,10 @@ export async function saveMapTitle(file: string, draft: { title: string; revisio
   return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/title`, draft, isMap, 'Map 名称保存') as WorkflowMap
 }
 
-export type WorkflowMap = {
+export type WorkflowMap = MapRules & {
   group?: string | null
   title: string
   description: string
-  input_requirements?: string
-  input_files?: MapFileInput[]
   nodes: Record<string, MapNode>
 }
 

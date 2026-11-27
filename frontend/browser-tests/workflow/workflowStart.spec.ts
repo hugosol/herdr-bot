@@ -43,21 +43,22 @@ test('nesting P08 P09 P11 root named inputs are edited, rejected and rebound thr
     await page.getByRole('button', { name: '启动图', exact: true }).click()
   }
   await openMap()
-  await page.getByRole('button', { name: '编辑文件输入声明', exact: true }).click()
+  await page.getByRole('button', { name: '编辑 Map 公开规则', exact: true }).click()
+  await page.getByRole('checkbox', { name: '声明 Map 输入规则', exact: true }).check()
   const declarations = [{ id: 'brief', required: true }, { id: 'appendix', required: false }]
   await page.getByRole('textbox', { name: 'Map 文件输入声明 JSON', exact: true }).fill(JSON.stringify(declarations))
-  await page.getByRole('button', { name: '保存输入声明', exact: true }).click()
-  await expect(page.getByRole('form', { name: 'Map 文件输入声明', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '保存公开规则', exact: true }).click()
+  await expect(page.getByRole('form', { name: 'Map 公开规则', exact: true })).toHaveCount(0)
   await page.reload()
   await openMap()
-  await page.getByRole('button', { name: '编辑文件输入声明', exact: true }).click()
+  await page.getByRole('button', { name: '编辑 Map 公开规则', exact: true }).click()
   await expect(page.getByRole('textbox', { name: 'Map 文件输入声明 JSON', exact: true })).toHaveValue(JSON.stringify(declarations, null, 2))
   await page.getByRole('textbox', { name: 'Map 文件输入声明 JSON', exact: true }).fill(JSON.stringify([{ id: 'brief', required: true }, { id: 'brief', required: false }]))
-  await page.getByRole('button', { name: '保存输入声明', exact: true }).click()
-  await expect(page.getByRole('form', { name: 'Map 文件输入声明', exact: true }).getByRole('alert')).toContainText('brief')
+  await page.getByRole('button', { name: '保存公开规则', exact: true }).click()
+  await expect(page.getByRole('form', { name: 'Map 公开规则', exact: true }).getByRole('alert')).toContainText('brief')
   const readMap = async () => (await (await page.request.get(`${server.baseURL}/api/scheduler/maps/launch.json`)).json())
-  expect((await readMap()).input_files).toEqual(declarations)
-  await page.getByRole('button', { name: '放弃输入声明编辑', exact: true }).click()
+  expect((await readMap()).map_input_rule.files).toEqual(declarations)
+  await page.getByRole('button', { name: '放弃公开规则编辑', exact: true }).click()
   const definition = await readMap()
   const runIds: string[] = []
   for (const [index, material] of [first, second].entries()) {
@@ -104,7 +105,7 @@ test('GitHub launch writes named materials without injecting Run background', as
   const mapDirectory = path.join(server.cwd, 'meta-data/workflow-maps')
   const definition = JSON.parse(fs.readFileSync(path.join(mapDirectory, 'launch.json'), 'utf8'))
   definition.title = 'GitHub 仓库拉取与探索'
-  definition.input_files = ['clone_request', 'exploration_brief'].map(id => ({ id, required: true }))
+  definition.map_input_rule = { files: ['clone_request', 'exploration_brief'].map(id => ({ id, required: true })) }
   fs.writeFileSync(path.join(mapDirectory, 'github-repository-exploration.json'), JSON.stringify(definition))
   const zonePath = path.join(path.dirname(server.configPath), 'bot-playground')
   const materials = path.join(zonePath, '.manager-zone')

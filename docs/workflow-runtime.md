@@ -69,7 +69,7 @@ workflow 区分当前定义与已保存执行。有执行时读 `autoApproved`�
 
 | 方法及路径 | 请求与结果 |
 | --- | --- |
-| `POST /api/scheduler/maps/{filename}/preflight` | `managerTaskId`、`zone`、`userInput` 三个字符串及可选 `fileInputs: [{id,path}]`；文件 ID 只属于当前 Map 的 `input_files` 接口，必需项可暂缺；未声明／重复 ID 或已提供文件不可读仍拒绝。请求的 `zone` 是稳定 ID，空要求传 `""`。整图检查成功返回 `workspaceName`，不创建 Run/Chat。 |
+| `POST /api/scheduler/maps/{filename}/preflight` | `managerTaskId`、`zone`、`userInput` 三个字符串及可选 `fileInputs: [{id,path}]`；文件 ID 只属于当前 Map 的 `map_input_rule.files` 接口，必需项可暂缺；未声明／重复 ID 或已提供文件不可读仍拒绝。请求的 `zone` 是稳定 ID，空要求传 `""`。整图检查成功返回 `workspaceName`，不创建 Run/Chat。 |
 | `POST /api/scheduler/maps/{filename}/runs` | 与 preflight 相同的严格请求，重新预检。完成启动返回 HTTP 201 详情包；启动失败可返回 HTTP 500 详情包，含已分配 `id`、可得事实及 `startupError`，不是“没创建过”的保证。预检/角色入口失败在分配前拒绝；不能忽略非 2xx 响应正文或盲目再次发起。 |
 | `GET /api/workflow/runs` | 返回 `runs` 数组及有效 `pollIntervalSeconds`；每项 `id`、可空 `run`、`managed`、`readError`。按创建时间倒序，同时间以 ID 排序；不可读项明确错误，不假造空 Run。 |
 | `GET /api/workflow/runs/{id}` | 详情包 `id`、可空 `run`、`managed`、`startupError`、`readError`；可读 Run 另含完整 `reports` 与 `pendingReports`。必要记录不可读明确失败；仅有启动错误但当前记录不可读时仍可返回错误现场。 |
@@ -80,7 +80,7 @@ workflow 区分当前定义与已保存执行。有执行时读 `autoApproved`�
 | `POST /api/workflow/node/approve` | 严格 JSON 对象 `{sessionId,executionId,source}`；source 为 `auto` 或 `manual`。sessionId 来自公共 Session，executionId 由工具先调用 context 后捕获，source 由冻结 autoApproved 与原生确认结果选择，三者均不是模型可选目标。返回 `{runId,nodeId,executionId,autoApproved,approved:true,approvalSource,changed}`。不需要说明、报告 ID、成果版本、输出或文件；不产生报告、主动通知、complete、dispatch、finish 或重投。人工 HTTP 场景仅证明后端提交，不证明原生 Yes。 |
 | `POST /api/workflow/node/report` | `{sessionId,body,canComplete,outputs?}`。`canComplete` 必须是布尔值；分开返回保存、通知与诊断结果。报告无需发送确认，不改变批准事实。详见[节点报告与独立通知](#节点报告与独立通知)。 |
 
-仅 `github-repository-exploration.json` 的直接启动表单使用可选的 `githubExploration: {githubUrl, parentDirectory, explorationDirection}`。链接和克隆父目录须成对填写或成对留空；探索方向独立可空，可直接填一段文字。预检不写文件。启动时由服务端在选定的管理者 zone 下分配 `.manager-zone/.workflow/<run_id>/`，按需生成 UTF-8 `clone_request.json` 和 `exploration_brief.txt`，将实际绝对路径加入既有 `fileInputs`；不修改 `userInput`，不允许同一个 ID 同时绑定已有文件和生成材料。材料写入失败返回 `run-material-write-failed`，不启动管理者 Chat；可能留下已写入的部分材料。本 Map 的执行授权由其 `input_requirements` 约定：用户发起 Run 即授权本次已声明的工作，管理者核实材料后沿用授权，无需再次询问是否执行。缺项、用户明确限制、与既有要求冲突或范围外操作仍须澄清。此为提示词约定，不新增授权参数、持久化字段或后端门禁；`inputsReady` 仍由管理者完成输入审阅后通过 `prepare_inputs` 声明，不自动派发。Run 状态和历史仍保存在 `scheduler.run_directory`。
+仅 `github-repository-exploration.json` 的直接启动表单使用可选的 `githubExploration: {githubUrl, parentDirectory, explorationDirection}`。链接和克隆父目录须成对填写或成对留空；探索方向独立可空，可直接填一段文字。预检不写文件。启动时由服务端在选定的管理者 zone 下分配 `.manager-zone/.workflow/<run_id>/`，按需生成 UTF-8 `clone_request.json` 和 `exploration_brief.txt`，将实际绝对路径加入既有 `fileInputs`；不修改 `userInput`，不允许同一个 ID 同时绑定已有文件和生成材料。材料写入失败返回 `run-material-write-failed`，不启动管理者 Chat；可能留下已写入的部分材料。本 Map 的执行授权由其 `map_input_rule.description` 约定：用户发起 Run 即授权本次已声明的工作，管理者核实材料后沿用授权，无需再次询问是否执行。缺项、用户明确限制、与既有要求冲突或范围外操作仍须澄清。此为提示词约定，不新增授权参数、持久化字段或后端门禁；`inputsReady` 仍由管理者完成输入审阅后通过 `prepare_inputs` 声明，不自动派发。Run 状态和历史仍保存在 `scheduler.run_directory`。
 
 approve 与 context 均只接受同机来源及真实执行关联；结束节点无节点权限。无关联、歧义、非法管理者角色沿用 `node-unassociated`／`node-ambiguous`／`node-role-invalid`／`end-node-no-authority`（403）。非法正文、未知字段、数组、重复 key、查询参数为 400。批准 executionId 不匹配为 `approval-execution-mismatch`（400），已被 retry 替代为 `approval-execution-stale`（400）；终态为 `run-terminal`，不可批准阶段为 `node-not-approvable`，来源不符为 `approval-source-mismatch`（均 400）。持久化失败 `approval-save-failed`（500）保留原错误，不发布成功事实；读取失败为 `run-read-failed`（500）。同次重复批准返回 changed=false，不重复业务效果。manager complete 的未批准拒绝为 `node-not-approved`（409），约定交付未登记为 `output-missing`（409）；仍检查当前最新报告，先前 true 不覆盖最新 false。
 
@@ -166,7 +166,7 @@ workflow 的全部 Run 列表将根 Run 与子 Run 并列列出；Run 名称、M
 
 ## 发起与观察
 
-根 Run 的 Map 文件输入声明与本次实际文件绑定分开维护，操作见 [Map 命名文件输入](scheduler.md#map-命名文件输入与根-run-绑定)。本次要求只传递业务文字，不编码 Run／execution 身份或文件发现协议；文件绑定在运行背景的 `fileInputs` 独立显示，重新进入详情及后端重启后仍读持久事实。未提供即缺席，包括必需文件尚缺时也可启动管理者；不会生成占位地址或默认路径。已保存地址不承诺源文件正文不再变化。
+根 Run 的 Map 文件输入声明与本次实际文件绑定分开维护，操作见 [Map 公开输入与输出规则](scheduler.md#map-公开输入与输出规则)。本次要求只传递业务文字，不编码 Run／execution 身份或文件发现协议；文件绑定在运行背景的 `fileInputs` 独立显示，重新进入详情及后端重启后仍读持久事实。未提供即缺席，包括必需文件尚缺时也可启动管理者；不会生成占位地址或默认路径。已保存地址不承诺源文件正文不再变化。
 
 在 scheduler 选中 Map，打开「+ 发起 Run」，选择 manager 类型的 omp 或 pi Task 与已登记 zone。Workspace 名称来自管理者 zone 的目录名，不退回默认或当前 Workspace。可先校验配置；「启动 Run」会重新执行同一整图预检，然后创建独立 Run。三份 Bot 文档允许空文本，不是业务质量门禁。
 
@@ -287,7 +287,7 @@ status 除 `snapshot`（包含 `inputsReady` 与当前 `fileInputs`）外返回�
 
 ### 管理者输入准备：prepare_inputs
 
-Map 的 `input_requirements` 只承载非文件的总体要求，非空时才在发起 Run 表单的“本次文件输入”上方以 Markdown 展示；逐文件要求由各项 `input_files[].description` 承载。文件描述是可选纯文本字符串，可省略或为空，显式 `null` 及其他非字符串均拒绝；它在对应文件输入框上方作为标签显示，缺省或为空时回退为 ID，必需／可选状态由 `required` 单独渲染，不解析描述中的 Markdown。管理者先读取总体要求、每项文件描述、本次要求与已有材料，接收用户继续提供的自然语言或文件，核实目标、业务语义、材料用途及授权，缺项或歧义先澄清。可在用户授权范围内将口头需求整理成所需文件，不能凭文件存在或字段非空就认定满足要求。即使没有命名文件声明，也必须先完成语义核实再确认，不以派发业务节点代替此阶段。
+Map 的 `map_input_rule.description` 只承载非文件的总体要求，非空时才在发起 Run 表单的“本次文件输入”上方以 Markdown 展示；逐文件要求由各项 `map_input_rule.files[].description` 承载。文件描述是可选纯文本字符串，可省略或为空，显式 `null` 及其他非字符串均拒绝；它在对应文件输入框上方作为标签显示，缺省或为空时回退为 ID，必需／可选状态由 `required` 单独渲染，不解析描述中的 Markdown。管理者先读取总体要求、每项文件描述、本次要求与已有材料，接收用户继续提供的自然语言或文件，核实目标、业务语义、材料用途及授权，缺项或歧义先澄清。可在用户授权范围内将口头需求整理成所需文件，不能凭文件存在或字段非空就认定满足要求。即使没有命名文件声明，也必须先完成语义核实再确认，不以派发业务节点代替此阶段。
 
 `POST /api/workflow/manager/prepare_inputs` 接收公共 Session 取得的 `sessionId`，以及模型业务参数 `fileInputs: [{id,path}]`、`confirmed: boolean`、`reason: string`。fileInputs 是本 Run 全量绑定的替换，不是增量 patch；未列出的绑定移除，空数组表示清空。后端校验当前 Map 的声明、唯一 ID 及所供绝对路径的真实可读性；未知／重复 ID、无效或不可读文件拒绝，不能降级成缺席。`confirmed=false` 可保存尚缺必需项的准备状态，保持 `inputsReady=false`；`confirmed=true` 仅在管理者完成全部语义核实后使用，后端此时强制必需文件齐全，并保存 `inputsReady=true`。reason 记录本次准备／确认依据，不是业务内容校验的替代。返回后的已提交事实与部分生效错误应按既有动作协议处理。
 

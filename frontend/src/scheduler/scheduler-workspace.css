@@ -53,6 +53,7 @@
 .scheduler-workspace .scheduler-actions > button { background: transparent; }
 .scheduler-workspace .scheduler-map-workbench { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 1fr); align-items: start; }
 .scheduler-workspace .scheduler-map-heading { grid-column: 1 / -1; padding: 20px; border: 0; }
+.scheduler-map-rules { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 1rem; min-width: 0; }
 .scheduler-workspace .scheduler-map-heading h3 { font-size: 20px; line-height: 1.4; }
 .scheduler-workspace .scheduler-map-heading .scheduler-text { line-height: 1.6; }
 .scheduler-workspace .scheduler-filename { font-family: inherit; font-size: 13px; color: var(--nier-resource); }
