@@ -624,7 +624,7 @@ Map node 的可选 `auto_approved` 只接受布尔，省略默认 true；派发�
 
 后端进程退出后，公开 Run 详情仍可读取同次 execution 的冻结模式、批准及来源；重启不重放业务输入、不接管旧 Run，也不为旧 Chat 新增批准或管理权限。原 Chat 的合法恢复与后端重启后的只读历史是不同边界。无旧 Run 字段适配、静默补批准或历史改写；不承诺继续或呈现旧版本 Run。
 
-报告发送完全独立：批准前后都可 report，不需要原生发送确认，不改变批准；approve 不制造报告或通知 manager。正常成果交接由 node-chat 先 approve、后 report，后端不强制排序。manager complete 另行要求批准、当前最新 canComplete=true 和全部约定交付登记；批准本身不会 complete、dispatch 或 finish。结束节点不批准、不伪造 approved=true，由管理者显式 finish。节点无发送确认的规则不适用于 `chief_report`；后者保留独立确认，见[用户操作说明](usage.md)。
+报告发送完全独立：批准前后都可 report，不需要原生发送确认，不改变批准；approve 不制造报告或通知 manager。正常成果交接由 node-chat 先 approve、后 report，后端不强制排序。manager complete 另行要求批准、当前最新 canComplete=true 和全部约定交付登记；批准本身不会 complete、dispatch 或 finish。结束节点不批准、不伪造 approved=true，由管理者显式 finish。节点无发送确认的规则不适用于 `chief_report`；后者保留独立确认。直接委派 Map 的 chief 报告按本次 `outputRule` 从已结束 Run 的公开成果取得所需文件，不接受路径覆盖，也不会自动 finish，见 [chief 报告保存与通知](usage.md#chief-报告保存与通知)。
 
 已关联的 node Chat 用一次 `report` 提交简短 `body`、必填 boolean `can_complete` 和可选 `outputs` 数组（每项 `id` 与本机绝对文件地址 `path`）；toolkit 应映射为 HTTP 的 camelCase `canComplete`。正文说明完成情况、阻塞、限制、部分效果及需要的干预，不重复完整成果。普通 Task 的业务文件由 node 或外部程序生成，通过 `outputs` 登记；无文件约定的工作也可声明 true。子 manager 不传地址，正式交接时报告从已结束子 Run 取得公开成果；进度报告可无文件。两类角色都不自报 Run、node、执行 ID 或接收者。角色扩展须从 toolkit 公共 Session 能力取得当前原生身份，并调用：
 

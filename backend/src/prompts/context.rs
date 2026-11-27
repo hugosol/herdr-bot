@@ -49,6 +49,7 @@ pub(crate) struct ChiefDelegationContext<'a> {
     pub zone_id: &'a str,
     pub cwd: &'a str,
     pub materials: &'a [Material],
+    pub output_rule: &'a [OutputRule],
 }
 
 fn write_manager(text: &mut String, context: &ManagerContext<'_>) {
@@ -66,12 +67,13 @@ fn write_named_files(text: &mut String, files: &[ResolvedFile]) {
     text.push_str("[/Named file inputs]");
 }
 
-pub(super) fn manager(context: &ManagerContext<'_>, delegated: bool) -> String {
+pub(super) fn manager(context: &ManagerContext<'_>, chief_outputs: Option<&[OutputRule]>) -> String {
     let mut text = String::new();
     write_manager(&mut text, context);
-    if delegated {
+    if let Some(outputs) = chief_outputs {
         text.push_str("\n\n");
         text.push_str(roles::CHIEF_DELEGATION);
+        write_chief_output_rule(&mut text, outputs);
     }
     if !context.input.files.is_empty() {
         text.push_str("\n\n");
@@ -108,6 +110,13 @@ pub(super) fn node(context: &NodeContext<'_>, rendered_input: &str) -> serde_jso
     Ok(text)
 }
 
+fn write_chief_output_rule(text: &mut String, outputs: &[OutputRule]) {
+    if !outputs.is_empty() {
+        let requirements = serde_json::to_string(outputs).expect("output rule serialization");
+        write!(text, "\n\n[Requested file outputs]\n{requirements}\n[/Requested file outputs]").unwrap();
+    }
+}
+
 pub(super) fn chief_delegated_task(context: &ChiefDelegationContext<'_>, input: &str) -> String {
     let facts = serde_json::json!({
         "delegationId": context.id,
@@ -117,5 +126,7 @@ pub(super) fn chief_delegated_task(context: &ChiefDelegationContext<'_>, input: 
         "cwd": context.cwd,
         "materials": context.materials,
     });
-    format!("{input}\n\n[Chief delegation]\n{}\n\n{}", roles::CHIEF_DELEGATION, serde_json::to_string_pretty(&facts).expect("context serialization"))
+    let mut text = format!("{input}\n\n[Chief delegation]\n{}\n\n{}", roles::CHIEF_DELEGATION, serde_json::to_string_pretty(&facts).expect("context serialization"));
+    write_chief_output_rule(&mut text, context.output_rule);
+    text
 }

@@ -190,6 +190,122 @@ async fn map_bot_starts_real_root_run_and_preserves_explicit_manager_and_node_zo
     assert_eq!(detail["run"], *run);
 }
 
+// P22/P24/P25/P29/P34 (S1/S4): the caller asks for just one of two
+// public files. A stale grant, a report-supplied address, or a finish that
+// accepted only the caller's subset would disagree with the public facts.
+#[tokio::test]
+async fn map_reports_only_the_requested_finished_run_outputs() {
+    let (f, _, mut request) = map_fixture().await;
+    let addr = f.server.addr();
+    let map_path = f.root.path().join("maps/flow.json");
+    let mut map: Value = serde_json::from_slice(&fs::read(&map_path).unwrap()).unwrap();
+    map["nodes"]["review"]["end_node"] = json!(true);
+    map["map_output_rule"] = json!({"files":[{"id":"disposition"},{"id":"review-record"}]});
+    fs::write(&map_path, map.to_string()).unwrap();
+    let before = f.herdr.calls();
+    request["outputRule"] = json!([{"id":"internal-only"}]);
+    let invalid = body(post_json_over_tcp(addr, "/api/chief/delegations/preview", &request.to_string()).await, 409);
+    assert_eq!(invalid["code"], "undeclared-output");
+    assert_eq!(f.herdr.calls(), before);
+
+    request["outputRule"] = json!([{"id":"disposition"}]);
+    let previous = post(&f.server, "/api/chief/delegations/preview", request.clone()).await;
+    assert_eq!(previous["facts"]["request"]["outputRule"], json!([{"id":"disposition"}]));
+    let old_id = previous["previewId"].as_str().unwrap();
+    let mut changed = map.clone();
+    changed["map_output_rule"]["files"] = json!([{"id":"review-record"}]);
+    fs::write(&map_path, changed.to_string()).unwrap();
+    let commit = json!({"sessionId":"chief-a","previewId":old_id}).to_string();
+    let stale = body(post_json_over_tcp(addr, "/api/chief/delegations", &commit).await, 409);
+    assert_eq!(stale["code"], "delegation-preview-stale");
+    assert!(stale["message"].as_str().unwrap().contains("undeclared-output"), "{stale}");
+    body(get_over_tcp(addr, &format!("/api/chief/delegations/{old_id}")).await, 404);
+    assert_eq!(f.herdr.calls(), before);
+    fs::write(&map_path, map.to_string()).unwrap();
+    let reused = body(post_json_over_tcp(addr, "/api/chief/delegations", &commit).await, 409);
+    assert_eq!(reused["code"], "delegation-preview-missing");
+    assert_eq!(f.herdr.calls(), before);
+
+    let preview = post(&f.server, "/api/chief/delegations/preview", request).await;
+    let id = preview["previewId"].as_str().unwrap();
+    let started = body(post_json_over_tcp(addr, "/api/chief/delegations", &json!({"sessionId":"chief-a","previewId":id}).to_string()).await, 201);
+    let delegation = body(get_over_tcp(addr, &format!("/api/chief/delegations/{id}")).await, 200);
+    assert_eq!(delegation["facts"], preview["facts"]);
+    assert_eq!(delegation["runId"], started["id"]);
+    let submitted = common::read_json_lines(&f.herdr.path().join("submitted.jsonl"));
+    let prompt = submitted.last().unwrap()["text"].as_str().unwrap();
+    assert_eq!(prompt, preview["facts"]["prompt"].as_str().unwrap());
+    assert!(prompt.contains("[Requested file outputs]\n[{\"id\":\"disposition\"}]\n[/Requested file outputs]"));
+    assert!(prompt.contains("正式交付时按本次要求交接文件成果；Map 的公开文件成果取自已完成 Run。"));
+
+    let route = format!("/api/workflow/runs/{}", started["id"].as_str().unwrap());
+    let mut interim = Vec::new();
+    for result in ["failure", "blocked"] {
+        let mut report = reports::content(result);
+        report.as_object_mut().unwrap().remove("outputs");
+        let saved = post(&f.server, "/api/chief/reports", json!({"sessionId":"flow-manager","body":report})).await;
+        assert_eq!(saved["report"]["body"]["result"], result);
+        assert_eq!(saved["report"]["body"]["outputs"], json!([]));
+        interim.push(saved["report"].clone());
+    }
+    let success = json!({"sessionId":"flow-manager","body":reports::content("success")});
+    let before_reporting = f.herdr.calls();
+    let early = body(post_json_over_tcp(addr, "/api/chief/reports", &success.to_string()).await, 400);
+    assert_eq!(early["code"], "map-run-not-finished");
+    assert_eq!(f.herdr.calls(), before_reporting);
+    assert_eq!(body(get_over_tcp(addr, "/api/chief/reports").await, 200)["reports"], json!(interim));
+    assert_eq!(body(get_over_tcp(addr, &route).await, 200)["run"], started["run"], "chief reports did not advance the Run");
+
+    post(&f.server, "/api/workflow/manager/prepare_inputs", json!({"sessionId":"flow-manager","fileInputs":started["run"]["mapInput"]["files"],"confirmed":true,"reason":"Approved inputs"})).await;
+    let end_dir = f.root.path().join("materials");
+    let end_history = f.root.path().join("review-end.jsonl");
+    fs::write(&end_history, json!({"type":"session","version":3,"id":"review-end","timestamp":"2026-11-12T00:00:00.000Z","cwd":end_dir}).to_string()+"\n").unwrap();
+    f.herdr.set_behavior(json!({"native_cwd":end_dir,"native_session":{"source":"herdr:pi","agent":"pi","kind":"path","value":end_history}}));
+    let dispatched = post(&f.server, "/api/workflow/manager/dispatch", json!({"sessionId":"flow-manager","nodes":["review"]})).await;
+    assert_eq!(dispatched["canFinish"], true, "{dispatched}");
+
+    let canonical = f.root.path().join("work/status-731.txt");
+    let ancillary = f.root.path().join("work/detail-904.txt");
+    let decoy = f.root.path().join("work/other-address.txt");
+    fs::write(&canonical, b"Official public disposition\r\n").unwrap();
+    fs::write(&ancillary, b"Map's other mandatory public file").unwrap();
+    fs::write(&decoy, b"Different output, not the Run's").unwrap();
+    let deliver = json!({"id":"disposition","path":canonical});
+    let other = json!({"id":"review-record","path":ancillary});
+    let subset = json!({"sessionId":"flow-manager","mapOutput":{"files":[deliver]}});
+    let missing = body(post_json_over_tcp(addr, "/api/workflow/manager/finish", &subset.to_string()).await, 409);
+    assert_eq!(missing["code"], "output-missing");
+    assert_eq!(missing["snapshot"]["status"], "running");
+    let all = json!({"files":[other,deliver]});
+    let before_finish = f.herdr.calls();
+    let finished = post(&f.server, "/api/workflow/manager/finish", json!({"sessionId":"flow-manager","mapOutput":all})).await;
+    assert_eq!(finished["snapshot"]["status"], "completed");
+    assert_eq!(finished["snapshot"]["mapOutput"], all);
+    assert_eq!(body(get_over_tcp(addr, "/api/chief/reports").await, 200)["reports"], json!(interim));
+    assert_eq!(f.herdr.calls(), before_finish, "finish never submits a chief report");
+
+    let mut override_report = success.clone();
+    override_report["body"]["outputs"] = json!([{"id":"disposition","path":decoy}]);
+    let denied = body(post_json_over_tcp(addr, "/api/chief/reports", &override_report.to_string()).await, 400);
+    assert_eq!(denied["code"], "map-output-override");
+    assert_eq!(body(get_over_tcp(addr, "/api/chief/reports").await, 200)["reports"], json!(interim));
+    assert_eq!(f.herdr.calls(), before_finish);
+    fs::remove_file(&canonical).unwrap();
+    let missing_file = body(post_json_over_tcp(addr, "/api/chief/reports", &success.to_string()).await, 400);
+    assert_eq!(missing_file["code"], "output-unreadable");
+    assert_eq!(f.herdr.calls(), before_finish);
+    assert_eq!(body(get_over_tcp(addr, "/api/chief/reports").await, 200)["reports"], json!(interim));
+    fs::write(&canonical, b"Official public disposition\r\n").unwrap();
+    let saved = post(&f.server, "/api/chief/reports", success).await;
+    let mut expected = reports::content("success");
+    expected["outputs"] = json!([deliver]);
+    assert_eq!(saved["report"]["body"], expected);
+    let readback = body(get_over_tcp(addr, &format!("/api/chief/reports/{}", saved["report"]["id"].as_str().unwrap())).await, 200);
+    assert_eq!(readback["body"], expected);
+    assert_eq!(fs::read(readback["body"]["outputs"][0]["path"].as_str().unwrap()).unwrap(), b"Official public disposition\r\n");
+    assert_eq!(body(get_over_tcp(addr, &route).await, 200)["run"]["mapOutput"], all);
+}
+
 // Ticket 09 confirmation must reject old content, never silently run changed
 // Map work. The expected outcome is an explicit re-confirmation error and no
 // CLI effect, not simply a successful launch with the newest definitions.

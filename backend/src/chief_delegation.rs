@@ -4,6 +4,7 @@ use crate::{
     AppState,
     chats::{self, ChatCreationView},
     files::FileStore,
+    scheduler::{maps::OutputRule, object_array},
     tasks::{Task, TaskType, catalog::ResolvedPreset},
 };
 use serde::{Deserialize, Serialize};
@@ -31,6 +32,8 @@ pub(crate) struct DispatchRequest {
     input: String,
     #[serde(default)]
     materials: Vec<Material>,
+    #[serde(default, deserialize_with = "object_array", skip_serializing_if = "Vec::is_empty")]
+    output_rule: Vec<OutputRule>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     manager_task_id: Option<String>,
 }
@@ -64,6 +67,12 @@ pub(crate) struct Record {
     session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) run_id: Option<String>,
+}
+
+impl Record {
+    pub(crate) fn output_rule(&self) -> &[OutputRule] {
+        &self.facts.request.output_rule
+    }
 }
 
 pub(crate) struct Delegations {
@@ -195,6 +204,12 @@ async fn resolve(
             "必须明确本次业务输入。",
         ));
     }
+    let mut output_ids = std::collections::BTreeSet::new();
+    for rule in &request.output_rule {
+        if rule.id.trim().is_empty() || !output_ids.insert(rule.id.as_str()) {
+            return Err(rejected("invalid-output-id", "输出 ID 必须非空且不得重复。"));
+        }
+    }
     let cwd = chats::chat_zone(state, &request.zone_id).await.map_err(Error::Chat)?;
     let (bot, target) = crate::scheduler::bots::delegation_bot(&state.bot_directory, &request.bot_id).map_err(Error::Directory)?;
     let (task_id, map_file) = match target {
@@ -266,6 +281,10 @@ async fn resolve(
             github_exploration: None,
         };
         let checked = crate::runs::preflight::check_run_preflight(state, file, &input).await.map_err(Error::Preflight)?;
+        let public = checked.map.map_output_rule.as_ref().map_or(&[][..], |rule| rule.files.as_slice());
+        if let Some(unknown) = request.output_rule.iter().find(|rule| !public.iter().any(|file| file.id == rule.id)) {
+            return Err(rejected("undeclared-output", format!("Map 未声明本次委派所需的公开文件输出 {}。", unknown.id)));
+        }
         Some(crate::runs::root_run(file.clone(), input, checked, &task, id.to_owned()))
     } else { None };
     let name = run.as_ref().and_then(|prepared| prepared.run.name.clone())
@@ -315,7 +334,7 @@ async fn resolve(
     let skill = preset.trigger.native_skill.as_deref();
     let prompt = if let Some(prepared) = &run {
         let run = &prepared.run;
-        state.prompts.manager(fixed, skill, &run.manager_context(state), true)
+        state.prompts.manager(fixed, skill, &run.manager_context(state), Some(&request.output_rule))
     } else {
         state.prompts.chief_delegated_task(fixed, skill, &crate::prompts::ChiefDelegationContext {
             id,
@@ -324,6 +343,7 @@ async fn resolve(
             zone_id: &request.zone_id,
             cwd: &cwd,
             materials: &materials,
+            output_rule: &request.output_rule,
         }, &request.input)
     }.map_err(|error| rejected("prompt-dictionary-invalid", error.to_string()))?;
     Ok(Prepared {

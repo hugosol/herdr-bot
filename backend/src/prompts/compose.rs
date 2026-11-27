@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+use crate::scheduler::maps::OutputRule;
+
 use super::{Field, PromptDictionary, Snapshot, context::{self, ChiefDelegationContext, ManagerContext, NodeContext}, roles};
 
 impl PromptDictionary {
@@ -11,8 +13,8 @@ impl PromptDictionary {
         self.assemble(fixed, skill, roles::CHIEF, |_| Ok(Cow::Borrowed(input)))
     }
 
-    pub(crate) fn manager(&self, fixed: &str, skill: Option<&str>, facts: &ManagerContext<'_>, delegated: bool) -> anyhow::Result<String> {
-        self.assemble(fixed, skill, "", |_| Ok(Cow::Owned(context::manager(facts, delegated))))
+    pub(crate) fn manager(&self, fixed: &str, skill: Option<&str>, facts: &ManagerContext<'_>, chief_outputs: Option<&[OutputRule]>) -> anyhow::Result<String> {
+        self.assemble(fixed, skill, "", |_| Ok(Cow::Owned(context::manager(facts, chief_outputs))))
     }
 
     pub(crate) fn node(&self, fixed: &str, skill: Option<&str>, facts: &NodeContext<'_>) -> anyhow::Result<String> {
