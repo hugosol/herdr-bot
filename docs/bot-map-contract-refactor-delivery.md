@@ -23,6 +23,12 @@
 - S4 独立对照：按配置解析并核对 9/9 Map（均无迁移完成/废弃确认）、33 个 Bot 定义和 36 个 Task 条目；对照选定流程四 Bot 的全部 16 个字段正文、三 Task 的完整批准 prompt、唯一业务文档正文、系统章节标题与链接。原资料路径未被发布定义或通用运行文档引用。未把资料正确作为实际模型遵从。
 - 字节证据：P54 在 9 个隔离对象中仅删除 2 个已授权旧副本，7 个保留对象前后逐字节相等；正式 Map/外层 Bot 的 SHA-256 分别为 `42eeba120edf35b6334542b41044516cca33b7130543687642ac66844568f6f8` 与 `2ed4708a6a1192f9a673567780d5f975767740959500df5a146b8d62c1f30bd4`（此 worktree 的磁盘换行）。P56 删除 4 个、保留 6 个隔离文件；业务文件 19 字节，SHA-256 `f13bc979e6715a636f4dca7db6c69bbfece506a9e369ba6ea937e9d6b75e3a47` 前后相同，两个所属后端均记录退出且清理错误为空。P53/P58 最终内部 Map 与实际文件及完整 HTTP 读回一致，SHA-256 `37c46f661b78e90d9c7e5b906e9e6ea8057a0a7b43cd617ee0025bf0bbf5ec3f`；7 次请求对应 3 个独立 Chat、1 个管理者和 3 个节点，未发起生成后的业务。原始命令输出及全部摘要见本轮归档 `local://177.log` 前段（最终发布、P54、P58）、`local://152.log`（P56）、`local://164.log`（P52）；Chrome 截图已归档到 `local://ticket-08-selected-creation-map.png`，用例还对照了公开 HTTP。
 
+### 07 后续集成复验
+
+- 在 bot 原开发 worktree 的同步提交 `e171f13b` 上运行 `cargo test --manifest-path backend/Cargo.toml --test chief_delegation --test chief_authority -- --nocapture`：委派 32/32，权限 2/2。P22–P26、P29、P34 的预览、Task 文件校验、Map 公开成果子集及角色恢复通过；P57 的隔离清理后 chief 恢复、旧职责拒绝与保留文件字节对照通过。
+- P27/P28：只读报告日志保存失败后观察 46,008 ms，未尝试通知；TUI 通知失败并重启后观察 46,010 ms，保留原报告且无重投或重新派发；App／OMP 与 App／Pi 的通知失败分别观察 46,167 ms 和 46,252 ms，各仅一次通知尝试。接替者读回及显式重发去重通过；后端记录的 `cleanup` 均为空。见[原始后端日志](local://ticket-07-chief-integration.log)。
+- 定向回归：`workflow_start` 的 `app_delegated_map_binds_manager_before_approved_input`、`app_root_run_waits_for_native_readiness_and_persists_before_business_input`、`root_runs_preserve_named_bindings_separately_from_business_text` 各 1/1；`npm --prefix frontend test -- tests/chats/chatCreation.test.tsx` 18/18；页面与安全壳构建成功，`npm --prefix frontend run test:browser -- chiefEntry.spec.ts --workers=1` 4/4。此处不是全仓结果；11 跨仓工具联调、12／13 延期 tester 和 14 现场／用户验收未由 07 执行。
+
 ### 其他自动票的已取得来源
 
 下列是编排器已提供的回执，不是 08 重新执行的检查。原报告位于该轮归档 `%TEMP%/hyper-auto-coding-2swvrlva/`；相对的执行日志/构建哈希按各原报告定位。临时路径未能留存的原始证据以报告为限，不从合并状态推断覆盖。
