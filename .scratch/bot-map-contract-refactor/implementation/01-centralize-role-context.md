@@ -8,7 +8,9 @@
 
 **Repositories:** bot
 
-**Status:** in-progress
+**Status:** closed
+
+独立集成验收：原开发分支已同步成功合入的提交 `05828a4a10eba20e0fdc55bce3bed89fa84cfedf`，没有遗留冲突。使用原 worktree 及其独占 `backend/target`：`cargo check --manifest-path backend/Cargo.toml --all-targets`、下列 5 项单元和 11 项公开接口回归均通过；另运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch --test workflow_start --test chief_delegation p42`，3 项角色恢复回归通过。未运行全仓测试、真实宿主或模型；本票只列出 bot 仓，无跨仓联调项，新跨仓接缝归 11。
 
 ## 权威与范围
 
@@ -40,7 +42,7 @@
   ```
 
   `chat_creation` 5 项核对 Skill、固定设定、原样输入和词典错误停止发送；`workflow_dispatch` 2 项核对节点词典与原样 Run 输入、结束节点启动及真实执行关联恢复；`workflow_start` 3 项核对根／子管理者与 chief Map 启动控制及结束节点例外；`chief_delegation` 1 项核对独立 Task 的已预览原文、材料及委派关联。
-- 这些是保行为证据，不证明实际安装的原生宿主、工具包接缝或模型行为。覆盖分区没有分配 01 新语义用例；不认领 promise 完成。合并由独立集成代理执行，票据状态待合并后关闭。
+- 这些是保行为证据，不证明实际安装的原生宿主、工具包接缝或模型行为。覆盖分区没有分配 01 新语义用例；不认领 promise 完成。
 
 ## 覆盖及测试所有权
 
