@@ -2,6 +2,12 @@
 
 **本报告区分仓库转换、隔离回归、跨仓联调、原生专项和现场事实。** 仓库已交付首条 [创建map 资产与配置清单](workflow-migration-inventory.md)，并按用户本轮授权迁入 [GitHub 仓库拉取与探索](workflow-migration-inventory.md#github-仓库拉取与探索2026-11-27-选择性迁移)的新定义及启动输入调整；后续迁入创建bot-V2、创建task-V2，并补齐创建流程的公开身份文件。定义落盘不是用户迁移完成确认或业务验收。其余流程未选择不等于废弃，不以这份 Markdown 决定运行资格。
 
+## 创建task-script type：2026-11-28 选择性迁移
+
+按用户逐项批准，迁入同名 Map、脚本创建 Bot，原位精简 Task.prompt，保留初始 grill-with-docs 及全部其他执行设置。公开 created_script 与 created_bot；request 仅在内部定位脚本。Map 用途不描述内部编排，节点只承接流程材料指针，脚本正式保存/读回由本流程材料规则约定；开发与验证方式由用户本次要求决定。后续共享审阅经用户批准，精简创建bot-V2 用途描述，将创建者 Task 的固定“行为未验证”改为本阶段检查与未验证项说明，并为 request 的脚本路径补充 scheduler 契约指针；接口、接线及执行设置不变，同时适用于创建task-V2 和独立调用。完整范围与确认来源见[迁移清单](workflow-migration-inventory.md#创建task-script-type2026-11-28-选择性迁移)。
+
+本轮定向检查采用内存 Python/JSON Schema：读取落盘的 Map/Bot，以公开 schema 校验格式，核对父子命名接口、目标 Task、稳定身份与节点策略、Task 非目标字段、批准正文及材料路径，逐文件比较 backup 修改前后的 SHA-256。结果以本会话检查输出为准；该静态检查不证明服务部署、模型遵从或真实脚本业务效果。未执行全仓测试、业务 Run、服务重启或 backup 删除，用户迁移完成确认仍待取得。
+
 ## 创建task-V2：选择性迁移
 
 按本轮确认迁入 create-task-v2.json、入口 Bot 和共享 create-task Bot；原位更新 Task 创建者 prompt，完整保存/读回及真实 ID 交付成为完成门槛。公开 created_task 与 created_bot，request 只定位真实 Task；Task、Skill 和引用资料提供稳定知识，不增加需求交接。身份、模型、Skill、Suite、节点策略和 backup 保持，其他未选流程不迁入。

@@ -1,0 +1,67 @@
+{
+  "title": "创建task-script type",
+  "group": "meta-map",
+  "description": "创建 TypeScript 脚本及绑定该脚本的 Bot。",
+  "map_input_rule": {
+    "description": "说明脚本的业务目标；可附约束、参考资料路径与交付要求。"
+  },
+  "nodes": {
+    "create_bot_v2": {
+      "title": "调用创建bot-V2绑定脚本",
+      "bot_id": "bot-map-create-bot-v2",
+      "manager_task_id": "task-18e2c2827c484128-0",
+      "input": "",
+      "input_rule": [
+        {
+          "type": "node",
+          "id": "request",
+          "node_id": "create_script",
+          "output_id": "request"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "created_bot"
+        }
+      ],
+      "auto_approved": true,
+      "auto_close": true,
+      "end_node": false,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "create_script"
+      ]
+    },
+    "create_script": {
+      "title": "对话创建脚本并准备 V2 委托",
+      "bot_id": "create-typescript-script",
+      "input": "交付 created_script 或 request 前，读取 ${herdr-bot-path}/meta-data/workflow-maps/create-task-script-type/materials.md 中对应章节；写入交接文件前，读取同文档「材料写入授权」。",
+      "input_rule": [],
+      "output_rule": [
+        {
+          "id": "created_script"
+        },
+        {
+          "id": "request"
+        }
+      ],
+      "auto_approved": false,
+      "auto_close": true,
+      "end_node": false,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": []
+    }
+  },
+  "map_output_rule": {
+    "files": [
+      {
+        "id": "created_script",
+        "description": "已创建脚本的身份 JSON 文件，唯一字段 script 为正式脚本的合法相对绑定路径；用于定位或绑定脚本，不是源码副本。"
+      },
+      {
+        "id": "created_bot",
+        "description": "已创建 Bot 的身份文件，沿用创建bot-V2 的 created_bot 公开输出，用于读取或引用该 Bot。"
+      }
+    ]
+  }
+}

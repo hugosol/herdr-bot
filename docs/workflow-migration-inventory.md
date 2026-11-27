@@ -11,7 +11,7 @@
 | [`create-bot-wrapper.json`](../meta-data/workflow-maps/create-bot-wrapper.json) · 创建bot | 未开始 | `create-bot-wrapper` 同时是入口与创建task的子 Map；`create-blank-bot` → `create-blank-bot.ts`、`save-created-bot-guides` → `save-bot-guides.ts`；`write-bot-when`、`write-bot-plan-guide`、`write-bot-node-guide`、`write-bot-output-rule` 各指四字段编写 Task，`optimize-prompt` → 通用提示词优化者；[V1 业务材料](business-materials.md)、[包装](create-bot-wrapper.md)。 | 空白 `baseline`，四路 `text`、`handoff`，保存 `saved`、`handoff`；运行、子层材料与现场确认待核，未选。 |
 | [`create-bot-v2.json`](../meta-data/workflow-maps/create-bot-v2.json) · 创建bot-V2 | 未开始 | `bot-map-create-bot-v2` 同时是入口与创建task-V2／创建task-script type的子 Map；`align-bot-requirements-v2` → Bot 需求对齐者、`bot-task-18e89651aa593290-1` → Bot 整体分层设计与创建者；[V2 材料](../meta-data/workflow-maps/create-bot-v2/materials.md)、[业务材料](business-materials.md)。 | 已选并迁入新定义：request 同时供给两节点，W1 交付 bot_requirements，W2 公开交付 created_bot。分层正文与材料契约已审定；尚待用户迁移完成确认和真实业务运行。 |
 | [`create-task-v2.json`](../meta-data/workflow-maps/create-task-v2.json) · 创建task-V2 | 未开始 | `bot-map-create-task-v2`；`create-task` → Task 创建者，`bot-map-create-bot-v2` → 创建bot-V2（`manager` Task）；[本流程材料](../meta-data/workflow-maps/create-task-v2/materials.md)、[V2 材料](../meta-data/workflow-maps/create-bot-v2/materials.md)。 | 已选并迁入：W1 保存 Task 并交付 created_task 与定位 request，W2 调用子 Map 交付 created_bot；公开两个身份文件。通用嵌套输入逐层下传；待用户迁移完成确认和真实业务运行。 |
-| [`create-task-script-type.json`](../meta-data/workflow-maps/create-task-script-type.json) · 创建task-script type | 未开始 | 无外层 Bot；`create-typescript-script` → 同名 Task（创建脚本并交接，不是此节点的 script 目标），`bot-map-create-bot-v2` → 创建bot-V2（`manager` Task）；[V2 材料](../meta-data/workflow-maps/create-bot-v2/materials.md)、[可信脚本规则](adr/0019-rust-script-bots.md)。 | `request`、`handoff` → `saved`、`handoff`；未选，真实脚本与调用条件待核。 |
+| [`create-task-script-type.json`](../meta-data/workflow-maps/create-task-script-type.json) · 创建task-script type | 未开始 | 无外层 Bot；`create-typescript-script` → 同名 Task（创建脚本并交接，不是此节点的 script 目标），`bot-map-create-bot-v2` → 创建bot-V2（`manager` Task）；[V2 材料](../meta-data/workflow-maps/create-bot-v2/materials.md)、[可信脚本规则](adr/0019-rust-script-bots.md)。 | 已选并迁入：脚本节点交付 created_script 与内部 request，子图交付 created_bot；公开两份身份文件。Task 仅提供产品脚本契约入口，保留 grill-with-docs；待用户迁移完成确认和真实业务运行。 |
 | [`enhance-existing-bot--bc-301b25d9f8d6.json`](../meta-data/workflow-maps/enhance-existing-bot--bc-301b25d9f8d6.json) · 独立修订既有 Bot 四字段摘要 | 未开始 | `revise-bot-guides`；`prepare-bot-revision` → 既有 Bot 修订基线核实者；复用包装图的 `write-bot-when`、`write-bot-plan-guide`、`write-bot-node-guide`、`write-bot-output-rule`；`replace-text` → 通用文本替换者；[修订](revise-bot-guides.md)、[业务材料](business-materials.md)、[定义保存](scheduler.md)。 | `baseline`、四份 `text`、`saved`、`handoff`；未选，实际目标／revision／授权与运行待核。 |
 | [`github-repository-exploration.json`](../meta-data/workflow-maps/github-repository-exploration.json) · GitHub 仓库拉取与探索 | 未开始 | 无外层 Bot；`github-clone` → `github-clone.ts`、`register-zone` → `register-zone.ts`、`github-repository-exploration` → 开源项目仓库探索。脚本在 `default/bot-playground`，探索节点使用动态 zone；Task 固定 prompt 为空。 | `cloned_repository`、`registered_zone`，W3 是无命名输出的结束节点。已选择并迁入新格式 Map／三个 Bot；探索要求统一使用 `mapInput.runInput`，Task 与 W3 提示词为空。代码与检查记录见下节；用户完成确认和真实运行仍待执行，旧 backup 保留。 |
 | [`tibo-monitor-then-c-drive-inspection.json`](../meta-data/workflow-maps/tibo-monitor-then-c-drive-inspection.json) · Tibo监测后排查C盘 | 未开始 | 无外层 Bot；`tibo-monitor` → Tibo-monitor（Pi／`web-access-pi`）、`c-drive-temp-inspection` → C盘清理大师（Pi／`pi-codemode-pi`）；两个节点均绑定 `default/bot-playground`。 | 无命名文件输出；未选，监测、检查授权和真实运行待核，清单不授权文件改动。 |
@@ -41,7 +41,7 @@
 - **接口与交接：** 唯一必需 request 为 type/ref JSON，W1 和 W2 通过 Run 接线读取同一文件。W1 只交付 bot_requirements，W2 查询真实目标并交付 created_bot（Bot ID）。移除 materials、material_contract、target_materials 和旧 saved/handoff 接线；输入意图与参考路径使用本次要求。系统校验文件可读，不新增业务 JSON 或枚举校验。
 - **唯一资料与授权：** V2 契约迁至 `meta-data/workflow-maps/create-bot-v2/materials.md`；节点写入前读取材料授权章节，允许在本 Run 内部材料位置新建必需文件，覆盖仍须明确授权。正式 Bot 保存、目标 prompt 修改和业务运行不由材料授权替代。
 - **共享影响：** W2 和 prompt优化者——Map维度均读取 [分层与 DRY](prompt-information-ownership.md)。后者同步采用已确认的精简正文；创建map最终节点新增 created_map 文件，与原 map/handoff 一起交付，其外层 Bot、公开接口和阶段标准同步。未修改 Skill、Suite、脚本或模型设置。两个 V2 Task 的独立使用继续有效；静态引用清单不能排除独立调用者。
-- **父流程后续迁移：** 创建bot-V2 迁移时，两张旧父图均留在 backup，嵌套输入下传尚未实现。后续创建task-V2 的迁入和输入机制修订见下节；创建task-script type 仍未迁入，不据此宣称旧父图兼容。
+- **父流程后续迁移：** 创建bot-V2 迁移时，两张旧父图均留在 backup，嵌套输入下传尚未实现。后续创建task-V2 的迁入和输入机制修订见下节；创建task-script type 随后按本轮确认迁入，见其专节，不据此宣称 backup 中旧父图兼容。
 - **完成边界：** 本轮不启动真实创建业务、不重启服务、不清理 chief、不删除旧副本。定义落盘和定向机械检查不替代用户迁移完成确认、真实模型效果及现场切换。
 
 ## 创建task-V2：本轮选择性迁移
@@ -52,5 +52,13 @@
 - **正文与共享影响：** 原位更新 `task-18e31d30fe69a51c-2` 的 prompt，其他字段保持；共享 create-task Bot 摘要原样迁入。该 Task/Bot 还供未迁移的旧创建task使用，未为它维护第二套定义。子图及两个内部 Task 不变。Task 公开创建接口集中在 usage，本流程材料规则位于 Map 同名目录，由 W1 条件式读取。
 - **通用机制：** 所有嵌套 Map 使用父 Run 输入加调用节点委托，逐层保留来源；不读取 Chat 后续对话，不替换用户文本，不扩大命名文件输入。该机制不代替实现对象自包含，也不新增额外业务授权。
 - **完成边界：** 定义保存及定向检查不代表模型遵从、用户迁移完成确认或现场切换通过。本轮不创建真实业务 Task/Bot、不启动业务、不重启部署、不清理 chief、不删除 backup。验证结果见[交付报告](bot-map-contract-refactor-delivery.md)。
+
+## 创建task-script type：2026-11-28 选择性迁移
+
+- **确认来源：** 用户逐项批准精简 Task、Bot 四字段、父 Map 与材料契约；明确保留初始 grill-with-docs，Map.description 只描述创建脚本及绑定 Bot 的用途，不复述内部实现方式。正文批准不等于迁移完成签收。
+- **来源与落点：** 从 backup/20261127-161156-bot-map-cutover 迁入同名 Map 与 bot-1795065462879497700-23132-0.json，保留 Map 文件名、节点 ID、Bot ID、目标绑定、zone、manager、依赖、批准与关闭策略；backup 不变。
+- **分层与接口：** Task task-18e95895bb36d00c-0 仅保留产品脚本契约入口，创建方式由用户目标与初始 Skill 决定，其他 Task 字段保持。父图不声明 materials；节点按[本流程材料契约](../meta-data/workflow-maps/create-task-script-type/materials.md)交付 created_script 与内部 request，request 的 type=script、ref 指向同一正式脚本。子节点 input 为空，接收 request、交付 created_bot；父图公开 created_script/created_bot，不再要求 handoff/saved 或需求副本。
+- **审阅与共享影响：** 已联合核对父子 Map、四个 Bot、三个业务 Task、manager、实际初始 Skill、材料与公共协议。脚本 Task 的独立使用受本次精简影响；静态引用中仅本图使用该脚本创建 Bot。后续共享审阅经用户批准三处调整：创建bot-V2 的 description 只描述用途，创建者 Task 按本阶段报告检查与未验证项，request 的脚本路径引用 scheduler 唯一契约；其余正文、三个 Bot、接口和执行设置保持。调整同时影响创建task-V2 与独立调用；不修改共享 Skill、Suite 或公共运行机制。Chat 后续对话不自动下传，子图仍按真实目标及本次要求处理缺项。
+- **完成边界：** 本轮只保存定义与材料规则，不生成真实业务脚本或 Bot、不发起 Run、不重启服务、不清理 chief、不删除 backup。定向静态检查与真实模型/现场验收分开，检查范围见交付报告；状态保持未开始，待用户对落盘结果确认。
 
 下一条流程从[单流程迁移指引](agents/workflow-migration.md)开始，仅复用调查和 grilling 方法，不复用创建map的业务答案；共享原件原位维护、无需等待所有消费者一起迁移。停机、归档和清理见[交付与现场交接](bot-map-contract-refactor-delivery.md)。

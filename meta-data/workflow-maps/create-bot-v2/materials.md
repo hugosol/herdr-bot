@@ -7,7 +7,7 @@
 UTF-8 JSON 对象，包含两个非空字符串字段：
 
 - type：目标类型，task、script 或 map。
-- ref：type 为 task 时，提供 Task ID 或可唯一定位的名称；为 script 时，提供脚本路径；为 map 时，提供 Map 文件名或可唯一定位的名称。
+- ref：type 为 task 时，提供 Task ID 或可唯一定位的名称；为 script 时，按产品仓库 docs/scheduler.md「TypeScript 脚本目标的表示契约」提供脚本路径；为 map 时，提供 Map 文件名或可唯一定位的名称。
 
 目标为既有 normal Task、Map 或 TypeScript 脚本。W1 核实实际对象，歧义由用户澄清；准确身份记录在需求交接中，原始 request 保持不变。
 

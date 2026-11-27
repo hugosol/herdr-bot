@@ -1,0 +1,10 @@
+{
+  "group": "meta-bot",
+  "id": "create-typescript-script",
+  "name": "创建task-script type",
+  "when": "需要创建可供 herdr-bot 使用的 TypeScript 脚本时使用。",
+  "description": "## 能力职责\n根据用户目标及 herdr-bot 脚本契约创建 TypeScript 脚本。\n\n## 用户参与\n通过对话明确需求和未决取舍。",
+  "input_rule": "脚本的业务目标；可附约束、参考资料及交付要求。",
+  "output_rule": "TypeScript 脚本；具体保存、验证及附加交付按本次要求确定。",
+  "task_id": "task-18e95895bb36d00c-0"
+}
