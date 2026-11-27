@@ -1,34 +1,54 @@
 //! Run-only Chat preparation, association, input and failure finalization.
 use super::*;
 
-async fn resolve_inputs(state: &AppState, run: &Run, rules: &[crate::scheduler::maps::InputRule]) -> Result<Vec<crate::scheduler::maps::ResolvedFile>, String> {
-    let reports = if rules.iter().any(|rule| matches!(rule, crate::scheduler::maps::InputRule::Node { .. })) { reports::read(state, run).await? } else { Vec::new() };
+use crate::scheduler::maps::{InputRule, MapNode, ResolvedFile};
+
+async fn resolve_inputs(state: &AppState, run: &Run, rules: &[InputRule], zone_input: Option<&str>) -> Result<Vec<ResolvedFile>, String> {
+    let reports = if rules.iter().any(|rule| matches!(rule, InputRule::Node { .. })) { reports::read(state, run).await? } else { Vec::new() };
     let mut inputs = Vec::with_capacity(rules.len());
     for rule in rules {
-        let (id, path) = match rule {
-            crate::scheduler::maps::InputRule::File { id, path, zone_id } => {
+        let id = rule.id();
+        let failed = |error| format!("输入 {id}：{error}");
+        let path = match rule {
+            InputRule::File { path, zone_id, .. } => {
                 if !crate::scheduler::maps::valid_relative_file(path) { return Err(format!("输入 {id} 必须是 zone 内相对路径；请迁移 Map 后启动新 Run。")); }
                 let zone_id = zone_id.as_deref().or(run.manager_zone_id.as_deref()).ok_or("旧 Run 缺少 zone 绑定快照；请迁移 Map 后启动新 Run")?;
                 let root = run.zone_bindings.get(zone_id).ok_or_else(|| format!("zone {zone_id} 不在本次 Run 启动快照中；请启动新 Run"))?;
-                let absolute = crate::zones::browse::checked_file(root, path).map_err(|e| e.message())?;
-                (id, absolute)
-            },
-            crate::scheduler::maps::InputRule::Run { id, input_id } => {
-                let Some(file) = run.map_input.files.iter().find(|file| file.id == *input_id) else { continue; };
-                (id, file.path.clone())
+                crate::zones::browse::checked_file(root, path).map_err(|error| failed(error.message()))?
             }
-            crate::scheduler::maps::InputRule::Node { id, node_id, output_id } => {
+            InputRule::Run { input_id, .. } => {
+                let Some(file) = run.map_input.files.iter().find(|file| file.id == *input_id) else { continue; };
+                preflight::check_input_path(&file.path).map_err(failed)?;
+                file.path.clone()
+            }
+            InputRule::Node { node_id, output_id, .. } => {
                 let execution = run.nodes.get(node_id).and_then(|node| node.execution.as_ref()).ok_or_else(|| format!("输入 {id} 缺少上游执行：{node_id}"))?;
-                let path = reports.iter().rev().filter(|report| report.run_id == run.id && report.node_id == *node_id && report.execution_id == execution.id)
-                    .find_map(|report| report.outputs.iter().find(|file| file.id == *output_id)).map(|file| file.path.clone())
+                let file = reports.iter().rev().filter(|report| report.run_id == run.id && report.node_id == *node_id && report.execution_id == execution.id)
+                    .find_map(|report| report.outputs.iter().find(|file| file.id == *output_id))
                     .ok_or_else(|| format!("输入 {id} 缺少上游输出：{node_id}/{output_id}"))?;
-                (id, path)
+                preflight::check_input_path(&file.path).map_err(failed)?;
+                file.path.clone()
             }
         };
-        crate::runs::preflight::check_input_file(&path).map_err(|error| format!("输入 {id}：{error}"))?;
-        inputs.push(crate::scheduler::maps::ResolvedFile { id: id.clone(), path });
+        // The selector will be opened once to parse its material instead.
+        if zone_input != Some(id) {
+            std::fs::File::open(&path).map_err(|error| failed(format!("文件 {path} 不可读：{error}")))?;
+        }
+        inputs.push(ResolvedFile { id: id.to_owned(), path });
     }
     Ok(inputs)
+}
+
+pub(super) struct InputPlacement {
+    pub(super) zone: (String, String),
+    pub(super) inputs: Vec<ResolvedFile>,
+}
+
+pub(super) async fn resolve_input_placement(state: &AppState, run: &Run, node: &MapNode, input_id: &str) -> Result<InputPlacement, String> {
+    let inputs = resolve_inputs(state, run, &node.input_rule, Some(input_id)).await?;
+    let material = inputs.iter().find(|file| file.id == input_id).ok_or_else(|| format!("zone 输入 {input_id} 缺少文件绑定"))?;
+    let zone = crate::scheduler::input_dispatch_zone(state, material).await?;
+    Ok(InputPlacement { zone, inputs })
 }
 
 pub(super) fn material_directory(zone: &str, id: &str) -> PathBuf {
@@ -40,8 +60,7 @@ pub(super) async fn write_github_materials(
     zone: &str,
     id: &str,
     github: preflight::GitHubExploration,
-) -> Result<Vec<crate::scheduler::maps::ResolvedFile>, String> {
-    use crate::scheduler::maps::ResolvedFile;
+) -> Result<ResolvedFile, String> {
     use preflight::GitHubExploration as GitHub;
     use std::io::{Error, ErrorKind};
 
@@ -51,19 +70,17 @@ pub(super) async fn write_github_materials(
         parent_directory: &'a str,
     }
 
-    let clone = github.has_clone().then(|| serde_json::to_vec(&CloneRequest {
+    let clone = serde_json::to_vec(&CloneRequest {
         github_url: &github.github_url,
         parent_directory: &github.parent_directory,
-    })).transpose().map_err(|e| e.to_string())?;
-    let brief = github.has_brief().then_some(github.exploration_direction);
-    if clone.is_none() && brief.is_none() { return Ok(Vec::new()); }
+    }).map_err(|e| e.to_string())?;
 
     let directory = material_directory(zone, id);
     let scope = directory.parent().expect("material parent").to_path_buf();
     let zone = PathBuf::from(zone);
     let state = state.clone();
     let failed = |e| format!("无法写入 Run 启动材料，未发起管理者 Chat：{e}");
-    tokio::task::spawn_blocking(move || state.runs.files.with(&[scope.clone()], |access| {
+    tokio::task::spawn_blocking(move || state.runs.files.with(std::slice::from_ref(&scope), |access| {
         // Do not follow a link or recreate a removed manager zone.
         for path in scope.ancestors() {
             match access.symlink_metadata(path) {
@@ -75,19 +92,10 @@ pub(super) async fn write_github_materials(
         }
         access.create_dir_all(&scope)?;
         access.create_dir(&directory)?;
-        let mut bindings = Vec::with_capacity(2);
-        for (id, filename, bytes) in [
-            (GitHub::CLONE, "clone_request.json", clone.as_deref()),
-            (GitHub::BRIEF, "exploration_brief.txt", brief.as_deref().map(str::as_bytes)),
-        ] {
-            if let Some(bytes) = bytes {
-                let path = directory.join(filename);
-                access.create(&path, bytes)?;
-                let path = path.into_os_string().into_string().map_err(|_| Error::new(ErrorKind::InvalidData, "材料路径不是有效的 UTF-8"))?;
-                bindings.push(ResolvedFile { id: id.into(), path });
-            }
-        }
-        Ok(bindings)
+        let path = directory.join("clone_request.json");
+        access.create(&path, &clone)?;
+        let path = path.into_os_string().into_string().map_err(|_| Error::new(ErrorKind::InvalidData, "材料路径不是有效的 UTF-8"))?;
+        Ok(ResolvedFile { id: GitHub::CLONE.into(), path })
     })).await.map_err(|e| format!("无法写入 Run 启动材料，未发起管理者 Chat：{e}"))?.and_then(|result| result).map_err(failed)
 }
 
@@ -161,7 +169,7 @@ pub(super) async fn manager(
     Ok(())
 }
 
-pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason: Option<&str>, target: Result<crate::scheduler::DispatchTarget<'_>, String>) -> serde_json::Value {
+pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason: Option<&str>, target: Result<crate::scheduler::DispatchTarget<'_>, String>, resolved_inputs: Option<Vec<ResolvedFile>>) -> serde_json::Value {
     let mut effects = Effects { records_initialized: true, ..Effects::default() };
     let mut stage = "resolve";
     let mut candidate = run.clone();
@@ -189,7 +197,10 @@ pub(super) async fn node(state: &AppState, run: &mut Run, id: &str, retry_reason
         };
         let node = candidate.nodes.get_mut(id).unwrap();
         node.execution = Some(NodeExecution { id: crate::chats::new_creation_id(), target: identity, zone_id: Some(target.zone_id.clone()), zone: target.zone.clone(), input_rule: Some(target.input_rule.to_vec()), output_rule: Some(target.output_rule.to_vec()), inputs: Some(Vec::new()), auto_approved: target.auto_approved, approved: false, approval_source: None, auto_close: target.auto_close, end_node: target.end_node });
-        let inputs = resolve_inputs(state, &candidate, target.input_rule).await?;
+        let inputs = match resolved_inputs {
+            Some(inputs) => inputs,
+            None => resolve_inputs(state, &candidate, target.input_rule, None).await?,
+        };
         candidate.nodes.get_mut(id).unwrap().execution.as_mut().unwrap().inputs = Some(inputs);
         if let Some(prepared) = prepared {
             candidate.nodes.get_mut(id).unwrap().status = "running".into();

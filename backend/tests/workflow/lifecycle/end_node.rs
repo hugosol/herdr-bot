@@ -95,6 +95,146 @@ async fn end_node_waits_for_every_node_then_explicit_finish_preserves_open_runni
     assert!(!s.herdr.calls().iter().any(|call| call["kind"] == "tab_close"));
 }
 
+// Keep cloning and host execution outside the seam: only the test-owned W3
+// can dispatch, and the controlled host records the actual Chat input.
+#[tokio::test]
+async fn github_launch_preserves_clone_request_and_delivers_run_input_to_end_chat() {
+    let s = Scenario::new().await;
+    let addr = s.server.addr();
+    let task = post_json_over_tcp(addr, "/api/tasks", &json!({
+        "name":"GitHub exploration test","taskType":"normal","agent":"omp","chatName":"{chat.id}",
+        "model":"gpt-6.1-sol","thinking":"high","skill":null,"prompt":""
+    }).to_string()).await;
+    assert_eq!(task.status, 200, "{}", task.body);
+    let tasks: Value = serde_json::from_str(&task.body).unwrap();
+    let task = tasks["tasks"].as_array().unwrap().iter().find(|task| task["name"] == "GitHub exploration test").unwrap();
+    assert_eq!(task["prompt"], "");
+    let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../meta-data");
+    let map = "github-repository-exploration.json";
+    let map_path = s.config.scheduler.map_directory.join(map);
+    let base = "/api/scheduler/maps/github-repository-exploration.json";
+    fs::copy(assets.join("workflow-maps").join(map), &map_path).unwrap();
+    let published = get_over_tcp(addr, base).await;
+    assert_eq!(published.status, 200, "{}", published.body);
+    let mut definition: Value = serde_json::from_str(&published.body).unwrap();
+    let files = definition["map_input_rule"]["files"].as_array().unwrap();
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0]["id"], "clone_request");
+    assert_eq!(files[0]["required"], true);
+    assert_eq!(definition["map_output_rule"]["files"], json!([]));
+    assert!(!definition["map_output_rule"]["description"].as_str().unwrap().is_empty());
+    let end = &definition["nodes"]["W3"];
+    assert_eq!(end["end_node"], true);
+    assert_eq!(end["zone"], json!({"type":"dynamic","input_id":"registered_zone"}));
+    assert_eq!(end["input"], "");
+    assert_eq!(end["input_rule"], json!([{"type":"node","id":"registered_zone","node_id":"W2","output_id":"registered_zone"}]));
+    assert_eq!(end["output_rule"], json!([]));
+    for (node, file, id, target, value) in [
+        ("W1", "bot-1795076297417918500-2236-0.json", "github-clone", "script", "github-clone.ts"),
+        ("W2", "bot-1795076713839930400-2236-1.json", "register-zone", "script", "register-zone.ts"),
+        ("W3", "bot-1795076981245555700-2236-2.json", "github-repository-exploration", "task_id", "task-18e6bf4da8312bbc-0"),
+    ] {
+        assert_eq!(definition["nodes"][node]["bot_id"], id);
+        let path = s.config.scheduler.bot_directory.join(file);
+        fs::copy(assets.join("bots").join(file), &path).unwrap();
+        let reply = post_json_over_tcp(addr, "/api/scheduler/bots/edit", &json!({"id":id}).to_string()).await;
+        assert_eq!(reply.status, 200, "{}", reply.body);
+        let mut read: Value = serde_json::from_str(&reply.body).unwrap();
+        assert_eq!(read["content"][target], value);
+        assert!(!read["content"].to_string().contains("exploration_brief"), "{id} still refers to the retired file");
+        if node == "W3" {
+            read["content"]["id"] = json!(id);
+            read["content"]["task_id"] = task["id"].clone();
+            fs::write(path, read["content"].to_string()).unwrap();
+        }
+    }
+    // Exercise the real end Chat consumer without running clone/registration.
+    definition["nodes"].as_object_mut().unwrap().retain(|id, _| id == "W3");
+    definition["nodes"]["W3"]["blocked_by"] = json!([]);
+    definition["nodes"]["W3"]["input_rule"] = json!([{"type":"file","id":"registered_zone","path":"registered-zone.json"}]);
+    fs::write(&map_path, definition.to_string()).unwrap();
+    let registered_zone = s.data.path().join("registered-zone.json");
+    fs::write(&registered_zone, r#"{"zone_id":"node","description":"fixture repo"}"#).unwrap();
+
+    let scope = " \t检查仓库入口 {{keep-literal}}\r\n\r\n第二行  ";
+    let url = "https://github.com/example/isolated-fixture.git";
+    let parent = s.data.path().join("node-zone");
+    let launch = json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":scope,
+        "githubExploration":{"githubUrl":url,"parentDirectory":parent}});
+    let manual = s.data.path().join("existing-clone-request.json");
+    fs::write(&manual, json!({"github_url":url,"parent_directory":parent}).to_string()).unwrap();
+    let mut absent = launch.clone();
+    absent.as_object_mut().unwrap().remove("githubExploration");
+    let mut manual_only = absent.clone();
+    manual_only["fileInputs"] = json!([{"id":"clone_request","path":manual}]);
+    let mut both_blank = manual_only.clone();
+    both_blank["githubExploration"] = json!({"githubUrl":" ","parentDirectory":"\t"});
+    let mut no_url = launch.clone();
+    no_url["githubExploration"].as_object_mut().unwrap().remove("githubUrl");
+    let mut no_parent = launch.clone();
+    no_parent["githubExploration"]["parentDirectory"] = json!("");
+    let mut duplicate = launch.clone();
+    duplicate["fileInputs"] = manual_only["fileInputs"].clone();
+    for (invalid, missing) in [
+        (absent, &["github_url", "parent_directory"][..]),
+        (manual_only, &["github_url", "parent_directory"]),
+        (both_blank, &["github_url", "parent_directory"]),
+        (no_url, &["github_url"]),
+        (no_parent, &["parent_directory"]),
+        (duplicate, &[]),
+    ] {
+        for entry in ["preflight", "runs"] {
+            let rejected = post_json_over_tcp(addr, &format!("{base}/{entry}"), &invalid.to_string()).await;
+            assert_eq!(rejected.status, 400, "{}", rejected.body);
+            let body: Value = serde_json::from_str(&rejected.body).unwrap();
+            let issues = body["issues"].as_array().unwrap();
+            for id in missing {
+                assert!(issues.iter().any(|issue| issue["code"] == "github-clone-pair-required" && issue["inputId"] == *id), "{body}");
+            }
+            if missing.is_empty() {
+                assert!(issues.iter().any(|issue| issue["code"] == "run-input-duplicate"), "{body}");
+            }
+        }
+    }
+    assert!(!s.config.scheduler.run_directory.exists());
+    let checked = post_json_over_tcp(addr, &format!("{base}/preflight"), &launch.to_string()).await;
+    assert_eq!(checked.status, 200, "{}", checked.body);
+    assert!(s.herdr.calls().is_empty(), "preflight must not launch anything");
+
+    let started = post_json_over_tcp(addr, &format!("{base}/runs"), &launch.to_string()).await;
+    assert_eq!(started.status, 201, "{}", started.body);
+    let started: Value = serde_json::from_str(&started.body).unwrap();
+    let id = started["id"].as_str().unwrap();
+    let manager = started["run"]["manager"]["sessionId"].as_str().unwrap();
+    let directory = s.data.path().join(".manager-zone").join(".workflow").join(id);
+    let request = directory.join("clone_request.json");
+    let record: Value = serde_json::from_slice(&fs::read(&request).unwrap()).unwrap();
+    assert_eq!(record, json!({"github_url":url,"parent_directory":parent}));
+    assert_eq!(fs::read_dir(&directory).unwrap().count(), 1, "only clone_request may be generated");
+    let detail = get_over_tcp(addr, &format!("/api/workflow/runs/{id}")).await;
+    assert_eq!(detail.status, 200, "{}", detail.body);
+    let detail: Value = serde_json::from_str(&detail.body).unwrap();
+    assert_eq!(detail["run"]["mapInput"], json!({"runInput":scope,"files":[{"id":"clone_request","path":request}]}));
+
+    s.prepare_fixture(manager).await.unwrap();
+    native(&s, "omp", "github-exploration-chat");
+    let offset = s.herdr.calls().len();
+    let dispatched = action(&s, manager, "dispatch", json!({"nodes":["W3"]}), 200).await;
+    assert_eq!(dispatched["results"][0]["status"], "running", "{dispatched}");
+    let execution = &dispatched["snapshot"]["nodes"]["W3"]["execution"];
+    assert_eq!(execution["endNode"], true);
+    assert_eq!(execution["zoneId"], "node");
+    assert_eq!(execution["zone"], json!(parent));
+    assert_eq!(execution["inputs"], json!([{"id":"registered_zone","path":registered_zone}]));
+    let calls = s.herdr.calls();
+    assert!(calls[offset..].iter().any(|call| call["kind"] == "tab_create" && call["cwd"] == json!(parent)));
+    let prompts: Vec<_> = calls[offset..].iter().filter(|call| call["kind"] == "agent_prompt").collect();
+    assert_eq!(prompts.len(), 1);
+    let prompt = prompts[0]["text"].as_str().unwrap();
+    assert!(prompt.starts_with(&format!("[Run background / runInput]\n{scope}\n[/Run background / runInput]\n\n[Named file inputs]\nregistered_zone: {}\n[/Named file inputs]\n\n[Business input]\n", registered_zone.display())), "{prompt:?}");
+    assert_eq!(prompt.matches(scope).count(), 1, "scope belongs only in the Chat background");
+}
+
 async fn ready_to_finish(s: &Scenario, rule: Option<Value>) -> Value {
     end_map(s, false);
     if let Some(rule) = rule {

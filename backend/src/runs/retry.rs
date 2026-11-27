@@ -47,13 +47,26 @@ pub(crate) async fn manager_retry(state: AppState, input: RetryRequest) -> RunRe
         if let Some(message) = preflight::check_required_inputs(&map, &run.map_input.files) {
             return rejection(&state, &run, &map, "run-inputs-invalid", &message).await;
         }
-        let overrides = input.zone_id.as_ref().map(|zone| BTreeMap::from([(input.node_id.clone(), zone.clone())])).unwrap_or_default();
-        let mut zones = match crate::scheduler::validate_zone_selections(&state, &run, &map, std::slice::from_ref(&input.node_id), &overrides).await {
-            Ok(zones) => zones,
-            Err(message) => return rejection(&state, &run, &map, "zone-selection-invalid", &message).await,
-        };
-        let target = crate::scheduler::dispatch_target(&state, &run, &map, &input.node_id, zones.remove(&input.node_id)).await;
-        let result = startup::node(&state, &mut run, &input.node_id, Some(&input.reason), target).await;
+        let mut zone = None;
+        let mut inputs = None;
+        if let Some(node) = map.nodes.get(&input.node_id).map(|node| &node.0) {
+            zone = match crate::scheduler::validate_zone_selection(&state, &run, node, input.zone_id.as_deref()).await {
+                Ok(zone) => zone,
+                Err(message) => return rejection(&state, &run, &map, "zone-selection-invalid", &message).await,
+            };
+            if let Some(input_id) = node.zone.input_id() {
+                let placement = match startup::resolve_input_placement(&state, &run, node, input_id).await {
+                    Ok(placement) => placement,
+                    Err(message) => return rejection(&state, &run, &map, "zone-selection-invalid", &message).await,
+                };
+                zone = Some(placement.zone);
+                inputs = Some(placement.inputs);
+            }
+        } else if input.zone_id.is_some() {
+            return rejection(&state, &run, &map, "zone-selection-invalid", "node 不在本次 Run 的 Map 中").await;
+        }
+        let target = crate::scheduler::dispatch_target(&state, &run, &map, &input.node_id, zone).await;
+        let result = startup::node(&state, &mut run, &input.node_id, Some(&input.reason), target, inputs).await;
         let mut response = snapshot(&state, &run, &map, true).await?;
         response["result"] = result;
         Ok(RunOutcome::Value(response))

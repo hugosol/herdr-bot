@@ -1,0 +1,55 @@
+{
+  "title": "GitHub 仓库拉取与探索",
+  "description": "SSH 浅克隆 GitHub 仓库，登记 zone，并在该仓库发起探索 Chat 交给用户继续。Run 完成表示 Chat 已交接，不表示探索完成。",
+  "map_input_rule": {
+    "description": "- **GitHub 仓库链接**：指定本次要克隆并探索的仓库。\n- **克隆父目录**：指定服务器上已有的目录，仓库将克隆到该目录下以仓库名命名的直接子目录；它不是最终仓库目录。\n- **本次要求**：说明希望了解的问题、探索方向、关注范围及本次操作限制，作为探索 Chat 的初始业务要求。",
+    "files": [
+      {
+        "id": "clone_request",
+        "required": true
+      }
+    ]
+  },
+  "map_output_rule": {
+    "description": "在新登记的仓库 zone 成功发起探索 Chat 并交给用户继续。不等待探索完成，不承诺探索文件成果；管理者按通用结束节点协议显式 finish。",
+    "files": []
+  },
+  "nodes": {
+    "W1": {
+      "title": "SSH 浅克隆 GitHub 仓库",
+      "bot_id": "github-clone",
+      "input": "",
+      "input_rule": [{ "type": "run", "id": "clone_request", "input_id": "clone_request" }],
+      "output_rule": [{ "id": "cloned_repository" }],
+      "auto_approved": true,
+      "auto_close": false,
+      "end_node": false,
+      "zone": "default/bot-playground",
+      "blocked_by": []
+    },
+    "W2": {
+      "title": "登记仓库 zone",
+      "bot_id": "register-zone",
+      "input": "",
+      "input_rule": [{ "type": "node", "id": "cloned_repository", "node_id": "W1", "output_id": "cloned_repository" }],
+      "output_rule": [{ "id": "registered_zone" }],
+      "auto_approved": true,
+      "auto_close": false,
+      "end_node": false,
+      "zone": "default/bot-playground",
+      "blocked_by": ["W1"]
+    },
+    "W3": {
+      "title": "探索仓库并交给用户",
+      "bot_id": "github-repository-exploration",
+      "input": "",
+      "input_rule": [{ "type": "node", "id": "registered_zone", "node_id": "W2", "output_id": "registered_zone" }],
+      "output_rule": [],
+      "auto_approved": true,
+      "auto_close": false,
+      "end_node": true,
+      "zone": { "type": "dynamic", "input_id": "registered_zone" },
+      "blocked_by": ["W2"]
+    }
+  }
+}

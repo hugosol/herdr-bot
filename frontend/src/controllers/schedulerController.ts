@@ -71,11 +71,25 @@ function hasValidMapRules(value: object): boolean {
     (!('map_output_rule' in value) || isMapRule(value.map_output_rule, false))
 }
 
+export function nodeZoneProblem(zone: unknown, inputRule: unknown): string | null {
+  if (typeof zone === 'string') return null
+  if (typeof zone !== 'object' || zone === null || Array.isArray(zone) || !('type' in zone) || zone.type !== 'dynamic' || Object.keys(zone).some(key => key !== 'type' && key !== 'input_id')) {
+    return 'zone 必须是固定 ID、手动动态 zone 或输入驱动的动态 zone。'
+  }
+  if (!('input_id' in zone)) return null
+  const id = zone.input_id
+  if (typeof id !== 'string' || !id.trim()) return '请填写动态 zone 的节点输入 ID。'
+  if (!Array.isArray(inputRule) || !inputRule.some(rule => rule && typeof rule === 'object' && rule.id === id)) {
+    return '动态 zone 的节点输入 ID 必须存在于本节点的 input_rule。'
+  }
+  return null
+}
+
 function isMap(value: unknown): value is WorkflowMap {
   return typeof value === 'object' && value !== null && (!('group' in value) || value.group == null || (typeof value.group === 'string' && value.group.length > 0 && value.group.trim() === value.group)) && 'title' in value && typeof value.title === 'string' &&
     hasValidMapRules(value) &&
     'description' in value && typeof value.description === 'string' && 'nodes' in value && typeof value.nodes === 'object' && value.nodes !== null && !Array.isArray(value.nodes) &&
-    Object.values(value.nodes).every(node => node && typeof node.title === 'string' && typeof node.bot_id === 'string' && typeof node.input === 'string' && (!('end_node' in node) || typeof node.end_node === 'boolean') && !('inputs' in node) && (!('input_rule' in node) || isInputRule(node.input_rule)) && (!('output_rule' in node) || isOutputRule(node.output_rule)) && (typeof node.zone === 'string' || (typeof node.zone === 'object' && node.zone !== null && !Array.isArray(node.zone) && node.zone.type === 'dynamic' && Object.keys(node.zone).length === 1)) && Array.isArray(node.blocked_by) && node.blocked_by.every((id: unknown) => typeof id === 'string'))
+    Object.values(value.nodes).every(node => node && typeof node.title === 'string' && typeof node.bot_id === 'string' && typeof node.input === 'string' && (!('end_node' in node) || typeof node.end_node === 'boolean') && !('inputs' in node) && (!('input_rule' in node) || isInputRule(node.input_rule)) && (!('output_rule' in node) || isOutputRule(node.output_rule)) && !nodeZoneProblem(node.zone, node.input_rule) && Array.isArray(node.blocked_by) && node.blocked_by.every((id: unknown) => typeof id === 'string'))
 }
 
 function isCatalog(value: unknown): value is MapCatalog {
@@ -91,7 +105,7 @@ export async function deleteMap(file: string): Promise<MapCatalog> {
 export type InputRule = { id: string; type: 'file'; path: string; zone_id?: string } | { id: string; type: 'node'; node_id: string; output_id: string } | { id: string; type: 'run'; input_id: string }
 export type OutputRule = { id: string }
 
-export type NodeZone = string | { type: 'dynamic' }
+export type NodeZone = string | { type: 'dynamic'; input_id?: never } | { type: 'dynamic'; input_id: string }
 
 export type MapNode = {
   title: string

@@ -122,12 +122,12 @@ Map 仍以文件名引用，不增加 Map ID、schema_version 或默认 Bot 绑�
 
 总体输出说明可以非空而 files 为空，例如交给用户一个继续工作的 Chat。说明供人或 Agent 阅读，不自动转换为强制业务校验；不是字段不可编辑。首版结构化公开输出仍是文件，不新增 Chat、任意 JSON 值等输出类型。
 
-### 6. node 完整字段保持现状
+### 6. node 完整字段
 
 | 字段 | 保留的格式／缺省 |
 | --- | --- |
 | title、bot_id、input | 必需字符串；input 允许为空 |
-| zone | 固定 zone ID 字符串或严格对象 {"type":"dynamic"} |
+| zone | 固定 zone ID 字符串或动态对象；人工选址为 `{"type":"dynamic"}`，输入驱动为 `{"type":"dynamic","input_id":"本地输入 ID"}` |
 | blocked_by | 必需字符串数组，同图前置依赖 |
 | manager_task_id | 可选字符串或 null；Map 型调用的 manager 配置沿用现有要求 |
 | input_rule | 可省略，缺省空数组；保留 file/node/run 三类来源 |
@@ -136,6 +136,8 @@ Map 仍以文件名引用，不增加 Map ID、schema_version 或默认 Bot 绑�
 | auto_close、end_node | 布尔，缺省 false |
 
 file 来源保留 id/type/path 和可选 zone_id；node 来源保留 id/type/node_id/output_id；run 来源保留 id/type/input_id。既有路径边界、ID 唯一性、引用有效性、依赖图与执行目标适配检查不变；不自动以材料引用补 blocked_by。
+
+**2026-11-27 GitHub 迁移 review 的批准修订：** 用户同意通过现有 output→input 文件接线提供执行位置；动态 zone 可用 `input_id` 引用自身输入。后端从该 JSON 文件顶层 `zone_id` 取得已登记位置，拒绝人工覆盖；dispatch 与 retry 共用解析，历史执行位置不变。人工动态 zone 继续保留。具体格式和失败边界由[产品动态 zone 契约](../../../docs/scheduler.md#动态执行-zone)维护；选址关系从提示词迁到结构化配置，不新增 manager_rule。
 
 node 不增加说明指南、Bot 契约副本或新的业务字段。Task、script、Map 的目标及策略限制沿用现状；Map 型调用补入本票明确的公开接口对接检查。
 

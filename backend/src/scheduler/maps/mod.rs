@@ -86,13 +86,24 @@ pub(crate) enum NodeZone {
 pub(crate) struct DynamicZone {
     #[serde(rename = "type")]
     kind: DynamicZoneType,
+    #[serde(default, deserialize_with = "present_string", skip_serializing_if = "Option::is_none")]
+    input_id: Option<String>,
 }
+
+fn present_string<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
+    String::deserialize(deserializer).map(Some)
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum DynamicZoneType { Dynamic }
 impl NodeZone {
     pub(crate) fn fixed(&self) -> Option<&str> {
         match self { Self::Fixed(id) => Some(id), Self::Dynamic(_) => None }
+    }
+
+    pub(crate) fn input_id(&self) -> Option<&str> {
+        match self { Self::Fixed(_) => None, Self::Dynamic(zone) => zone.0.input_id.as_deref() }
     }
 }
 
@@ -219,6 +230,11 @@ fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
                     }
                 }
                 _ => {}
+            }
+        }
+        if let Some(input_id) = node.zone.input_id() {
+            if input_id.trim().is_empty() || !input_ids.contains(input_id) {
+                return Err(map_error(format!("node {id} 的 zone.input_id 必须引用本节点的 input_rule ID：{input_id}")));
             }
         }
         remaining.insert(id.as_str(), node.blocked_by.len());

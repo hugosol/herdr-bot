@@ -19,7 +19,7 @@ Map 目录可按名称、文件名或组名搜索，并与分组筛选组合使�
 | 对象 | 字段与职责 |
 | --- | --- |
 | Map | 必需 `title`、`description` 字符串及 `nodes` 对象；key 是 Map 内 node ID。可选 `map_input_rule` 与 `map_output_rule` 是整图公开输入输出约定（见下文）。`description` 只描述用途，不作为 Map 专属执行指令。不含运行状态、管理者配置或重试策略。 |
-| node | 必需 `title`、`bot_id`、`input` 字符串、`zone`（固定 ID 字符串或 `{"type":"dynamic"}`）及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`auto_approved` 为布尔值（缺省 `true`），`auto_close` 与 `end_node` 为布尔值（缺省 `false`）。`end_node: true` 标记唯一普通 Task 型结束节点（见下文）。批准模式与自动关闭只属于 node，不从 Bot 或 Task 继承。Map 型 Bot 的调用节点使用可选字符串 `manager_task_id` 指定 manager Task，执行前必需且必须为 manager 类型；普通 Task 型节点不得指定它。Bot 不接受此字段。 |
+| node | 必需 `title`、`bot_id`、`input` 字符串、`zone`（固定 ID 字符串、`{"type":"dynamic"}` 或 `{"type":"dynamic","input_id":"本地输入 ID"}`）及 `blocked_by` 字符串数组；可选 `input_rule`、`output_rule` 为文件输入／输出规则数组（见下文），`auto_approved` 为布尔值（缺省 `true`），`auto_close` 与 `end_node` 为布尔值（缺省 `false`）。`end_node: true` 标记唯一普通 Task 型结束节点（见下文）。批准模式与自动关闭只属于 node，不从 Bot 或 Task 继承。Map 型 Bot 的调用节点使用可选字符串 `manager_task_id` 指定 manager Task，执行前必需且必须为 manager 类型；普通 Task 型节点不得指定它。Bot 不接受此字段。 |
 | Bot | 必需 `id`、`name`、`when`、`description`、`input_rule`、`output_rule` 字符串；可选 `task_id`（normal Task）、`map_file`（目录内确切 Map JSON 文件名）或 `script`（scripts 目录内的相对 .ts 路径），三者互斥，也可都未绑定。跨 Map 共享，只保存目标引用，不复制定义。 |
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
 | Chat | 实际对话与原生会话身份，不写进静态定义。执行身份、报告、状态和历史不属于 Map 或 Bot。 |
@@ -107,7 +107,7 @@ Bot 摘要修订可直接引用同一 `baseline` 及四组 `*_text`、`*_handoff
 
 发起表单按 `map_input_rule.files` 展示输入项，以各文件说明或 ID 作为标签，并另标必需／可选。总体输入说明非空时在文件输入上方单独呈现。
 
-“+ 发起 Run”中，“本次要求”只承载业务文字，文件输入控件分别填写服务器上已有文件的绝对地址。所有文件项（包括必需项）均可在启动时留空，交由管理者对话补齐；持久 `mapInput.files` 不生成未提供项；不填占位地址、默认路径，也不从业务文字或目录自动找文件。启动表单更换文件只改变新 Run 的初始绑定，不需要重写 Map；已有 Run 可由管理者通过 `prepare_inputs` 整批替换绑定，但不改变已派发 execution 的输入地址。地址绑定不是文件内容快照，不复制或锁定源文件。
+“+ 发起 Run”中，“本次要求”只承载业务文字，文件输入控件分别填写服务器上已有文件的绝对地址。通用文件项（包括必需项）可在启动时留空，交由管理者对话补齐；GitHub 专用启动表单的链接与父目录必须填写，由后端生成克隆请求，规则见[GitHub 启动输入](workflow-runtime.md#github-仓库探索启动输入)。持久 `mapInput.files` 不生成未提供项；不填占位地址、默认路径，也不从业务文字或目录自动找文件。启动表单更换文件只改变新 Run 的初始绑定，不需要重写 Map；已有 Run 可由管理者通过 `prepare_inputs` 整批替换绑定，但不改变已派发 execution 的输入地址。地址绑定不是文件内容快照，不复制或锁定源文件。
 
 公开声明编辑入口为 `GET /api/scheduler/maps/{filename}/inputs`，返回已声明的 `map_input_rule`／`map_output_rule` 和 `{file,original}` revision；`POST` 同一路径提交 `{map_input_rule?,map_output_rule?,revision}`，一并替换两侧，省略任一侧即移除该规则，成功返回更新后 Map。非法规则不写文件；revision 已变化时拒绝覆盖。启动／预检接受可选 `fileInputs: [{id,path}]`，省略与 `[]` 均表示没有绑定。启动允许必需文件暂缺；未声明 ID、同次绑定 ID 重复或已提供文件缺失／不可读仍在 Run 分配与宿主启动前拒绝（文件错误为 `run-input-unreadable`），反馈 `target: "run-input"` 与 `inputId`，页面可定位对应文件输入。
 
@@ -115,9 +115,17 @@ Bot 摘要修订可直接引用同一 `baseline` 及四组 `*_text`、`*_handoff
 
 ### 动态执行 zone
 
-node 的 `zone` 为固定 zone ID 字符串，或严格对象 `{"type":"dynamic"}`。动态类型不包含预设 ID；Map 编辑中的固定／动态选择只改变定义，不指定某次运行的执行位置。动态节点允许在 Run 启动时尚无目标 zone，manager 根据上游 report 等运行信息在派发时选择已登记 zone。
+node 的 `zone` 支持三种来源：
 
-manager 使用 `dispatch` 的 `zoneIds: {"nodeId":"zone ID"}` 逐节点指定，`retry` 使用 `zoneId` 且每次重新提供；固定节点不接受覆盖，动态节点缺值、未登记或目录无效均拒绝，不回退 manager zone。解析后的 ID 与目录保存在 execution 的 `zoneId`／`zone` 中，不回写 Map。Task、脚本、子 Map 共用选择机制；子 Map 的位置只作为子 manager zone，不覆盖子图内部位置。workflow 区分动态定义、尚未指定与已保存的实际执行位置。
+| 定义 | 本次位置来源 |
+| --- | --- |
+| 固定 zone ID 字符串 | Run 启动时的登记绑定快照 |
+| `{"type":"dynamic"}` | manager 每次 dispatch 通过 `zoneIds` 指定，retry 通过 `zoneId` 重新指定 |
+| `{"type":"dynamic","input_id":"location"}` | 后端从本节点 `input_rule` 中 ID 为 `location` 的实际输入文件读取顶层字符串 `zone_id` |
+
+`input_id` 必须非空白且引用本节点已有输入声明；材料沿现有 file/node/run 规则接线，前置依赖仍须显式声明。输入文件须为 JSON 对象，`zone_id` 是非空白字符串，允许其他业务字段；不支持字段选择器或 JSONPath。后端先解析本次输入，再选址，并将同一组文件绑定及实际 zone ID／目录保存到 execution。输入地址不是文件内容快照；retry 重新读取本次材料，已保存的 execution 不变。
+
+人工动态节点每次显式选址；固定和输入驱动节点拒绝人工覆盖。材料缺失、JSON／zone_id 无效、zone 未登记或目录不可用时拒绝启动，不回退到 manager zone。动态位置无需在 Run 启动时已存在，也不写回静态 Map。Task、脚本、子 Map 共用解析；子 Map 位置只决定子 manager zone。workflow 分别展示静态来源与已保存的实际位置。
 
 此能力不改变文件输入与交接：下面的 `type:file` 仍使用固定来源 zone 或 manager zone，不能引用动态 node zone。
 

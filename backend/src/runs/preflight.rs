@@ -7,16 +7,19 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 
 
-/// Check external business material without reading, copying or retaining a
-/// handle. Like public file reads, reject links/reparse points and streams;
-/// the file need not belong to any registered zone.
-pub(crate) fn check_input_file(path: &str) -> Result<(), String> {
+/// Reject links, reparse points and streams; the file need not be in a zone.
+pub(super) fn check_input_path(path: &str) -> Result<(), String> {
     let file = Path::new(path);
     if !file.is_absolute() { return Err("文件输入必须是绝对地址".into()); }
     let parent = file.parent().and_then(Path::to_str).ok_or("文件输入缺少有效父目录")?;
     let name = file.file_name().and_then(|name| name.to_str()).ok_or("文件输入缺少有效文件名")?;
-    crate::zones::browse::checked_file(parent, name).map_err(|error| error.message())?;
-    std::fs::File::open(file).map(drop).map_err(|error| format!("文件 {path} 不可读：{error}"))
+    crate::zones::browse::checked_file(parent, name).map(drop).map_err(|error| error.message())
+}
+
+/// Check readability without reading bytes or retaining a handle.
+pub(crate) fn check_input_file(path: &str) -> Result<(), String> {
+    check_input_path(path)?;
+    std::fs::File::open(path).map(drop).map_err(|error| format!("文件 {path} 不可读：{error}"))
 }
 
 /// Launch configuration is not a definition override or a Run allocation.
@@ -34,17 +37,14 @@ pub(crate) struct RunPreflightRequest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct GitHubExploration {
+    #[serde(default)]
     pub github_url: String,
+    #[serde(default)]
     pub parent_directory: String,
-    pub exploration_direction: String,
 }
 
 impl GitHubExploration {
     pub(super) const CLONE: &'static str = "clone_request";
-    pub(super) const BRIEF: &'static str = "exploration_brief";
-
-    pub(super) fn has_clone(&self) -> bool { !self.github_url.trim().is_empty() }
-    pub(super) fn has_brief(&self) -> bool { !self.exploration_direction.trim().is_empty() }
 }
 
 #[derive(Serialize)]
@@ -249,24 +249,28 @@ pub(super) fn check_required_inputs(map: &WorkflowMap, files: &[ResolvedFile]) -
 }
 
 fn github_material_issues(name: &str, declarations: &[MapFileInput], input: &RunPreflightRequest) -> Vec<PreflightIssue> {
-    let Some(github) = &input.github_exploration else { return Vec::new(); };
+    let github = input.github_exploration.as_ref();
     if name != "github-repository-exploration.json" {
-        return vec![PreflightIssue::new("github-inputs-unsupported", "map", "此 Map 不接受 GitHub 探索表单输入。")];
+        return if github.is_some() {
+            vec![PreflightIssue::new("github-inputs-unsupported", "map", "此 Map 不接受 GitHub 探索表单输入。")]
+        } else { Vec::new() };
     }
     let mut issues = Vec::new();
-    let has_parent = !github.parent_directory.trim().is_empty();
-    if github.has_clone() != has_parent {
-        let mut issue = PreflightIssue::new("github-clone-pair-required", "run-input", "GitHub 仓库链接和克隆父目录须一起填写，或一起留空。");
-        issue.input_id = Some(if github.has_clone() { "parent_directory" } else { "github_url" }.into());
-        issues.push(issue);
-    }
-    for (present, id) in [(github.has_clone(), GitHubExploration::CLONE), (github.has_brief(), GitHubExploration::BRIEF)] {
-        if !present { continue; }
-        if !declarations.iter().any(|binding| binding.id == id) {
-            issues.push(PreflightIssue::new("run-input-undeclared", "map", format!("Map 未声明表单生成的文件输入：{id}")));
-        } else if input.file_inputs.iter().any(|binding| binding.id == id) {
-            issues.push(PreflightIssue::new("run-input-duplicate", "map", format!("不能同时生成和绑定已有文件输入：{id}")));
+    for (id, value) in [
+        ("github_url", github.map(|github| github.github_url.as_str())),
+        ("parent_directory", github.map(|github| github.parent_directory.as_str())),
+    ] {
+        if value.is_none_or(|value| value.trim().is_empty()) {
+            let mut issue = PreflightIssue::new("github-clone-pair-required", "run-input", "GitHub 仓库链接和克隆父目录都必须填写。");
+            issue.input_id = Some(id.into());
+            issues.push(issue);
         }
+    }
+    let id = GitHubExploration::CLONE;
+    if !declarations.iter().any(|binding| binding.id == id) {
+        issues.push(PreflightIssue::new("run-input-undeclared", "map", format!("Map 未声明表单生成的文件输入：{id}")));
+    } else if input.file_inputs.iter().any(|binding| binding.id == id) {
+        issues.push(PreflightIssue::new("run-input-duplicate", "map", format!("文件输入 {id} 只能由 GitHub 探索表单生成。")));
     }
     issues
 }

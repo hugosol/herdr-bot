@@ -86,26 +86,48 @@ pub(crate) async fn dispatch_target<'a>(state: &crate::AppState, run: &crate::ru
 }
 
 async fn dispatch_zone(state: &crate::AppState, run: &crate::runs::Run, declaration: &maps::NodeZone, selected_zone: Option<&str>) -> Result<(String, String), String> {
-    let (zone_id, zone) = match declaration.fixed() {
-        Some(id) => {
-            if selected_zone.is_some() { return Err(format!("固定 zone node {id} 不接受 zone 覆盖")); }
-            let root = run.zone_bindings.get(id).ok_or_else(|| format!("zone {id} 不在本次 Run 启动快照中；请启动新 Run"))?;
-            (id.to_owned(), root.clone())
-        }
-        None => {
-            let id = selected_zone.filter(|id| !id.trim().is_empty()).ok_or("动态 zone node 必须显式选择已登记的 zone ID")?;
-            let zones = state.zones.list().await.map_err(|error| error.message())?;
-            let root = zones.iter().find(|zone| zone.id == id).ok_or_else(|| format!("zone {id} 未登记"))?;
-            (id.to_owned(), root.path.clone())
-        }
-    };
-    if declaration.fixed().is_none() {
-        crate::zones::browse::checked_root(&zone).map_err(|error| error.message())?;
+    if let Some(id) = declaration.fixed() {
+        if selected_zone.is_some() { return Err(format!("固定 zone node {id} 不接受 zone 覆盖")); }
+        let root = run.zone_bindings.get(id).ok_or_else(|| format!("zone {id} 不在本次 Run 启动快照中；请启动新 Run"))?;
+        return Ok((id.to_owned(), root.clone()));
     }
-    Ok((zone_id, zone))
+    if let Some(id) = declaration.input_id() {
+        return Err(format!("必须通过节点输入 {id} 解析 zone，不接受手动覆盖"));
+    }
+    let id = selected_zone.filter(|id| !id.trim().is_empty()).ok_or("动态 zone node 必须显式选择已登记的 zone ID")?;
+    Ok((id.to_owned(), registered_dispatch_root(state, id).await?))
 }
 
-pub(crate) async fn validate_zone_selections(state: &crate::AppState, run: &crate::runs::Run, map: &maps::WorkflowMap, selected: &[String], overrides: &BTreeMap<String, String>) -> Result<BTreeMap<String, (String, String)>, String> {
+async fn registered_dispatch_root(state: &crate::AppState, id: &str) -> Result<String, String> {
+    let zones = state.zones.list().await.map_err(|error| error.message())?;
+    let zone = zones.into_iter().find(|zone| zone.id == id).ok_or_else(|| format!("zone {id} 未登记"))?;
+    crate::zones::browse::checked_root(&zone.path).map_err(|error| error.message())?;
+    Ok(zone.path)
+}
+
+pub(crate) async fn input_dispatch_zone(state: &crate::AppState, file: &maps::ResolvedFile) -> Result<(String, String), String> {
+    #[derive(Deserialize)]
+    struct ZoneMaterial { zone_id: String }
+
+    let failed = |message| format!("zone 输入 {}：{message}", file.id);
+    let source = std::fs::File::open(&file.path).map_err(|error| failed(error.to_string()))?;
+    let JsonObject(ZoneMaterial { zone_id }) = serde_json::from_reader(std::io::BufReader::new(source))
+        .map_err(|error| failed(format!("必须是含非空字符串 zone_id 的 JSON 对象：{error}")))?;
+    if zone_id.trim().is_empty() {
+        return Err(failed("zone_id 不能为空".into()));
+    }
+    let root = registered_dispatch_root(state, &zone_id).await.map_err(failed)?;
+    Ok((zone_id, root))
+}
+
+pub(crate) async fn validate_zone_selection(state: &crate::AppState, run: &crate::runs::Run, node: &maps::MapNode, selected_zone: Option<&str>) -> Result<Option<(String, String)>, String> {
+    if selected_zone.is_some() || (node.zone.fixed().is_none() && node.zone.input_id().is_none()) {
+        return dispatch_zone(state, run, &node.zone, selected_zone).await.map(Some);
+    }
+    Ok(None)
+}
+
+pub(crate) async fn validate_zone_selections<'a>(state: &crate::AppState, run: &crate::runs::Run, map: &maps::WorkflowMap, selected: &'a [String], overrides: &BTreeMap<String, String>) -> Result<BTreeMap<&'a str, (String, String)>, String> {
     for id in overrides.keys() {
         if !selected.contains(id) || !run.nodes.contains_key(id) || !map.nodes.contains_key(id) {
             return Err(format!("zoneIds 的 node {id} 未选择或不在本次 Run 中"));
@@ -114,9 +136,8 @@ pub(crate) async fn validate_zone_selections(state: &crate::AppState, run: &crat
     let mut resolved = BTreeMap::new();
     for id in selected {
         if let Some(node) = map.nodes.get(id) {
-            if overrides.contains_key(id) || node.0.zone.fixed().is_none() {
-                let zone = dispatch_zone(state, run, &node.0.zone, overrides.get(id).map(String::as_str)).await?;
-                resolved.insert(id.clone(), zone);
+            if let Some(zone) = validate_zone_selection(state, run, &node.0, overrides.get(id).map(String::as_str)).await? {
+                resolved.insert(id.as_str(), zone);
             }
         }
     }

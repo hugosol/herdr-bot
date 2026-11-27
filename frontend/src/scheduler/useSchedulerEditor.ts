@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NodeSettingsValue } from './maps/NodeSettings'
 import { listBots, loadBotDraft, saveBot, checkBotDelete, deleteBot, updateBotGroup, type BotRevision, type BotCatalog } from '../controllers/botController'
-import { groupOnlyRevision, updateMapGroup, listMaps, loadMap, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, deleteMap, type WorkflowMap, type MapCatalog } from '../controllers/schedulerController'
+import { groupOnlyRevision, updateMapGroup, listMaps, loadMap, loadNodeDraft, saveNode, checkNodeDeletion, deleteNode, deleteMap, nodeZoneProblem, type WorkflowMap, type MapCatalog, type NodeZone } from '../controllers/schedulerController'
 
 type Listing = { kind: 'loading' } | ({ kind: 'ready' } & MapCatalog) | { kind: 'error'; message: string }
 type Preview = { kind: 'loading' } | { kind: 'ready'; map: WorkflowMap } | { kind: 'error'; message: string }
 type Bots = { kind: 'loading' } | ({ kind: 'ready' } & BotCatalog) | { kind: 'error'; message: string }
 type Draft = { kind: 'Bot' | 'node'; create: boolean; id: string; content: string; revision: BotRevision | null; initialId: string; initialContent: string; file: string | null; settings: NodeSettingsValue | null; initialSettings: NodeSettingsValue | null }
-const draftChanged = (draft: Draft) => draft.id !== draft.initialId || draft.content !== draft.initialContent || (typeof draft.settings?.zone === 'string' || typeof draft.initialSettings?.zone === 'string' ? draft.settings?.zone !== draft.initialSettings?.zone : draft.settings?.zone?.type !== draft.initialSettings?.zone?.type) || draft.settings?.auto_approved !== draft.initialSettings?.auto_approved || draft.settings?.auto_close !== draft.initialSettings?.auto_close
+function zoneChanged(zone: NodeZone | undefined, initial: NodeZone | undefined) {
+  if (typeof zone === 'string' || typeof initial === 'string') return zone !== initial
+  return zone?.type !== initial?.type || zone?.input_id !== initial?.input_id
+}
+const draftChanged = (draft: Draft) => draft.id !== draft.initialId || draft.content !== draft.initialContent || zoneChanged(draft.settings?.zone, draft.initialSettings?.zone) || draft.settings?.auto_approved !== draft.initialSettings?.auto_approved || draft.settings?.auto_close !== draft.initialSettings?.auto_close
 type State = { listing: Listing; bots: Bots; file: string | null; preview: Preview | null; selectedId: string | null; botId: string | null; draft: Draft | null; editingBusy: boolean; editError: string | null; returnProblem: string | null; deleteMapTarget: string | null; deletingMap: boolean; deleteMapError: string | null }
 const message = (error: unknown) => error instanceof Error ? error.message : '读取或修改失败。'
 
@@ -154,6 +158,8 @@ export function useSchedulerEditor({ active, view, onViewChange, confirm = (text
         for (const field of ['node_id', 'zone', 'auto_approved', 'auto_close', 'end_node']) {
           if (Object.hasOwn(value, field)) throw new Error(`请移除 node 内容 JSON 中的顶层 ${field}；使用独立控件。`)
         }
+        const zoneProblem = nodeZoneProblem(draft.settings?.zone, 'input_rule' in value ? value.input_rule : undefined)
+        if (zoneProblem) throw new Error(zoneProblem)
         content = JSON.stringify({ ...value, ...draft.settings })
       }
       const payload = { id: draft.id, content, revision: draft.revision }

@@ -97,7 +97,7 @@ async fn published_approval_responsibilities_round_trip_every_shipped_node() {
         // asset; this does not treat unselected Maps as migrated definitions.
         let fixture = json!({"title":"Approval responsibility fixture","description":"","nodes":definition["nodes"],"map_input_rule":{"files":[
             {"id":"request","required":false}, {"id":"materials","required":false},
-            {"id":"clone_request","required":false}, {"id":"exploration_brief","required":false}
+            {"id":"clone_request","required":false}
         ]}});
         fs::write(s.config.scheduler.map_directory.join(file), fixture.to_string()).unwrap();
         let response = get_over_tcp(s.server.addr(), &format!("/api/scheduler/maps/{file}")).await;

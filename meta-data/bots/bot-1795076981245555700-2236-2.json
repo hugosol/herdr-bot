@@ -1,0 +1,9 @@
+{
+  "id": "github-repository-exploration",
+  "name": "开源项目仓库探索",
+  "when": "需要在已有仓库中围绕用户指定方向探索，并在同一 Chat 中继续交流时使用。",
+  "description": "## 能力职责\n在所选仓库中发起使用代码库探索 Suite 的 OMP Chat，依据实际用户输入开展探索并继续交流。\n\n## 能力边界\n不负责克隆仓库或登记 zone。Task 无固定提示词，不额外承诺只读策略、特定探索步骤或文件成果；本次目标和操作范围由实际输入确定。\n\n## 特殊前提\n可访问的仓库及已配置的 OMP、模型和 codebase-exploration-omp Suite 资源。",
+  "input_rule": "用户的探索目标、关注范围及必要参考材料。独立调用使用实际 Chat 输入；本 Map 使用启动时的 mapInput.runInput，不读取专用探索方向文件或自动同步管理者后续对话。",
+  "output_rule": "可继续交流的探索 Chat；不声明默认文件成果。作为结束节点时，成功发起仅表示交给用户继续，不表示探索完成或业务验收通过。",
+  "task_id": "task-18e6bf4da8312bbc-0"
+}

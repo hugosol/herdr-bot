@@ -24,6 +24,26 @@ describe('frozen execution zone display', () => {
     expect(facts.queryByText('C:/manager')).not.toBeInTheDocument()
   })
 
+  it('keeps the frozen input declaration distinct from the execution’s resolved zone', () => {
+    const base = current.map!
+    const inputDriven: CurrentDefinition = { ...current, map: { ...base, nodes: { A: {
+      ...base.nodes.A,
+      zone: { type: 'dynamic', input_id: 'registered-repo' },
+      input_rule: [{ id: 'registered-repo', type: 'run', input_id: 'registered-zone' }],
+    } } } }
+    const view = render(<RunCurrentView run={runWith(null)} reports={[]} current={inputDriven} managed />)
+    const facts = within(screen.getByRole('region', { name: '当前执行事实' }))
+    const unresolved = facts.getByText(/尚未解析/)
+    expect(unresolved).toBeVisible()
+    expect(unresolved).toHaveTextContent('registered-repo')
+    expect(facts.queryByText(/显式指定|C:\/manager/)).not.toBeInTheDocument()
+    view.rerender(<RunCurrentView run={runWith(executions[0])} reports={[]} current={inputDriven} managed />)
+    expect(facts.getByText('team/selected')).toBeVisible()
+    expect(facts.getByText('C:/frozen-actual-directory')).toBeVisible()
+    expect(facts.queryByText(/尚未解析/)).not.toBeInTheDocument()
+    expect(within(screen.getByLabelText('冻结节点定义')).getByText('dynamic · 来自节点输入 registered-repo')).toBeInTheDocument()
+  })
+
   it.each(executions)('shows saved ID and actual directory for each execution kind: $id $kind $childRunId', execution => {
     const run = runWith(execution)
     run.nodes.A.previousExecutions = [{ execution: { ...execution, id: 'old', zoneId: 'team/old', zone: 'C:/old-directory' }, failure: null }]

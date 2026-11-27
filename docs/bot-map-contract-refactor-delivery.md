@@ -1,6 +1,38 @@
 # Bot／Map 重构：交付与现场交接
 
-**本报告区分仓库转换、隔离回归、跨仓联调、原生专项和现场事实。** 仓库已交付首条 [创建map 资产与配置清单](workflow-migration-inventory.md)，不是现场迁入或业务验收。其余流程未选择不等于废弃，不以这份 Markdown 决定运行资格。
+**本报告区分仓库转换、隔离回归、跨仓联调、原生专项和现场事实。** 仓库已交付首条 [创建map 资产与配置清单](workflow-migration-inventory.md)，并按用户本轮授权迁入 [GitHub 仓库拉取与探索](workflow-migration-inventory.md#github-仓库拉取与探索2026-11-27-选择性迁移)的新定义及启动输入调整；定义落盘不是用户迁移完成确认或业务验收。其余流程未选择不等于废弃，不以这份 Markdown 决定运行资格。
+
+## GitHub 探索选择性迁移：2026-11-27 定向证据
+
+本轮保留链接和父目录输入框，仅生成 `clone_request`；“本次要求”直接保存为 `mapInput.runInput` 并交给 W3。Task.prompt 与 W3.input 均为空，旧 backup 未修改。以下检查均在最后一次代码修改后执行，不访问 GitHub、不执行克隆／zone 登记脚本、不使用用户认证：
+
+| 检查 | 结果 |
+| --- | --- |
+| 新 Map 和三个 Bot 的 JSON Schema 校验 | 4/4 通过；使用 `docs/contracts/script-bots.schema.json` 的 `map_configuration`／`bot` 定义。 |
+| `npm --prefix frontend run build` | TypeScript 和 Vite 构建通过；保留既有大于 500 kB chunk 提醒。 |
+| `npm --prefix frontend test -- tests/workflow/runLaunchForm.test.tsx` | 2/2 通过，核对两种请求中的原始 userInput 与保留的克隆字段。 |
+| `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch end_node::github_launch_preserves_clone_request_and_delivers_run_input_to_end_chat -- --exact` | 1/1 通过；发布 Map/Bot 的隔离 HTTP 读回、克隆字段成对校验、实际克隆请求材料、无探索方向文件、结束节点原始 Run 背景传递。 |
+| `cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture` | 通过，使用本轮绝对独占 `CARGO_TARGET_DIR=E:/Developer/myhub/herdr-bot/backend/target-github-cutover`，不替换正在部署的服务。 |
+| `npm --prefix frontend run test:browser -- workflowStart.spec.ts --grep "GitHub launch writes the clone request" --workers=1` | Chrome 1/1 通过，使用同一目标目录的隔离后端与受控 Herdr；桌面／手机表单截图保存在 `frontend/test-results/` 对应用例目录的 `github-launch-fields.png`、`github-launch-fields-phone.png`。 |
+
+不是全仓验收：旧的全发布图批准测试仍保留九张 Map 的基线断言；当前用户已将未选图离线，此次没有恢复它们、跳过其断言或运行该全清单用例。上述定向检查不证明真实模型探索质量、SSH 认证可用或现场切换完成。用户迁移完成确认、实际业务运行和旧副本删除授权仍分开。
+
+## 输入驱动 zone 与提示词 review：2026-11-27 追加证据
+
+用户确认以 `zone.input_id` 引用节点自身输入，读取 JSON 顶层 `zone_id`；W3 接入 W2 的 `registered_zone`，不再由管理者手填位置。GitHub 链接与父目录改为启动表单必填；Map 输入说明仅解释三个输入的含义，省略克隆文件说明及启动授权段落。普通 `prepare_inputs` 协议未改；表单必填不表示材料内容不可变。未审定的 Bot 摘要与 Map 输出说明保持原文。
+
+最后一次相关修改后的定向检查：
+
+| 检查 | 结果 |
+| --- | --- |
+| `python scripts/test-script-contracts.py` 与发布 GitHub Map 的 Schema 校验 | 通过；新增输入驱动表示、空白／null 输入 ID 和未知字段反例。跨输入引用由产品校验负责，不由 JSON Schema 冒充。 |
+| `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- dynamic_zones:: file_consumption:: end_node::github_launch_preserves_clone_request_and_delivers_run_input_to_end_chat` | 13/13 通过，覆盖定义读回、人工动态位置、输入驱动选址、非法材料／覆盖拒绝、retry 重读与旧执行保留，以及现有文件输入调用方。 |
+| `cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture` | 通过，继续使用本轮独占绝对目标目录 `backend/target-github-cutover`。 |
+| `npm --prefix frontend run build` 与四个定向 Vitest 文件 | 构建通过，`mapDefinitionContract.test.ts`、`nodeSettings.test.tsx`、`runExecutionZone.test.tsx`、`runLaunchForm.test.tsx` 共 47/47 通过。首次构建发现新测试向 Testing Library `getByRole` 传入不支持的 `exact`；删除该多余选项后重跑通过。保留 Vite chunk 体积提醒。 |
+| `npm --prefix frontend run test:browser -- schedulerNodeEditing.spec.ts workflowStart.spec.ts --grep "dynamic zone editor\|GitHub launch" --workers=1` | Chrome 3/3 通过，包含配置保存／重载、只读来源显示、桌面／手机表单与必填拒绝。首次手机编辑器局部截图被固定底栏遮挡，改为实际填写／点击输入后捕获整屏；仅该用例再次执行 1/1 通过，最终截图在 `frontend/test-results/zone-mobile-proof/`，其余截图保留在本轮 `frontend/test-results/`。 |
+| toolkit 根 `bun run typecheck` | 通过，包含 authoring 检查：96 文件、8 声明、0 diagnostics。仅调整工具参数说明，不变更调用参数结构。 |
+
+本轮没有真实 GitHub 访问、克隆、zone 登记或模型业务执行，没有重启用户服务或删除 backup。结果不代替部署、用户迁移完成确认或业务验收。
 
 ## 本轮产品自动证据
 

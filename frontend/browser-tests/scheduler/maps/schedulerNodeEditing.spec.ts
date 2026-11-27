@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import { openNodeJson, showMapDirectory, showMapNodes } from '../../support/ui'
+import { expectNoHorizontalOverflow, openNodeJson, showMapDirectory, showMapNodes } from '../../support/ui'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { expect, test, type Page } from '@playwright/test'
@@ -120,7 +120,7 @@ test('dynamic zone editor saves no preset and reloads all unrelated node fields'
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
   await expect(page.getByRole('radio', { name: '固定 zone', exact: true })).toBeChecked()
   await expect(page.getByRole('textbox', { name: 'zone', exact: true })).toHaveValue(configured.zone)
-  await page.getByRole('radio', { name: '动态 zone', exact: true }).check()
+  await page.getByRole('radio', { name: '手动动态 zone', exact: true }).check()
   await expect(page.getByRole('textbox', { name: 'zone', exact: true })).toHaveCount(0)
   const savedRequest = page.waitForRequest(request => request.url().endsWith('/nodes/save') && request.method() === 'POST')
   await page.getByRole('button', { name: '保存 node', exact: true }).click()
@@ -137,11 +137,82 @@ test('dynamic zone editor saves no preset and reloads all unrelated node fields'
   await page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '独立审计 A', exact: true }).click()
   await expect(page.getByRole('region', { name: 'node 配置概览', exact: true })).toContainText('dynamic · 每次执行时指定，尚未指定 zone')
   await page.getByRole('button', { name: '修改 node', exact: true }).click()
-  await expect(page.getByRole('radio', { name: '动态 zone', exact: true })).toBeChecked()
+  await expect(page.getByRole('radio', { name: '手动动态 zone', exact: true })).toBeChecked()
   await expect(page.getByRole('textbox', { name: 'zone', exact: true })).toHaveCount(0)
   expect(JSON.parse(await (await openNodeJson(page)).inputValue())).toEqual(nodeContent(configured))
   await page.getByRole('radio', { name: '固定 zone', exact: true }).check()
   await expect(page.getByRole('textbox', { name: 'zone', exact: true })).toHaveValue('')
+  expect(server!.herdrCalls()).toEqual([])
+})
+
+test('input-driven dynamic zone editor validates the local input and persists the declaration', async ({ page }, info) => {
+  const configured = { ...audit, end_node: false, auto_approved: false, auto_close: true,
+    input_rule: [
+      { id: 'registered-repo', type: 'file', path: 'registered-zone.json', zone_id: 'materials-zone' },
+      { id: 'second-registration', type: 'file', path: 'second-zone.json', zone_id: 'materials-zone' },
+    ], output_rule: [{ id: 'result' }],
+  }
+  const root = await setup(page, { ...original, nodes: { ...original.nodes, A: configured } })
+  const before = inventory(root)
+  const selectNode = () => page.getByRole('region', { name: '节点列表', exact: true }).getByRole('button', { name: '独立审计 A', exact: true }).click()
+  const edit = page.getByRole('button', { name: '修改 node', exact: true })
+  const form = page.getByRole('form', { name: 'node 编辑', exact: true })
+  const saveButton = form.getByRole('button', { name: '保存 node', exact: true })
+  const mode = form.getByRole('radio', { name: '输入驱动的动态 zone', exact: true })
+  const source = form.getByRole('textbox', { name: '节点输入 ID', exact: true })
+  const requests: { content: string }[] = []
+  page.on('request', request => {
+    if (request.url().endsWith('/nodes/save') && request.method() === 'POST') requests.push(request.postDataJSON())
+  })
+
+  await selectNode()
+  await edit.click()
+  await mode.check()
+  await saveButton.click()
+  await expect(page.getByRole('alert').filter({ hasText: '请填写动态 zone 的节点输入 ID' })).toBeVisible()
+  await source.fill('registered-zone.json')
+  await saveButton.click()
+  await expect(page.getByRole('alert').filter({ hasText: '必须存在于本节点的 input_rule' })).toBeVisible()
+  expect(requests).toEqual([])
+  expect(inventory(root)).toEqual(before)
+  await source.fill('registered-repo')
+  const zone = { type: 'dynamic', input_id: 'registered-repo' }
+  const zoneEditor = form.locator('.scheduler-zone-setting')
+  await zoneEditor.screenshot({ path: info.outputPath('input-driven-zone-editor.png') })
+  const desktop = page.viewportSize()!
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(source).toHaveValue('registered-repo')
+  await source.fill('second-registration')
+  await source.fill('registered-repo')
+  await source.click()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({ path: info.outputPath('input-driven-zone-editor-phone.png') })
+  await page.setViewportSize(desktop)
+  await saveButton.click()
+  await expect(form).toHaveCount(0)
+  expect(requests).toHaveLength(1)
+  expect(JSON.parse(requests[0].content)).toEqual({ ...configured, zone })
+  expect((await readMap(page)).nodes.A).toEqual({ ...configured, zone })
+  expect(JSON.parse(inventory(root)['work.JSON']).nodes.A).toEqual({ ...configured, zone })
+  expect(inventory(root)['untouched.json']).toBe(before['untouched.json'])
+
+  await page.reload()
+  await page.getByTestId('tab-scheduler').click()
+  await page.locator('[data-map-file="work.JSON"]').click()
+  await selectNode()
+  const declaration = page.getByRole('region', { name: 'node 配置概览', exact: true })
+  await expect(declaration).toContainText('dynamic · 来自节点输入 registered-repo')
+  await expect(declaration).not.toContainText('每次执行时指定')
+  await declaration.locator('.scheduler-zone-setting').screenshot({ path: info.outputPath('input-driven-zone-declaration.png') })
+  await edit.click()
+  await expect(mode).toBeChecked()
+  await expect(source).toHaveValue('registered-repo')
+  await source.fill('second-registration')
+  let prompted = false
+  page.once('dialog', async dialog => { prompted = true; await dialog.dismiss() })
+  await form.getByRole('button', { name: '放弃编辑', exact: true }).click()
+  expect(prompted).toBe(true)
+  await expect(source).toHaveValue('second-registration')
   expect(server!.herdrCalls()).toEqual([])
 })
 

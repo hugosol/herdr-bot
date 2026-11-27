@@ -40,16 +40,22 @@ describe('Map public rule response contract', () => {
 })
 
 describe('node zone schema boundary', () => {
-  it.each(['team/work', { type: 'dynamic' }])('loads and confirms the exact zone representation: %j', async zone => {
-    responseWith({ zone, auto_approved: false, auto_close: true })
-    expect((await loadMap('map.json')).nodes.B).toEqual({ ...node, zone, auto_approved: false, auto_close: true })
-    expect((await saveNode('map.json', { ...draft, content: JSON.stringify({ ...node, zone }) })).nodes.B.zone).toEqual(zone)
+  const input_rule = [{ id: 'registered-repo', type: 'node', node_id: 'A', output_id: 'material' }]
+
+  it.each(['team/work', { type: 'dynamic' }, { type: 'dynamic', input_id: 'registered-repo' }])('loads and confirms the exact zone representation: %j', async zone => {
+    responseWith({ zone, input_rule, auto_approved: false, auto_close: true })
+    expect((await loadMap('map.json')).nodes.B).toEqual({ ...node, zone, input_rule, auto_approved: false, auto_close: true })
+    expect((await saveNode('map.json', { ...draft, content: JSON.stringify({ ...node, zone, input_rule }) })).nodes.B.zone).toEqual(zone)
     const request = vi.mocked(fetch).mock.calls[1][1]!
     expect(JSON.parse(JSON.parse(request.body as string).content).zone).toEqual(zone)
   })
 
-  it.each([null, [], {}, { type: 'fixed' }, { type: 'dynamic', default: 'team/work' }, { type: 'dynamic', value: 'team/work' }])('rejects invalid or preset-bearing zone objects: %j', async zone => {
-    responseWith({ zone })
+  it.each([
+    null, [], {}, { type: 'fixed' }, { type: 'dynamic', default: 'team/work' }, { type: 'dynamic', value: 'team/work' },
+    { type: 'dynamic', input_id: null }, { type: 'dynamic', input_id: '' }, { type: 'dynamic', input_id: '   ' },
+    { type: 'dynamic', input_id: 'material' }, { type: 'dynamic', input_id: 'registered-repo', default: 'team/work' },
+  ])('rejects invalid or preset-bearing zone objects: %j', async zone => {
+    responseWith({ zone, input_rule })
     await expect(loadMap('map.json')).rejects.toThrow('响应无效')
     await expect(saveNode('map.json', draft)).rejects.toThrow('响应无效')
   })

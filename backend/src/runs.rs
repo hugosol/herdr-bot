@@ -658,7 +658,7 @@ pub(crate) async fn start_run(state: AppState, map: String, input: crate::runs::
     let id = crate::chats::new_creation_id();
     if let Some(github) = input.github_exploration.take() {
         match startup::write_github_materials(&state, &checked.zone_bindings[&input.zone], &id, github).await {
-            Ok(bindings) => input.file_inputs.extend(bindings),
+            Ok(binding) => input.file_inputs.push(binding),
             Err(message) => return Err(error(FailureKind::Failed, "run-material-write-failed", &message)),
         }
     }
@@ -892,12 +892,24 @@ pub(crate) async fn manager_dispatch(state: AppState, input: DispatchRequest) ->
         let _operation = lock.lock().await;
         let mut run = state.runs.read(&state, &run.id).await?;
         let map = state.runs.read_map(&state, &run).await?;
-        // Validate every dynamic selection before starting any external execution.
+        // Validate manual choices and freeze bindings for eligible input-driven
+        // nodes before launching any member of the batch.
         let mut zones = crate::scheduler::validate_zone_selections(&state, &run, &map, &input.nodes, &input.zone_ids).await?;
-        let mut results = Vec::with_capacity(input.nodes.len());
         let mut required_input_error = None;
-        for id in input.nodes {
-            let mut reasons = blocked(&run, &id, &map);
+        let mut placements = BTreeMap::new();
+        for id in &input.nodes {
+            let Some(node) = map.nodes.get(id).map(|node| &node.0) else { continue; };
+            let Some(input_id) = node.zone.input_id() else { continue; };
+            if placements.contains_key(id.as_str()) || !blocked(&run, id, &map).is_empty()
+                || required_input_error.get_or_insert_with(|| preflight::check_required_inputs(&map, &run.map_input.files)).is_some() {
+                continue;
+            }
+            let placement = startup::resolve_input_placement(&state, &run, node, input_id).await?;
+            placements.insert(id.as_str(), placement);
+        }
+        let mut results = Vec::with_capacity(input.nodes.len());
+        for id in &input.nodes {
+            let mut reasons = blocked(&run, id, &map);
             if reasons.is_empty() {
                 if let Some(message) = required_input_error.get_or_insert_with(|| preflight::check_required_inputs(&map, &run.map_input.files)) {
                     reasons.push(message.clone());
@@ -907,8 +919,12 @@ pub(crate) async fn manager_dispatch(state: AppState, input: DispatchRequest) ->
                 results.push(serde_json::json!({"nodeId":id,"status":"rejected","reasons":reasons}));
                 continue;
             }
-            let target = crate::scheduler::dispatch_target(&state, &run, &map, &id, zones.remove(&id)).await;
-            results.push(startup::node(&state, &mut run, &id, None, target).await);
+            let (zone, inputs) = match placements.remove(id.as_str()) {
+                Some(placement) => (Some(placement.zone), Some(placement.inputs)),
+                None => (zones.remove(id.as_str()), None),
+            };
+            let target = crate::scheduler::dispatch_target(&state, &run, &map, id, zone).await;
+            results.push(startup::node(&state, &mut run, id, None, target, inputs).await);
         }
         let mut response = snapshot(&state, &run, &map, true).await?;
         response["results"] = serde_json::Value::Array(results);

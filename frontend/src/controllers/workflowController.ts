@@ -6,7 +6,7 @@ export type RunPreflightInput = {
   zone: string
   userInput: string
   fileInputs?: RunFileInput[]
-  githubExploration?: { githubUrl: string; parentDirectory: string; explorationDirection: string }
+  githubExploration?: { githubUrl: string; parentDirectory: string }
 }
 export type PreflightIssue = { code: string; target: 'map' | 'node' | 'bot' | 'task' | 'manager' | 'zone' | 'run-input'; message: string; nodeId?: string; botId?: string; taskId?: string; inputId?: string; callChain?: string[] }
 export type RunPreflightResult = { kind: 'valid'; workspaceName: string } | { kind: 'rejected'; message: string; issues: PreflightIssue[] }

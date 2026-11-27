@@ -122,7 +122,7 @@
     "map_node": {
       "type": "object", "additionalProperties": false, "required": ["title", "bot_id", "input", "zone", "blocked_by"],
       "properties": {
-        "title": {"type": "string"}, "bot_id": {"type": "string"}, "input": {"type": "string"}, "zone": {"oneOf": [{"type": "string"}, {"type": "object", "additionalProperties": false, "required": ["type"], "properties": {"type": {"const": "dynamic"}}}]},
+        "title": {"type": "string"}, "bot_id": {"type": "string"}, "input": {"type": "string"}, "zone": {"oneOf": [{"type": "string"}, {"type": "object", "additionalProperties": false, "required": ["type"], "properties": {"type": {"const": "dynamic"}, "input_id": {"type": "string", "pattern": "\\S"}}}]},
         "manager_task_id": {"type": ["string", "null"]}, "blocked_by": {"type": "array", "items": {"type": "string"}},
         "input_rule": {"type": ["array", "null"], "items": {"$ref": "#/$defs/input_rule"}}, "output_rule": {"type": ["array", "null"], "items": {"$ref": "#/$defs/output_rule"}},
         "auto_approved": {"type": "boolean"}, "auto_close": {"type": "boolean"}, "end_node": {"type": "boolean"}
