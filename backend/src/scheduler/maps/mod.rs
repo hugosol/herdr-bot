@@ -27,8 +27,8 @@ pub(crate) struct WorkflowMap {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum InputRule {
     File { id: String, path: String, #[serde(default, skip_serializing_if = "Option::is_none")] zone_id: Option<String> },
-    Node { id: String, node_id: String, output_id: String },
-    Run { id: String, input_id: String },
+    Node { id: String, source_node_ref: String, node_output_ref: String },
+    Run { id: String, run_file_ref: String },
 }
 impl InputRule {
     pub fn id(&self) -> &str { match self { Self::File { id, .. } | Self::Node { id, .. } | Self::Run { id, .. } => id } }
@@ -182,7 +182,7 @@ fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
     let end = ends.next();
     if ends.next().is_some() { return Err(map_error("Map 最多允许一个 end_node。")); }
     if let Some((id, _)) = end {
-        if map.nodes.values().any(|node| node.0.blocked_by.contains(id) || node.0.input_rule.iter().any(|rule| matches!(rule, InputRule::Node { node_id, .. } if node_id == id))) {
+        if map.nodes.values().any(|node| node.0.blocked_by.contains(id) || node.0.input_rule.iter().any(|rule| matches!(rule, InputRule::Node { source_node_ref, .. } if source_node_ref == id))) {
             return Err(map_error("end_node 不允许下游节点或输出引用。"));
         }
     }
@@ -218,15 +218,15 @@ fn validate_map(map: &WorkflowMap) -> Result<(), DirectoryError> {
                 InputRule::File { path, zone_id, .. } if !valid_relative_file(path) || zone_id.as_ref().is_some_and(|id| id.trim().is_empty()) => {
                     return Err(map_error(format!("node {id} 的输入 {name} 必须使用 zone 内的相对文件地址（/ 分隔，不允许绝对路径或 ..）；旧格式不受支持，请显式提供 zone ID 和相对路径。")));
                 }
-                InputRule::Run { input_id, .. } => {
-                    if !public_inputs.contains(input_id.as_str()) {
-                        return Err(map_error(format!("node {id} 的输入 {name} 引用了未声明 Run 输入：{input_id}")));
+                InputRule::Run { run_file_ref, .. } => {
+                    if !public_inputs.contains(run_file_ref.as_str()) {
+                        return Err(map_error(format!("node {id} 的输入 {name} 引用了未声明 Run 输入：{run_file_ref}")));
                     }
                 }
-                InputRule::Node { node_id, output_id, .. } => {
-                    let upstream = map.nodes.get(node_id).ok_or_else(|| map_error(format!("node {id} 的输入 {name} 引用了未知 node：{node_id}")))?;
-                    if !upstream.0.output_rule.iter().any(|output| output.id == *output_id) {
-                        return Err(map_error(format!("node {id} 的输入 {name} 引用了未声明输出：{node_id}/{output_id}")));
+                InputRule::Node { source_node_ref, node_output_ref, .. } => {
+                    let upstream = map.nodes.get(source_node_ref).ok_or_else(|| map_error(format!("node {id} 的输入 {name} 引用了未知 node：{source_node_ref}")))?;
+                    if !upstream.0.output_rule.iter().any(|output| output.id == *node_output_ref) {
+                        return Err(map_error(format!("node {id} 的输入 {name} 引用了未声明输出：{source_node_ref}/{node_output_ref}")));
                     }
                 }
                 _ => {}
@@ -388,7 +388,7 @@ fn deletable_node(map: &WorkflowMap, id: &str) -> Result<(), DirectoryError> {
     }
     let dependents: Vec<_> = map.nodes.iter()
         .filter(|(other_id, node)| other_id.as_str() != id && (node.0.blocked_by.iter().any(|parent| parent == id)
-            || node.0.input_rule.iter().any(|input| matches!(input, InputRule::Node { node_id, .. } if node_id == id))))
+            || node.0.input_rule.iter().any(|input| matches!(input, InputRule::Node { source_node_ref, .. } if source_node_ref == id))))
         .map(|(id, node)| format!("{}（{id}）", node.0.title)).collect();
     if !dependents.is_empty() {
         return Err(edit_error("node-referenced", format!("阻止删除：以下 node 的 blocked_by 或命名输入引用此 node：{}。不会级联删除或清除依赖。", dependents.join("、"))));

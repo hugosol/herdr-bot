@@ -23,8 +23,8 @@ async fn setup(s: &Scenario) {
     request(s, "/api/scheduler/bots/save", json!({"id":"nested","content":json!({"name":"Nested","when":"","description":"","input_rule":"","output_rule":"","map_file":"inner.json"}).to_string(),"revision":null}), 200).await;
     fs::write(s.config.scheduler.map_directory.join("work.json"), json!({"title":"Outer","description":"","nodes":{
         "A":{"title":"Call","bot_id":"nested","manager_task_id":s.manager_task,"input":"CALL","zone":"node","blocked_by":[],"output_rule":[{"id":"result"},{"id":"missing"}]},
-        "consumer":{"title":"Consumer","bot_id":"worker","input":"CONSUME","zone":"node","blocked_by":["A"],"input_rule":[{"id":"material","type":"node","node_id":"A","output_id":"result"}]},
-        "missing":{"title":"No fallback","bot_id":"worker","input":"NO FALLBACK","zone":"node","blocked_by":["A"],"input_rule":[{"id":"material","type":"node","node_id":"A","output_id":"missing"}]}
+        "consumer":{"title":"Consumer","bot_id":"worker","input":"CONSUME","zone":"node","blocked_by":["A"],"input_rule":[{"id":"material","type":"node","source_node_ref":"A","node_output_ref":"result"}]},
+        "missing":{"title":"No fallback","bot_id":"worker","input":"NO FALLBACK","zone":"node","blocked_by":["A"],"input_rule":[{"id":"material","type":"node","source_node_ref":"A","node_output_ref":"missing"}]}
     }}).to_string()).unwrap();
 }
 async fn finish_child(s: &Scenario, session: &str, worker: &str, outputs: Value, public: &std::path::Path) {

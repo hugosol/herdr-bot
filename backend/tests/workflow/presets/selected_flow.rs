@@ -56,8 +56,8 @@ async fn selected_flow_publishes_approved_graph_and_shared_knowledge_without_sta
     }
     let nodes = [
         ("outline", "概要规划与用户确认", "outline-planning", json!([]), json!([]), json!([{"id":"outline"}]), false),
-        ("generate_map", "概要方案转换为业务 Map", "plan-to-map", json!(["outline"]), json!([{"id":"outline","type":"node","node_id":"outline","output_id":"outline"}]), json!([{"id":"map"}]), true),
-        ("optimize_map", "prompt优化者——Map维度", "bot-task-18e65aed740825f8-0", json!(["generate_map"]), json!([{"id":"map","type":"node","node_id":"generate_map","output_id":"map"},{"id":"outline","type":"node","node_id":"outline","output_id":"outline"}]), json!([{"id":"map"},{"id":"handoff"},{"id":"created_map"}]), false),
+        ("generate_map", "概要方案转换为业务 Map", "plan-to-map", json!(["outline"]), json!([{"id":"outline","type":"node","source_node_ref":"outline","node_output_ref":"outline"}]), json!([{"id":"map"}]), true),
+        ("optimize_map", "prompt优化者——Map维度", "bot-task-18e65aed740825f8-0", json!(["generate_map"]), json!([{"id":"map","type":"node","source_node_ref":"generate_map","node_output_ref":"map"},{"id":"outline","type":"node","source_node_ref":"outline","node_output_ref":"outline"}]), json!([{"id":"map"},{"id":"handoff"},{"id":"created_map"}]), false),
     ];
     assert_eq!(map["nodes"].as_object().unwrap().len(), 3);
     for (id, title, bot, deps, inputs, outputs, approved) in nodes {

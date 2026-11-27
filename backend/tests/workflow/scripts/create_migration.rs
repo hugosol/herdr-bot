@@ -157,6 +157,24 @@ async fn published_producers_do_not_require_v1_credentials_or_report_approval() 
     println!("P17/P31/P38 published producer and report instructions read through HTTP");
 }
 
+fn rename_archived_source_refs(map: &mut Value) {
+    for node in map["nodes"].as_object_mut().unwrap().values_mut() {
+        let Some(rules) = node.get_mut("input_rule").and_then(Value::as_array_mut) else { continue; };
+        for rule in rules {
+            let fields: &[(&str, &str)] = match rule["type"].as_str() {
+                Some("run") => &[("input_id", "run_file_ref")],
+                Some("node") => &[("node_id", "source_node_ref"), ("output_id", "node_output_ref")],
+                _ => continue,
+            };
+            let rule = rule.as_object_mut().unwrap();
+            for &(old, new) in fields {
+                let value = rule.remove(old).unwrap();
+                rule.insert(new.into(), value);
+            }
+        }
+    }
+}
+
 async fn migrated_workflow(fault: Option<&str>) {
     let s = Scenario::new().await;
     fs::write(&s.config.prompts_file, format!("herdr-bot-path = {}\nherdr-bot-api-url = {}\n", json!(root()), json!(format!("http://{}", s.server.addr())))).unwrap();
@@ -205,6 +223,8 @@ async fn migrated_workflow(fault: Option<&str>) {
         // business interfaces, not obsolete report-policy-specific assertions.
         // The literal responsibility test above owns every current mode.
         if path.starts_with("meta-data/workflow-maps/") {
+            // Update the comparison expectation without rewriting the historical archive.
+            rename_archived_source_refs(&mut expected);
             for map in [&mut expected, &mut current] {
                 for node in map["nodes"].as_object_mut().unwrap().values_mut() {
                     for field in ["report_policy", "auto_approved"] { node.as_object_mut().unwrap().remove(field); }
@@ -272,7 +292,8 @@ async fn migrated_workflow(fault: Option<&str>) {
     // The public definition test independently verifies every current writer,
     // optimizer and save binding. This historical check protects the unchanged
     // entry and terminal material interface across the field cutover.
-    let old_wrapper: Value = serde_json::from_str(before["meta-data/workflow-maps/create-bot-wrapper.json"].as_str().unwrap()).unwrap();
+    let mut old_wrapper: Value = serde_json::from_str(before["meta-data/workflow-maps/create-bot-wrapper.json"].as_str().unwrap()).unwrap();
+    rename_archived_source_refs(&mut old_wrapper);
     let new_wrapper = source("meta-data/workflow-maps/create-bot-wrapper.json");
     for (id, fields) in [("create_blank", &["bot_id", "input_rule", "output_rule", "blocked_by"][..]), ("save_bot", &["output_rule"][..])] {
         for field in fields { assert_eq!(new_wrapper["nodes"][id][field], old_wrapper["nodes"][id][field]); }

@@ -31,7 +31,7 @@ async fn edited_source_map_cannot_change_prepare_dispatch_retry_or_finish() {
         "map_output_rule":{"description":"Hand the old Chat to the caller","files":[{"id":"old-result"}]},
         "nodes":{
             "A":{"title":"Original worker","bot_id":"worker","input":"ORIGINAL-WORK","zone":"manager","blocked_by":[],
-                "input_rule":[{"id":"source","type":"run","input_id":"old-brief"}]},
+                "input_rule":[{"id":"source","type":"run","run_file_ref":"old-brief"}]},
             "B":{"title":"Original handoff","bot_id":"worker","input":"ORIGINAL-HANDOFF","zone":"manager","blocked_by":["A"],"end_node":true}
         }});
     let new = json!({"title":"Replacement route","description":"Replacement graph",
@@ -39,7 +39,7 @@ async fn edited_source_map_cannot_change_prepare_dispatch_retry_or_finish() {
         "map_output_rule":{"files":[{"id":"new-result"}]},
         "nodes":{
             "A":{"title":"Replacement worker","bot_id":"worker","input":"REPLACEMENT-WORK","zone":"manager","blocked_by":["C"],
-                "input_rule":[{"id":"source","type":"run","input_id":"new-brief"}]},
+                "input_rule":[{"id":"source","type":"run","run_file_ref":"new-brief"}]},
             "C":{"title":"New prerequisite","bot_id":"worker","input":"NEW-PREREQUISITE","zone":"manager","blocked_by":[]}
         }});
     let old_bytes = format!("{old:#}\n");

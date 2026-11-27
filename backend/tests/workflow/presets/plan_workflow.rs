@@ -65,7 +65,7 @@ async fn mixed_target_planning_shape_saves_and_preflights_without_running_busine
     assert_ne!(child_declared, child_before);
     let nodes = [
         ("review", json!({"title":"Review orders","bot_id":"review-process","manager_task_id":s.manager_task,"input":"Review the named source in EUR; deliver only the review summary.","zone":"node","blocked_by":[],"input_rule":[{"id":"source","type":"file","zone_id":"node","path":"source.txt"}],"output_rule":[{"id":"review_result"}],"auto_approved":false,"auto_close":false})),
-        ("check", json!({"title":"Check summary","bot_id":"worker","input":"Check the named summary against the authorized EUR scope.","zone":"node","blocked_by":["review"],"input_rule":[{"id":"summary","type":"node","node_id":"review","output_id":"review_result"}],"output_rule":[{"id":"checked"}],"auto_approved":true,"auto_close":false})),
+        ("check", json!({"title":"Check summary","bot_id":"worker","input":"Check the named summary against the authorized EUR scope.","zone":"node","blocked_by":["review"],"input_rule":[{"id":"summary","type":"node","source_node_ref":"review","node_output_ref":"review_result"}],"output_rule":[{"id":"checked"}],"auto_approved":true,"auto_close":false})),
     ];
     for (id, node) in &nodes {
         let draft = get_over_tcp(s.server.addr(), "/api/scheduler/maps/planned.json/nodes/new").await;
@@ -84,7 +84,7 @@ async fn mixed_target_planning_shape_saves_and_preflights_without_running_busine
         assert_eq!(read["nodes"][id], expected);
     }
     assert_eq!(read["nodes"]["review"]["input_rule"][0]["id"], "source");
-    assert_eq!(read["nodes"]["check"]["input_rule"][0]["output_id"], "review_result");
+    assert_eq!(read["nodes"]["check"]["input_rule"][0]["node_output_ref"], "review_result");
     let preflight = || async { post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/planned.json/preflight", &json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":"Root-only business request"}).to_string()).await };
     let valid = preflight().await;
     assert_eq!(valid.status, 200, "{}", valid.body);
@@ -120,8 +120,8 @@ async fn planning_definition_round_trips_named_handoff_without_starting_work() {
     let public_output = json!({"description":"","files":[{"id":"created_map"}]});
     let definition = json!({"title":"Planning handoff fixture","description":"","map_input_rule":{"description":"Describe the change","files":[]},"map_output_rule":public_output,"nodes":{
         "outline":{"title":"Outline","bot_id":"worker","input":"Draft an outline","zone":"node","blocked_by":[],"output_rule":[{"id":"outline"}]},
-        "translate":{"title":"Translate","bot_id":"worker","input":"Translate the approved outline","zone":"node","blocked_by":["outline"],"input_rule":[{"type":"node","id":"outline","node_id":"outline","output_id":"outline"}],"output_rule":[{"id":"map"}]},
-        "check":{"title":"Check","bot_id":"worker","input":"Check the approved outline and Map","zone":"node","blocked_by":["translate"],"input_rule":[{"type":"node","id":"outline","node_id":"outline","output_id":"outline"},{"type":"node","id":"map","node_id":"translate","output_id":"map"}],"output_rule":[{"id":"map"},{"id":"handoff"},{"id":"created_map"}]}
+        "translate":{"title":"Translate","bot_id":"worker","input":"Translate the approved outline","zone":"node","blocked_by":["outline"],"input_rule":[{"type":"node","id":"outline","source_node_ref":"outline","node_output_ref":"outline"}],"output_rule":[{"id":"map"}]},
+        "check":{"title":"Check","bot_id":"worker","input":"Check the approved outline and Map","zone":"node","blocked_by":["translate"],"input_rule":[{"type":"node","id":"outline","source_node_ref":"outline","node_output_ref":"outline"},{"type":"node","id":"map","source_node_ref":"translate","node_output_ref":"map"}],"output_rule":[{"id":"map"},{"id":"handoff"},{"id":"created_map"}]}
     }});
     fs::write(s.config.scheduler.map_directory.join("plan_workflow.json"), definition.to_string()).unwrap();
     let endpoint = "/api/scheduler/maps/plan_workflow.json";

@@ -15,8 +15,8 @@
         {
           "type": "node",
           "id": "request",
-          "node_id": "create_task",
-          "output_id": "request"
+          "source_node_ref": "create_task",
+          "node_output_ref": "request"
         }
       ],
       "output_rule": [

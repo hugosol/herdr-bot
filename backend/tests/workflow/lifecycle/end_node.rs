@@ -127,7 +127,7 @@ async fn github_launch_preserves_clone_request_and_delivers_run_input_to_end_cha
     assert_eq!(end["end_node"], true);
     assert_eq!(end["zone"], json!({"type":"dynamic","input_id":"registered_zone"}));
     assert_eq!(end["input"], "");
-    assert_eq!(end["input_rule"], json!([{"type":"node","id":"registered_zone","node_id":"W2","output_id":"registered_zone"}]));
+    assert_eq!(end["input_rule"], json!([{"type":"node","id":"registered_zone","source_node_ref":"W2","node_output_ref":"registered_zone"}]));
     assert_eq!(end["output_rule"], json!([]));
     for (node, file, id, target, value) in [
         ("W1", "bot-1795076297417918500-2236-0.json", "github-clone", "script", "github-clone.ts"),

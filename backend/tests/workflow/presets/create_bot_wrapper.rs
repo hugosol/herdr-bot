@@ -19,8 +19,8 @@ async fn create_bot_wrapper_publishes_complete_direct_material_interface() {
     assert_eq!(definition["map_output_rule"]["files"], json!([{"id":"saved"},{"id":"handoff"}]));
     assert_eq!(definition["nodes"].as_object().unwrap().len(), 10);
     assert_eq!(definition["nodes"]["create_blank"]["input_rule"], json!([
-        {"id":"request","type":"run","input_id":"request"},
-        {"id":"materials","type":"run","input_id":"materials"}
+        {"id":"request","type":"run","run_file_ref":"request"},
+        {"id":"materials","type":"run","run_file_ref":"materials"}
     ]));
     assert_eq!(definition["nodes"]["create_blank"]["output_rule"], json!([{"id":"baseline"},{"id":"handoff"}]));
     let bindings = [("create_blank","create-blank-bot"),("write_when","write-bot-when"),("write_plan_guide","write-bot-plan-guide"),("write_node_guide","write-bot-node-guide"),("write_output_rule","write-bot-output-rule"),("optimize_when","optimize-prompt"),("optimize_plan_guide","optimize-prompt"),("optimize_node_guide","optimize-prompt"),("optimize_output_rule","optimize-prompt"),("save_bot","save-created-bot-guides")];
@@ -28,19 +28,19 @@ async fn create_bot_wrapper_publishes_complete_direct_material_interface() {
     for (_field, suffix) in [("when","when"),("description","plan_guide"),("input_rule","node_guide"),("output_rule","output_rule")] {
         let writer = format!("write_{suffix}");
         let optimizer = format!("optimize_{suffix}");
-        let baseline = json!({"id":"baseline","type":"node","node_id":"create_blank","output_id":"baseline"});
+        let baseline = json!({"id":"baseline","type":"node","source_node_ref":"create_blank","node_output_ref":"baseline"});
         assert_eq!(definition["nodes"][&writer]["input_rule"], json!([baseline.clone()]));
         assert_eq!(definition["nodes"][&writer]["blocked_by"], json!(["create_blank"]));
         assert_eq!(definition["nodes"][&writer]["auto_approved"], false);
         assert_eq!(definition["nodes"][&optimizer]["input_rule"], json!([baseline,
-            {"id":"text","type":"node","node_id":writer,"output_id":"text"},
-            {"id":"handoff","type":"node","node_id":writer,"output_id":"handoff"}]));
+            {"id":"text","type":"node","source_node_ref":writer,"node_output_ref":"text"},
+            {"id":"handoff","type":"node","source_node_ref":writer,"node_output_ref":"handoff"}]));
         assert_eq!(definition["nodes"][&optimizer]["blocked_by"], json!([writer]));
         for id in [&writer,&optimizer] { assert_eq!(definition["nodes"][id]["output_rule"], json!([{"id":"text"},{"id":"handoff"}])); }
     }
-    let mut final_inputs = vec![json!({"id":"baseline","type":"node","node_id":"create_blank","output_id":"baseline"})];
+    let mut final_inputs = vec![json!({"id":"baseline","type":"node","source_node_ref":"create_blank","node_output_ref":"baseline"})];
     for (field, suffix) in [("when","when"),("description","plan_guide"),("input_rule","node_guide"),("output_rule","output_rule")] {
-        final_inputs.push(json!({"id":format!("{field}_text"),"type":"node","node_id":format!("optimize_{suffix}"),"output_id":"text"}));
+        final_inputs.push(json!({"id":format!("{field}_text"),"type":"node","source_node_ref":format!("optimize_{suffix}"),"node_output_ref":"text"}));
     }
     assert_eq!(definition["nodes"]["save_bot"]["input_rule"], json!(final_inputs));
     assert_eq!(definition["nodes"]["save_bot"]["output_rule"], json!([{"id":"saved"},{"id":"handoff"}]));

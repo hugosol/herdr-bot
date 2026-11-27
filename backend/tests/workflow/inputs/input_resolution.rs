@@ -64,7 +64,7 @@ async fn saved_named_inputs_resolve_per_run_and_accumulate_report_deltas() {
     output_contract(&s, "A", &["A", "B"]);
     output_contract(&s, "B", &["A", "B"]);
     let business = materials(&["old-a.csv", "old-b.csv", "run-one-a1.csv", "run-one-b1.csv", "run-two-a.csv", "run-two-b.csv", "run-one-a2.csv", "late-old-a.csv", "late-old-b.csv", "wrong-node-a.csv", "wrong-node-b.csv"]);
-    save_node(&s, "C", json!([{"id":"primary","type":"node","node_id":"A","output_id":"A"}, {"id":"retained","type":"node","node_id":"A","output_id":"B"}]), json!(["A","B"])).await;
+    save_node(&s, "C", json!([{"id":"primary","type":"node","source_node_ref":"A","node_output_ref":"A"}, {"id":"retained","type":"node","source_node_ref":"A","node_output_ref":"B"}]), json!(["A","B"])).await;
     let first = s.start("resolve-manager-one").await;
     identity(&s, "resolve-source-one-old");
     let old = s.dispatch("resolve-manager-one", &["A"]).await["snapshot"]["nodes"]["A"]["execution"].clone();
@@ -100,8 +100,8 @@ async fn saved_named_inputs_resolve_per_run_and_accumulate_report_deltas() {
         assert_eq!(dispatched["results"][0]["status"], "running", "{dispatched}");
         let execution = &dispatched["snapshot"]["nodes"]["C"]["execution"];
         assert_eq!(execution["inputRule"], json!([
-            {"id":"primary","type":"node","node_id":"A","output_id":"A"},
-            {"id":"retained","type":"node","node_id":"A","output_id":"B"}
+            {"id":"primary","type":"node","source_node_ref":"A","node_output_ref":"A"},
+            {"id":"retained","type":"node","source_node_ref":"A","node_output_ref":"B"}
         ]));
         let expected_inputs = if manager == "resolve-manager-one" {
             json!([{"id":"primary","path":business.path().join("run-one-a2.csv")},{"id":"retained","path":business.path().join("run-one-b1.csv")}])
@@ -136,7 +136,7 @@ async fn retry_never_falls_back_and_missing_outputs_fail_before_host_start() {
     output_contract(&s, "A", &["A", "B"]);
     output_contract(&s, "B", &[]);
     let business = materials(&["old-a.csv", "old-b.csv", "new-a.csv", "late-old-a.csv", "late-old-b.csv"]);
-    let inputs = json!([{"id":"primary","type":"node","node_id":"A","output_id":"A"}, {"id":"retained","type":"node","node_id":"A","output_id":"B"}]);
+    let inputs = json!([{"id":"primary","type":"node","source_node_ref":"A","node_output_ref":"A"}, {"id":"retained","type":"node","source_node_ref":"A","node_output_ref":"B"}]);
     save_node(&s, "B", inputs.clone(), json!([])).await;
     save_node(&s, "C", inputs, json!(["A","B"])).await;
     let run = s.start("retry-input-manager").await;
@@ -194,7 +194,7 @@ async fn downstream_resolves_saved_outputs_while_notification_is_pending_and_the
     let s = Scenario::new().await;
     output_contract(&s, "A", &["result"]);
     let business = materials(&["saved-before-failure.csv"]);
-    save_node(&s, "B", json!([{"id":"available","type":"node","node_id":"A","output_id":"result"}]), json!(["A"])).await;
+    save_node(&s, "B", json!([{"id":"available","type":"node","source_node_ref":"A","node_output_ref":"result"}]), json!(["A"])).await;
     let run = s.start("notify-input-manager").await;
     identity(&s, "notify-input-source");
     s.dispatch("notify-input-manager", &["A"]).await;
@@ -256,8 +256,8 @@ async fn shared_consumers_and_business_summary_receive_original_external_address
     let bytes = b"FILE-BODY-SENSITIVE-6382\x00\xff not structured content";
     fs::write(&shared, bytes).unwrap();
     assert!(!shared.starts_with(s.data.path()));
-    save_node(&s, "B", json!([{"id":"shared","type":"node","node_id":"A","output_id":"shared"}]), json!(["A"])).await;
-    save_node(&s, "C", json!([{"id":"shared","type":"node","node_id":"A","output_id":"shared"}, {"id":"summary","type":"node","node_id":"B","output_id":"summary"}]), json!(["A","B"])).await;
+    save_node(&s, "B", json!([{"id":"shared","type":"node","source_node_ref":"A","node_output_ref":"shared"}]), json!(["A"])).await;
+    save_node(&s, "C", json!([{"id":"shared","type":"node","source_node_ref":"A","node_output_ref":"shared"}, {"id":"summary","type":"node","source_node_ref":"B","node_output_ref":"summary"}]), json!(["A","B"])).await;
     let run = s.start("shared-input-manager").await;
     let native_file = s.data.path().join("source-native.jsonl");
     fs::write(&native_file, format!("{}\n{}\n", json!({"type":"session","id":"shared-input-source","cwd":s.data.path().join("node-zone")}), json!({"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"UPSTREAM-CHAT-SENSITIVE-6183"}]}}))).unwrap();

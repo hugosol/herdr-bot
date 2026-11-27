@@ -62,7 +62,7 @@ impl Fixture {
         fs::write(fixture.config.scheduler.map_directory.join("isolation.json"), json!({"title":"Report isolation","description":"","nodes":{
             "create":{"title":"Create","bot_id":"creator","input":"No natural language arguments","input_rule":[{"id":"request","type":"file","zone_id":"isolation","path":"request.json"}],"output_rule":[{"id":"baseline"},{"id":"handoff"},{"id":"legacy"}],"zone":"isolation","blocked_by":[]},
             "decoy":{"title":"Other node","bot_id":"worker","input":"Other scope","output_rule":[{"id":"legacy"}],"zone":"isolation","blocked_by":[]},
-            "consumer":{"title":"Actual current JSON","bot_id":"worker","input":"Read the named JSON files","input_rule":[{"id":"baseline","type":"node","node_id":"create","output_id":"baseline"},{"id":"handoff","type":"node","node_id":"create","output_id":"handoff"}],"zone":"isolation","blocked_by":["create"]}
+            "consumer":{"title":"Actual current JSON","bot_id":"worker","input":"Read the named JSON files","input_rule":[{"id":"baseline","type":"node","source_node_ref":"create","node_output_ref":"baseline"},{"id":"handoff","type":"node","source_node_ref":"create","node_output_ref":"handoff"}],"zone":"isolation","blocked_by":["create"]}
         }}).to_string()).unwrap();
         let read = get_over_tcp(fixture.server.addr(), "/api/scheduler/maps/isolation.json").await;
         assert_eq!(read.status, 200, "{}", read.body);

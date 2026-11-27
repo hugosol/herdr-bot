@@ -18,7 +18,7 @@ async fn save(s: &Scenario, draft: &Value, inputs: Value) -> common::HttpRespons
 #[tokio::test]
 async fn named_inputs_round_trip_without_dependencies_or_implicit_launch() {
     let s = Scenario::new().await;
-    let inputs = json!([{"id":"manager_file","type":"file","path":"handoff/not-created.csv"}, {"id":"node_file","type":"file","path":"external/result.txt","zone_id":"node"}, {"id":"unregistered_file","type":"file","path":"brief.md","zone_id":"unregistered"}, {"id":"summary","type":"node","node_id":"B","output_id":"review"}]);
+    let inputs = json!([{"id":"manager_file","type":"file","path":"handoff/not-created.csv"}, {"id":"node_file","type":"file","path":"external/result.txt","zone_id":"node"}, {"id":"unregistered_file","type":"file","path":"brief.md","zone_id":"unregistered"}, {"id":"summary","type":"node","source_node_ref":"B","node_output_ref":"review"}]);
     let response = save(&s, &draft(&s).await, inputs.clone()).await;
     assert_eq!(response.status, 200, "{}", response.body);
     let read = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json").await;
@@ -39,7 +39,7 @@ async fn invalid_named_inputs_preserve_original_map() {
     let original = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json").await.body;
     let draft = draft(&s).await;
     for inputs in [
-        json!([{"id":"brief","type":"node","node_id":"typo","output_id":"review"}]),
+        json!([{"id":"brief","type":"node","source_node_ref":"typo","node_output_ref":"review"}]),
         json!([{"id":"brief","type":"file","path":"../brief.md"}]),
         json!([{"id":"brief","type":"file","path":"C:/absolute/brief.md"}]),
         json!([{"id":"brief","type":"file","path":"/absolute/brief.md"}]),
@@ -49,18 +49,18 @@ async fn invalid_named_inputs_preserve_original_map() {
         json!([{"id":"brief","type":"file","path":"\\brief.md"}]),
         json!({"brief":{"source":"file","path":"C:\\brief\u{0}.md"}}),
         json!([{"id":"brief","type":"file","path":12}]),
-        json!([{"id":"brief","type":"node","node_id":false,"output_id":"review"}]),
-        json!([{"id":"brief","type":"node","node_id":"B","output_id":[]}]),
-        json!([{"id":"brief","type":"file","path":"C:\\brief.md","node_id":"B","output_id":"review"}]),
+        json!([{"id":"brief","type":"node","source_node_ref":false,"node_output_ref":"review"}]),
+        json!([{"id":"brief","type":"node","source_node_ref":"B","node_output_ref":[]}]),
+        json!([{"id":"brief","type":"file","path":"brief.md","source_node_ref":"B","node_output_ref":"review"}]),
         json!({"brief":{"path":"C:\\brief.md"}}),
         json!([{"id":"brief","type":"FILE","path":"C:\\brief.md"}]),
         json!([{"id":"brief","type":false,"path":"C:\\brief.md"}]),
-        json!([{"id":"brief","type":"node","node_id":"B"}]),
+        json!([{"id":"brief","type":"node","source_node_ref":"B"}]),
         json!({"brief":["file","C:\\brief.md"]}),
         json!({"brief":null}), Value::Null,
         json!([{"id":"","type":"file","path":"brief.md"}]),
         json!([{"id":"brief","type":"file","path":"one"},{"id":"brief","type":"file","path":"two"}]),
-        json!([{"id":"brief","type":"node","node_id":"B","output_id":"undeclared"}]),
+        json!([{"id":"brief","type":"node","source_node_ref":"B","node_output_ref":"undeclared"}]),
     ] {
         let response = save(&s, &draft, inputs.clone()).await;
         assert_eq!(response.status, 500, "candidate={inputs} response={}", response.body);
@@ -101,7 +101,7 @@ async fn omitted_rules_default_to_empty_arrays_and_dispatch() {
 #[tokio::test]
 async fn output_rule_ids_and_referenced_declarations_are_validated_atomically() {
     let s = Scenario::new().await;
-    let saved = save(&s, &draft(&s).await, json!([{"id":"brief","type":"node","node_id":"B","output_id":"review"}])).await;
+    let saved = save(&s, &draft(&s).await, json!([{"id":"brief","type":"node","source_node_ref":"B","node_output_ref":"review"}])).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let response = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/edit", &json!({"id":"B"}).to_string()).await;
     assert_eq!(response.status, 200, "{}", response.body);
@@ -129,7 +129,7 @@ async fn output_rule_ids_and_referenced_declarations_are_validated_atomically() 
 #[tokio::test]
 async fn deleting_a_named_input_source_is_rejected_without_cascading() {
     let s = Scenario::new().await;
-    let saved = save(&s, &draft(&s).await, json!([{"id":"brief","type":"node","node_id":"C","output_id":"summary"}])).await;
+    let saved = save(&s, &draft(&s).await, json!([{"id":"brief","type":"node","source_node_ref":"C","node_output_ref":"summary"}])).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     let current = draft(&s).await;
     let checked = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/check-delete", &json!({"id":"C"}).to_string()).await;

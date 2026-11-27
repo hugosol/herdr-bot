@@ -113,8 +113,8 @@
     },
     "input_rule": {
       "oneOf": [
-        {"type": "object", "additionalProperties": false, "required": ["type", "id", "input_id"], "properties": {"type": {"const": "run"}, "id": {"$ref": "#/$defs/nonempty"}, "input_id": {"$ref": "#/$defs/nonempty"}}},
-        {"type": "object", "additionalProperties": false, "required": ["type", "id", "node_id", "output_id"], "properties": {"type": {"const": "node"}, "id": {"$ref": "#/$defs/nonempty"}, "node_id": {"$ref": "#/$defs/nonempty"}, "output_id": {"$ref": "#/$defs/nonempty"}}},
+        {"type": "object", "additionalProperties": false, "required": ["type", "id", "run_file_ref"], "properties": {"type": {"const": "run"}, "id": {"$ref": "#/$defs/nonempty"}, "run_file_ref": {"$ref": "#/$defs/nonempty"}}},
+        {"type": "object", "additionalProperties": false, "required": ["type", "id", "source_node_ref", "node_output_ref"], "properties": {"type": {"const": "node"}, "id": {"$ref": "#/$defs/nonempty"}, "source_node_ref": {"$ref": "#/$defs/nonempty"}, "node_output_ref": {"$ref": "#/$defs/nonempty"}}},
         {"type": "object", "additionalProperties": false, "required": ["type", "id", "path"], "properties": {"type": {"const": "file"}, "id": {"$ref": "#/$defs/nonempty"}, "zone_id": {"type": ["string", "null"]}, "path": {"$ref": "#/$defs/nonempty"}}}
       ]
     },

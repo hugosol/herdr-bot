@@ -42,8 +42,8 @@ function isInputRule(value: unknown): value is InputRule[] {
   return Array.isArray(value) && new Set(value.map(rule => rule?.id)).size === value.length && value.every(rule =>
     typeof rule === 'object' && rule !== null && !Array.isArray(rule) && typeof rule.id === 'string' &&
     (rule.type === 'file' ? typeof rule.path === 'string' && (!('zone_id' in rule) || typeof rule.zone_id === 'string') && Object.keys(rule).every(key => ['id', 'type', 'path', 'zone_id'].includes(key))
-      : rule.type === 'run' ? typeof rule.input_id === 'string' && Object.keys(rule).every(key => ['id', 'type', 'input_id'].includes(key))
-      : rule.type === 'node' && typeof rule.node_id === 'string' && typeof rule.output_id === 'string' && Object.keys(rule).every(key => ['id', 'type', 'node_id', 'output_id'].includes(key))))
+      : rule.type === 'run' ? typeof rule.run_file_ref === 'string' && Object.keys(rule).every(key => ['id', 'type', 'run_file_ref'].includes(key))
+      : rule.type === 'node' && typeof rule.source_node_ref === 'string' && typeof rule.node_output_ref === 'string' && Object.keys(rule).every(key => ['id', 'type', 'source_node_ref', 'node_output_ref'].includes(key))))
 }
 
 function isOutputRule(value: unknown): value is OutputRule[] {
@@ -102,7 +102,7 @@ export async function deleteMap(file: string): Promise<MapCatalog> {
   return await writeDefinition(`/api/scheduler/maps/${encodeURIComponent(file)}/delete`, {}, isCatalog, 'Map 删除') as MapCatalog
 }
 
-export type InputRule = { id: string; type: 'file'; path: string; zone_id?: string } | { id: string; type: 'node'; node_id: string; output_id: string } | { id: string; type: 'run'; input_id: string }
+export type InputRule = { id: string; type: 'file'; path: string; zone_id?: string } | { id: string; type: 'node'; source_node_ref: string; node_output_ref: string } | { id: string; type: 'run'; run_file_ref: string }
 export type OutputRule = { id: string }
 
 export type NodeZone = string | { type: 'dynamic'; input_id?: never } | { type: 'dynamic'; input_id: string }

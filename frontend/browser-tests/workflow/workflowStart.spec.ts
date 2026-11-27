@@ -105,7 +105,7 @@ test('GitHub launch writes the clone request and preserves 本次要求 as Run b
   definition.nodes.A.output_rule = [{ id: 'registered_zone' }]
   definition.nodes.B = {
     title: '探索仓库', bot_id: 'worker', input: '', blocked_by: ['A'],
-    input_rule: [{ id: 'registered-repo', type: 'node', node_id: 'A', output_id: 'registered_zone' }],
+    input_rule: [{ id: 'registered-repo', type: 'node', source_node_ref: 'A', node_output_ref: 'registered_zone' }],
     zone: { type: 'dynamic', input_id: 'registered-repo' },
   }
   fs.writeFileSync(path.join(mapDirectory, 'github-repository-exploration.json'), JSON.stringify(definition))

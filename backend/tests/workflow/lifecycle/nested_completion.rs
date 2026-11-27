@@ -27,7 +27,7 @@ async fn setup(s: &Scenario) {
     fs::write(s.config.scheduler.map_directory.join("work.json"), json!({"title":"Outer","description":"","nodes":{}}).to_string()).unwrap();
     for (id, content) in [
         ("call", json!({"title":"Call","bot_id":"nested","manager_task_id":s.manager_task,"input":"CALL","zone":"node","blocked_by":[],"input_rule":[],"output_rule":[{"id":"result"},{"id":"missing"}],"auto_close":true})),
-        ("consumer", json!({"title":"Consumer","bot_id":"worker","input":"CONSUME","zone":"node","blocked_by":["call"],"input_rule":[{"type":"node","id":"material","node_id":"call","output_id":"result"}],"output_rule":[]})),
+        ("consumer", json!({"title":"Consumer","bot_id":"worker","input":"CONSUME","zone":"node","blocked_by":["call"],"input_rule":[{"type":"node","id":"material","source_node_ref":"call","node_output_ref":"result"}],"output_rule":[]})),
     ] {
         let response = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/new").await;
         assert_eq!(response.status, 200, "{}", response.body);
@@ -197,7 +197,7 @@ async fn nested_outputs_use_frozen_parent_rules_and_feed_both_downstream_kinds()
     let inner_path = s.config.scheduler.map_directory.join("inner.json");
     let mut inner: Value = serde_json::from_slice(&fs::read(&inner_path).unwrap()).unwrap();
     inner["map_input_rule"] = json!({"files":[{"id":"brief","required":true}]});
-    inner["nodes"]["inside"]["input_rule"] = json!([{"id":"working-input","type":"run","input_id":"brief"}]);
+    inner["nodes"]["inside"]["input_rule"] = json!([{"id":"working-input","type":"run","run_file_ref":"brief"}]);
     inner["nodes"]["inside"]["output_rule"] = json!([{"id":"internal"}]);
     fs::write(inner_path, inner.to_string()).unwrap();
     let supplied = s.data.path().join("node-zone").join("caller-brief.txt");
@@ -208,8 +208,8 @@ async fn nested_outputs_use_frozen_parent_rules_and_feed_both_downstream_kinds()
     request(&s, "/api/scheduler/maps/work.json/nodes/save", json!({"id":"call","content":content.to_string(),"revision":draft["revision"],"create":false}), 200).await;
     fs::write(s.config.scheduler.map_directory.join("sink.json"), json!({"title":"Sink","description":"","map_input_rule":{"files":[{"id":"renamed","required":true}]},"nodes":{"sink-work":{"title":"Sink work","bot_id":"worker","input":"Sink","zone":"node","blocked_by":[]}}}).to_string()).unwrap();
     request(&s, "/api/scheduler/bots/save", json!({"id":"sink","content":json!({"name":"Sink","when":"","description":"","input_rule":"","output_rule":"","map_file":"sink.json"}).to_string(),"revision":null}), 200).await;
-    add_node(&s, "map-consumer", json!({"title":"Map consumer","bot_id":"sink","manager_task_id":s.manager_task,"input":"MAP-CONSUME","zone":"node","blocked_by":["call"],"input_rule":[{"type":"node","id":"renamed","node_id":"call","output_id":"result"}]})).await;
-    add_node(&s, "retained-consumer", json!({"title":"Retained consumer","bot_id":"worker","input":"Retained","zone":"node","blocked_by":["call"],"input_rule":[{"type":"node","id":"retained","node_id":"call","output_id":"missing"}]})).await;
+    add_node(&s, "map-consumer", json!({"title":"Map consumer","bot_id":"sink","manager_task_id":s.manager_task,"input":"MAP-CONSUME","zone":"node","blocked_by":["call"],"input_rule":[{"type":"node","id":"renamed","source_node_ref":"call","node_output_ref":"result"}]})).await;
+    add_node(&s, "retained-consumer", json!({"title":"Retained consumer","bot_id":"worker","input":"Retained","zone":"node","blocked_by":["call"],"input_rule":[{"type":"node","id":"retained","source_node_ref":"call","node_output_ref":"missing"}]})).await;
     let root = s.start("output-root").await;
     native(&s, "output-child");
     let launched = s.dispatch("output-root", &["call"]).await;
@@ -296,7 +296,7 @@ async fn unfinished_replacement_cannot_reuse_previous_public_delivery() {
     let mut inner: Value = serde_json::from_slice(&fs::read(&inner_path).unwrap()).unwrap();
     inner["map_input_rule"]["files"] = json!([{"id":"material","required":false}]);
     fs::write(inner_path, inner.to_string()).unwrap();
-    add_node(&s, "missing-map", json!({"title":"Missing Map consumer","bot_id":"nested","manager_task_id":s.manager_task,"input":"Consume","zone":"node","blocked_by":["call"],"input_rule":[{"type":"node","id":"material","node_id":"call","output_id":"result"}]})).await;
+    add_node(&s, "missing-map", json!({"title":"Missing Map consumer","bot_id":"nested","manager_task_id":s.manager_task,"input":"Consume","zone":"node","blocked_by":["call"],"input_rule":[{"type":"node","id":"material","source_node_ref":"call","node_output_ref":"result"}]})).await;
     let root = s.start("missing-root").await;
     native(&s, "missing-old-child");
     let first = s.dispatch("missing-root", &["call"]).await;

@@ -30,7 +30,7 @@ async fn start_inputs(s: &Scenario, manager: &str, files: Value) -> Value {
 async fn run_inputs_are_local_renamed_and_optional_absence_stays_absent() {
     let s = Scenario::new().await;
     declare_inputs(&s, json!([{"id":"brief","required":true},{"id":"extra","required":false}])).await;
-    save_node(&s, "A", json!([{"id":"local","type":"run","input_id":"brief"},{"id":"optional","type":"run","input_id":"extra"}]), json!([])).await;
+    save_node(&s, "A", json!([{"id":"local","type":"run","run_file_ref":"brief"},{"id":"optional","type":"run","run_file_ref":"extra"}]), json!([])).await;
     let first = s.data.path().join("one.txt");
     let second = s.data.path().join("two.txt");
     fs::write(&first, b"ONE").unwrap();
@@ -118,8 +118,8 @@ async fn dispatch_rechecks_direct_report_and_run_file_availability() {
             declare_inputs(&s, json!([{"id":"brief","required":false}])).await;
             let rule = match source {
                 "file" => json!({"id":"local","type":"file","path":"material.txt"}),
-                "node" => json!({"id":"local","type":"node","node_id":"A","output_id":"result"}),
-                _ => json!({"id":"local","type":"run","input_id":"brief"}),
+                "node" => json!({"id":"local","type":"node","source_node_ref":"A","node_output_ref":"result"}),
+                _ => json!({"id":"local","type":"run","run_file_ref":"brief"}),
             };
             save_node(&s, "B", json!([rule]), json!([])).await;
             let run = start_inputs(&s, "availability-manager", json!([{"id":"brief","path":path}])).await;
@@ -185,7 +185,7 @@ async fn input_driven_zone_uses_completed_output_and_rereads_it_on_retry() {
     map["nodes"]["A"]["output_rule"] = json!([{"id":"result"}]);
     map["nodes"]["B"]["zone"] = json!({"type":"dynamic","input_id":"placement"});
     map["nodes"]["B"]["blocked_by"] = json!(["A"]);
-    map["nodes"]["B"]["input_rule"] = json!([{"id":"placement","type":"node","node_id":"A","output_id":"result"}]);
+    map["nodes"]["B"]["input_rule"] = json!([{"id":"placement","type":"node","source_node_ref":"A","node_output_ref":"result"}]);
     fs::write(&map_path, map.to_string()).unwrap();
     let manager = "placement-manager";
     let run = s.start(manager).await;
@@ -315,7 +315,7 @@ async fn run_sources_reject_undeclared_inputs_and_arbitrary_run_selection() {
     let s = Scenario::new().await;
     declare_inputs(&s, json!([{"id":"brief","required":false}])).await;
     let original = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json").await.body;
-    for rule in [json!({"id":"local","type":"run","input_id":"unknown"}), json!({"id":"local","type":"run","input_id":"brief","run_id":"another-run"})] {
+    for rule in [json!({"id":"local","type":"run","run_file_ref":"unknown"}), json!({"id":"local","type":"run","run_file_ref":"brief","run_id":"another-run"})] {
         let draft = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/nodes/edit", &json!({"id":"A"}).to_string()).await;
         let draft: Value = serde_json::from_str(&draft.body).unwrap();
         let mut content = draft["content"].clone();
@@ -341,7 +341,7 @@ async fn dispatched_addresses_stay_fixed_without_content_snapshot_or_repair() {
     fs::write(&old, b"OLD").unwrap();
     fs::write(&new, b"NEW").unwrap();
     fs::write(&other, b"OTHER").unwrap();
-    let rule = json!([{"id":"renamed","type":"node","node_id":"A","output_id":"result"}]);
+    let rule = json!([{"id":"renamed","type":"node","source_node_ref":"A","node_output_ref":"result"}]);
     save_node(&s, "B", rule.clone(), json!([])).await;
     save_node(&s, "C", rule, json!([])).await;
     let one = s.start("fixed-manager-one").await;

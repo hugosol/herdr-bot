@@ -16,16 +16,16 @@ async fn resolve_inputs(state: &AppState, run: &Run, rules: &[InputRule], zone_i
                 let root = run.zone_bindings.get(zone_id).ok_or_else(|| format!("zone {zone_id} 不在本次 Run 启动快照中；请启动新 Run"))?;
                 crate::zones::browse::checked_file(root, path).map_err(|error| failed(error.message()))?
             }
-            InputRule::Run { input_id, .. } => {
-                let Some(file) = run.map_input.files.iter().find(|file| file.id == *input_id) else { continue; };
+            InputRule::Run { run_file_ref, .. } => {
+                let Some(file) = run.map_input.files.iter().find(|file| file.id == *run_file_ref) else { continue; };
                 preflight::check_input_path(&file.path).map_err(failed)?;
                 file.path.clone()
             }
-            InputRule::Node { node_id, output_id, .. } => {
-                let execution = run.nodes.get(node_id).and_then(|node| node.execution.as_ref()).ok_or_else(|| format!("输入 {id} 缺少上游执行：{node_id}"))?;
-                let file = reports.iter().rev().filter(|report| report.run_id == run.id && report.node_id == *node_id && report.execution_id == execution.id)
-                    .find_map(|report| report.outputs.iter().find(|file| file.id == *output_id))
-                    .ok_or_else(|| format!("输入 {id} 缺少上游输出：{node_id}/{output_id}"))?;
+            InputRule::Node { source_node_ref, node_output_ref, .. } => {
+                let execution = run.nodes.get(source_node_ref).and_then(|node| node.execution.as_ref()).ok_or_else(|| format!("输入 {id} 缺少上游执行：{source_node_ref}"))?;
+                let file = reports.iter().rev().filter(|report| report.run_id == run.id && report.node_id == *source_node_ref && report.execution_id == execution.id)
+                    .find_map(|report| report.outputs.iter().find(|file| file.id == *node_output_ref))
+                    .ok_or_else(|| format!("输入 {id} 缺少上游输出：{source_node_ref}/{node_output_ref}"))?;
                 preflight::check_input_path(&file.path).map_err(failed)?;
                 file.path.clone()
             }

@@ -25,7 +25,7 @@ async fn map_for_request(s: &Scenario, input: &str) {
     // Public file seam owns Map publication; public GET validates its real shape.
     let map = json!({"title":"Rust creation","description":"Isolated creation acceptance","nodes":{
         "create":{"title":"Create blank","bot_id":"rust-create","input":input,"input_rule":[{"id":"request","type":"file","zone_id":"manager","path":"request.json"}],"output_rule":[{"id":"baseline"},{"id":"handoff"}],"zone":"node","blocked_by":[]},
-        "consume":{"title":"Consume real JSON","bot_id":"worker","input":"Read named baseline and handoff, cross-check complete configuration and revision","input_rule":[{"id":"baseline","type":"node","node_id":"create","output_id":"baseline"},{"id":"handoff","type":"node","node_id":"create","output_id":"handoff"}],"zone":"node","blocked_by":["create"]}
+        "consume":{"title":"Consume real JSON","bot_id":"worker","input":"Read named baseline and handoff, cross-check complete configuration and revision","input_rule":[{"id":"baseline","type":"node","source_node_ref":"create","node_output_ref":"baseline"},{"id":"handoff","type":"node","source_node_ref":"create","node_output_ref":"handoff"}],"zone":"node","blocked_by":["create"]}
     }});
     fs::write(s.config.scheduler.map_directory.join("work.json"), map.to_string()).unwrap();
     let read = get_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json").await;
@@ -304,7 +304,7 @@ async fn rust_create_returns_while_business_target_read_is_held_and_freezes_name
 async fn rust_create_map_target_preserves_complete_definition_and_named_run_source() {
     let s = Scenario::new().await;
     creator(&s).await;
-    let target = json!({"title":"Exact target","group":"isolated","description":"Do not execute","map_input_rule":{"description":"Read exact materials","files":[{"id":"source","required":true,"description":"Original source"}]},"nodes":{"inspect":{"title":"Inspect","bot_id":"worker","input":"Only inspect","input_rule":[{"id":"source","type":"run","input_id":"source"}],"output_rule":[{"id":"result"}],"auto_approved":false,"auto_close":false,"zone":"node","blocked_by":[]}}});
+    let target = json!({"title":"Exact target","group":"isolated","description":"Do not execute","map_input_rule":{"description":"Read exact materials","files":[{"id":"source","required":true,"description":"Original source"}]},"nodes":{"inspect":{"title":"Inspect","bot_id":"worker","input":"Only inspect","input_rule":[{"id":"source","type":"run","run_file_ref":"source"}],"output_rule":[{"id":"result"}],"auto_approved":false,"auto_close":false,"zone":"node","blocked_by":[]}}});
     let target_path = s.config.scheduler.map_directory.join("exact.target.json");
     fs::write(&target_path, target.to_string()).unwrap();
     let original = fs::read(&target_path).unwrap();
@@ -316,7 +316,7 @@ async fn rust_create_map_target_preserves_complete_definition_and_named_run_sour
     let root = s.config.scheduler.map_directory.join("work.json");
     let mut map: Value = serde_json::from_slice(&fs::read(&root).unwrap()).unwrap();
     map["map_input_rule"]["files"] = json!([{"id":"submission","required":true}]);
-    map["nodes"]["create"]["input_rule"] = json!([{"id":"request","type":"run","input_id":"submission"}]);
+    map["nodes"]["create"]["input_rule"] = json!([{"id":"request","type":"run","run_file_ref":"submission"}]);
     fs::write(root, map.to_string()).unwrap();
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"map-rust-manager"},"native_cwd":s.data.path()}));
     let run = request(&s, "/api/scheduler/maps/work.json/runs", json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":"Create definition only","fileInputs":[{"id":"submission","path":path}]}), 201).await;

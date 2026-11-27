@@ -99,7 +99,7 @@ test('P4 independent settings merge content and retain invalid raw drafts', asyn
   const closes = page.getByRole('checkbox', { name: 'auto_close', exact: true })
   const manual = page.getByRole('radio', { name: 'manual', exact: true })
   await edit(page, 'A', '旧节点')
-  const content = { title: legacyNode.title, bot_id: legacyNode.bot_id, input: legacyNode.input, blocked_by: [], input_rule: [{ id: 'source', type: 'node', node_id: 'B', output_id: 'result' }], output_rule: [] }
+  const content = { title: legacyNode.title, bot_id: legacyNode.bot_id, input: legacyNode.input, blocked_by: [], input_rule: [{ id: 'source', type: 'node', source_node_ref: 'B', node_output_ref: 'result' }], output_rule: [] }
   expect(JSON.parse(await json.inputValue())).toEqual({ title: legacyNode.title, bot_id: legacyNode.bot_id, input: legacyNode.input, blocked_by: [], input_rule: [], output_rule: [] })
   const raw = '  ' + JSON.stringify(content, null, 3) + '\n'
   await json.fill(raw)

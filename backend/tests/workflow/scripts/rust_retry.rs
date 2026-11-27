@@ -38,7 +38,7 @@ async fn rust_retry_requires_explicit_failure_and_preserves_partial_effects_and_
     fs::write(s.data.path().join("request.json"), input.to_string()).unwrap();
     map_for_request(&s, "Business comes only from the named request").await;
     let mut map: Value = serde_json::from_slice(&fs::read(s.config.scheduler.map_directory.join("work.json")).unwrap()).unwrap();
-    map["nodes"]["old_consumer"] = json!({"title":"Read partial baseline independently","bot_id":"worker","input":"Read the actual named baseline","input_rule":[{"id":"baseline","type":"node","node_id":"create","output_id":"baseline"}],"zone":"node","blocked_by":[]});
+    map["nodes"]["old_consumer"] = json!({"title":"Read partial baseline independently","bot_id":"worker","input":"Read the actual named baseline","input_rule":[{"id":"baseline","type":"node","source_node_ref":"create","node_output_ref":"baseline"}],"zone":"node","blocked_by":[]});
     fs::write(s.config.scheduler.map_directory.join("work.json"), map.to_string()).unwrap();
     let run = s.start("failure-manager").await;
     let gate = crate::common::file_gate::Gate::new(&s.config.tasks.storage_file);

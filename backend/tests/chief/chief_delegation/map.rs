@@ -135,7 +135,7 @@ pub(super) async fn map_fixture() -> (Fixture, Value, Value) {
     let manager = tasks["tasks"].as_array().unwrap().iter().find(|t| t["name"] == "flow manager").unwrap().clone();
     post(&f.server, "/api/zones", json!({"id":"review-zone","path":f.root.path().join("materials")})).await;
     fs::create_dir(f.root.path().join("maps")).unwrap();
-    fs::write(f.root.path().join("maps/flow.json"), json!({"title":"Review flow","description":"Independent flow","map_input_rule":{"files":[{"id":"brief","required":true}]},"nodes":{"review":{"title":"Review","bot_id":"brief-bot","input":"Review the named brief without publishing","zone":"review-zone","input_rule":[{"type":"run","id":"source","input_id":"brief"}],"blocked_by":[]}}}).to_string()).unwrap();
+    fs::write(f.root.path().join("maps/flow.json"), json!({"title":"Review flow","description":"Independent flow","map_input_rule":{"files":[{"id":"brief","required":true}]},"nodes":{"review":{"title":"Review","bot_id":"brief-bot","input":"Review the named brief without publishing","zone":"review-zone","input_rule":[{"type":"run","id":"source","run_file_ref":"brief"}],"blocked_by":[]}}}).to_string()).unwrap();
     fs::write(f.root.path().join("bots/flow.json"), json!({"id":"flow-bot","name":"Review flow","when":"Review a brief","description":"Supply brief","input_rule":"Review","output_rule":"","map_file":"flow.json"}).to_string()).unwrap();
     let mut request = f.request();
     request["botId"] = json!("flow-bot");

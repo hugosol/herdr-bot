@@ -429,7 +429,7 @@ export default async function(context: {zone: string, input: string}) {
 }"#, json!([{"id":"result"}])).await;
     let map_path = s.config.scheduler.map_directory.join("work.json");
     let mut map: Value = serde_json::from_slice(&fs::read(&map_path).unwrap()).unwrap();
-    map["nodes"]["consume"] = json!({"title":"Read result","bot_id":"worker","input":"Read the delivered file","zone":"node","blocked_by":["custom"],"input_rule":[{"id":"result","type":"node","node_id":"custom","output_id":"result"}],"output_rule":[]});
+    map["nodes"]["consume"] = json!({"title":"Read result","bot_id":"worker","input":"Read the delivered file","zone":"node","blocked_by":["custom"],"input_rule":[{"id":"result","type":"node","source_node_ref":"custom","node_output_ref":"result"}],"output_rule":[]});
     fs::write(&map_path, map.to_string()).unwrap();
     let run = s.start("typescript-manager").await;
     let calls = s.herdr.calls();

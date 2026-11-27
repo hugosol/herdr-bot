@@ -41,7 +41,7 @@ async fn fileless_runs_require_explicit_preparation_before_business_dispatch() {
 async fn drafts_confirmation_authority_and_replacement_preserve_the_gate() {
     let s = Scenario::new().await;
     declare_inputs(&s, json!([{"id":"brief","required":true},{"id":"approval","required":true}])).await;
-    save_node(&s, "B", json!([{"id":"local","type":"run","input_id":"brief"}]), json!([])).await;
+    save_node(&s, "B", json!([{"id":"local","type":"run","run_file_ref":"brief"}]), json!([])).await;
     s.herdr.set_behavior(json!({"native_session":{"source":"herdr:omp","agent":"omp","kind":"id","value":"prepare-manager"},"native_cwd":s.data.path()}));
     let started = post_json_over_tcp(s.server.addr(), "/api/scheduler/maps/work.json/runs", &json!({"managerTaskId":s.manager_task,"zone":s.zone,"userInput":"Business text is not semantic approval"}).to_string()).await;
     assert_eq!(started.status, 201, "{}", started.body);

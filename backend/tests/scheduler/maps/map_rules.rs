@@ -65,7 +65,7 @@ async fn parent_node_saves_only_same_named_public_bindings_and_an_output_subset(
         "title":"Independent child","description":"","map_input_rule":{"files":[{"id":"public-brief","required":true}]},
         "map_output_rule":{"files":[{"id":"published"},{"id":"appendix"}]},
         "nodes":{"private-node":{"title":"Private analysis","bot_id":"worker","input":"","zone":{"type":"dynamic"},"blocked_by":[],
-            "input_rule":[{"id":"private-source","type":"run","input_id":"public-brief"}],"output_rule":[{"id":"internal-result"}]}}
+            "input_rule":[{"id":"private-source","type":"run","run_file_ref":"public-brief"}],"output_rule":[{"id":"internal-result"}]}}
     }"#).unwrap();
     let path = maps.join("work.json");
     fs::write(&path, r#"{"title":"Parent","description":"","nodes":{}}"#).unwrap();
@@ -178,8 +178,8 @@ async fn node_save_preserves_sources_zone_and_policy_without_inventing_dependenc
     }"#).unwrap();
     let node = json!({"title":"Consume","bot_id":"worker","input":"","zone":{"type":"dynamic"},"blocked_by":[],
         "input_rule":[{"id":"direct","type":"file","path":"source/data.txt","zone_id":"node"},
-            {"id":"internal","type":"node","node_id":"provider","output_id":"private"},
-            {"id":"bound","type":"run","input_id":"public"}],"output_rule":[{"id":"result"}],
+            {"id":"internal","type":"node","source_node_ref":"provider","node_output_ref":"private"},
+            {"id":"bound","type":"run","run_file_ref":"public"}],"output_rule":[{"id":"result"}],
         "auto_approved":false,"auto_close":true});
     let submit = |content: Value, original: &str, create| json!({"id":"consumer","content":content.to_string(),"revision":{"file":"work.json","original":original},"create":create}).to_string();
     let saved = post_json_over_tcp(addr, NODES, &submit(node.clone(), &fs::read_to_string(&path).unwrap(), true)).await;
@@ -188,8 +188,8 @@ async fn node_save_preserves_sources_zone_and_policy_without_inventing_dependenc
         "provider":{"title":"Provide","bot_id":"worker","input":"","zone":"node","blocked_by":[],"input_rule":[],"output_rule":[{"id":"private"}],"auto_approved":true,"auto_close":false,"end_node":false},
         "consumer":{"title":"Consume","bot_id":"worker","input":"","zone":{"type":"dynamic"},"blocked_by":[],
             "input_rule":[{"id":"direct","type":"file","path":"source/data.txt","zone_id":"node"},
-                {"id":"internal","type":"node","node_id":"provider","output_id":"private"},
-                {"id":"bound","type":"run","input_id":"public"}],"output_rule":[{"id":"result"}],
+                {"id":"internal","type":"node","source_node_ref":"provider","node_output_ref":"private"},
+                {"id":"bound","type":"run","run_file_ref":"public"}],"output_rule":[{"id":"result"}],
             "auto_approved":false,"auto_close":true,"end_node":false}
     }});
     let original = fs::read_to_string(&path).unwrap();
@@ -201,8 +201,11 @@ async fn node_save_preserves_sources_zone_and_policy_without_inventing_dependenc
         ("input", json!(null)), ("parameters", json!({})), ("misspelled", json!(true)),
         ("auto_close", json!("true")), ("blocked_by", json!(["consumer"])), ("blocked_by", json!(["missing"])),
         ("input_rule", json!([{"id":"direct","type":"file","path":"../elsewhere.txt"}])),
-        ("input_rule", json!([{"id":"internal","type":"node","node_id":"provider","output_id":"missing"}])),
-        ("input_rule", json!([{"id":"bound","type":"run","input_id":"missing"}])),
+        ("input_rule", json!([{"id":"internal","type":"node","source_node_ref":"provider","node_output_ref":"missing"}])),
+        ("input_rule", json!([{"id":"bound","type":"run","run_file_ref":"missing"}])),
+        ("input_rule", json!([{"id":"bound","type":"run","input_id":"public"}])),
+        ("input_rule", json!([{"id":"internal","type":"node","node_id":"provider","node_output_ref":"private"}])),
+        ("input_rule", json!([{"id":"internal","type":"node","source_node_ref":"provider","output_id":"private"}])),
         ("output_rule", json!([{"id":"duplicate"},{"id":"duplicate"}])),
     ] {
         let mut invalid = node.clone();

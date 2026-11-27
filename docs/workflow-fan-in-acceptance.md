@@ -37,7 +37,7 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" test-workflow-file-handoff `
 两份 Map 均在任一 Run 启动之前保存：
 
 - `source` 无依赖；其命名文件输入 seed 指向验收方固定的外部业务种子。真实 source Chat 用原生 read 读取种子、write 创建此前不存在的业务文件，然后用实际 `report` 登记 `outputs` 数组中 `id=result` 的地址。种子是已记录的验收方业务输入，不是伪造的运行记录或预先准备的最终产物；不依赖宿主 Bash 能否执行 Windows Python。
-- `left`、`right` 都 `blocked_by: [source]`；两者的 `input_rule` 都包含 `{id: shared, type: node, node_id: source, output_id: result}`；各提供方的 `output_rule` 均预先声明 `id=result`。初始化只带原始登记地址，不带正文或答案。left 读取后计算 `subtotal=units*unit_price`；right 独立读取同一文件后计算 `fee=units*fee_per_unit`。分别写独立文件并登记各自的 `outputs` 数组中 `id=result` 的地址。
+- `left`、`right` 都 `blocked_by: [source]`；两者的 `input_rule` 都包含 `{id: shared, type: node, source_node_ref: source, node_output_ref: result}`；各提供方的 `output_rule` 均预先声明 `id=result`。初始化只带原始登记地址，不带正文或答案。left 读取后计算 `subtotal=units*unit_price`；right 独立读取同一文件后计算 `fee=units*fee_per_unit`。分别写独立文件并登记各自的 `outputs` 数组中 `id=result` 的地址。
 - `summary` 依赖 left/right，命名输入分别引用两者当前 execution 的 `result`。真实 summary Chat 必须实际读取两份文件，核对 item，再合并、相加并写最终文件。业务合并和内容检查属于这个明确安排的 node，不是框架动作。
 - `source`、`left`、`right` 和 `summary` 完成成果后，各自调用实际原生 `approve`，再发送成果 `report`。批准遵守当前 execution 冻结的模式；人工模式用真实原生确认。报告可先用于进度，但 `true` 不代替批准。逐节点留存原生批准回执、公开批准来源、当前 execution 的最新 `true` 报告和约定输出登记。
 - manager 只用真实 `run`／`collect` 编排。显式 dispatch source；批准、最新 `true` 报告和约定交付均成立后显式 complete。再 dispatch left／right、分别 complete；最后 dispatch summary，满足门禁后 complete 并显式 finish。manager 不默认读正文。验收器不代发批准、报告、complete 或 dispatch，也不改运行记录。

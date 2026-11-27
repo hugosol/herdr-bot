@@ -50,7 +50,7 @@ Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归�
       "title": "核对",
       "bot_id": "review-work",
       "input": "结合可选的 brief 核对 beta 材料。",
-      "input_rule": [{"id":"brief","type":"run","input_id":"brief"}],
+      "input_rule": [{"id":"brief","type":"run","run_file_ref":"brief"}],
       "output_rule": [{"id":"internal-review"}],
       "zone": "default/review",
       "blocked_by": ["A"]
@@ -132,23 +132,29 @@ node 的 `input` 是业务指示文本；`input_rule`、`output_rule` 是静态�
 ```json
 "input_rule": [
   { "id": "brief", "type": "file", "zone_id": "default/business", "path": "brief.md" },
-  { "id": "review", "type": "node", "node_id": "A", "output_id": "summary" },
-  { "id": "local_brief", "type": "run", "input_id": "brief" }
+  { "id": "review", "type": "node", "source_node_ref": "A", "node_output_ref": "summary" },
+  { "id": "local_brief", "type": "run", "run_file_ref": "brief" }
 ],
 "output_rule": [
   { "id": "decision" }
 ]
 ```
 
-`id` 是当前节点内用户自定的逻辑标识，不是固定字段名称或磁盘文件名。两个规则数组各自的 ID 必须非空且唯一；数组顺序不表示派发顺序。一个输出 ID 在一次执行中绑定一个实际地址。
+`id` 是当前节点内用户自定的逻辑标识，不是固定字段名称或磁盘文件名。两个规则数组各自的 ID 必须非空且唯一；数组顺序不表示派发顺序。一个输出 ID 在一次执行中绑定一个实际地址。输入规则的 `id` 是消费方的本地输入身份，`*_ref` 是来源引用，二者可以不同；例如上游输出 `summary` 在当前节点可称为 `review`，不会复制或重命名磁盘文件。动态 zone 的 `zone.input_id` 仍引用本地输入 `id`，不属于来源字段。
 
-`type: file` 接受 `id`、`type`、字符串 `path` 及可选字符串 `zone_id`；省略 `zone_id` 时使用本次 Run 的 manager zone，绝不是 node 的执行 zone。`path` 是对应 zone 内以 `/` 分隔的相对文件路径，不接受绝对路径或越界访问，并沿用 zone 的链接安全规则。启动 Run 时确定所有引用的 zone 绑定，派发时检查文件与边界，实际输入保存本机绝对路径。`type: node` 只接受 `id`、`type`、字符串 `node_id`、`output_id`。`type: run` 只接受 `id`、`type`、字符串 `input_id`，引用本 Map 的 `map_input_rule.files` 声明，并按节点本地 `id` 重命名；不接受 `run_id`，不能选择其他 Run。未提供的可选输入不出现在执行 `inputs` 中；已提供但错误的地址不能当成缺席。三类实际文件在派发前检查存在且可打开；报告／Run 来源可在所有 zone 外，沿用公开文件的链接／重解析点／路径安全约定。其他必需字段、类型与未知字段校验不变；不自动同步文件或校验业务内容。
+`type: file` 接受 `id`、`type`、字符串 `path` 及可选字符串 `zone_id`；省略 `zone_id` 时使用本次 Run 的 manager zone，绝不是 node 的执行 zone。`path` 是对应 zone 内以 `/` 分隔的相对文件路径，不接受绝对路径或越界访问，并沿用 zone 的链接安全规则。启动 Run 时确定所有引用的 zone 绑定，派发时检查文件与边界，实际输入保存本机绝对路径。`type: node` 只接受 `id`、`type`、字符串 `source_node_ref`、`node_output_ref`。`source_node_ref` 引用提供方节点，`node_output_ref` 引用该节点声明的一项输出。`type: run` 只接受 `id`、`type`、字符串 `run_file_ref`，引用本 Map 的 `map_input_rule.files` 中一项声明，并从本次 Run 的 `mapInput.files` 取实际地址，按节点本地 `id` 命名；引用的不是整个文件集合，也不是 `mapInput.runInput` 文字。不接受 `run_id`，不能选择其他 Run。未提供的可选输入不出现在执行 `inputs` 中；已提供但错误的地址不能当成缺席。三类实际文件在派发前检查存在且可打开；报告／Run 来源可在所有 zone 外，沿用公开文件的链接／重解析点／路径安全约定。其他必需字段、类型与未知字段校验不变；不自动同步文件或校验业务内容。
 
-引用节点须存在于同图，`output_id` 须由提供方 `output_rule` 预先声明，否则拒绝保存整张 Map；删除提供方或移除被引用的输出 ID 同样拒绝，不级联清理。规则与 `blocked_by` 独立，不补依赖、不自动派发。
+引用节点须存在于同图，`node_output_ref` 须匹配提供方 `output_rule` 已声明的 `id`，否则拒绝保存整张 Map；删除提供方或移除被引用的输出 ID 同样拒绝，不级联清理。规则与 `blocked_by` 独立，不补依赖、不自动派发。
 
 派发固定本次执行的 `inputRule`、`outputRule`，将解析后的地址以 `inputs: [{id,path}]` 保存在执行事实中；已有执行不随 Map 编辑热更新，新执行才使用新规则。来源当前执行尚未登记所需输出时明确拒绝派发，不猜路径、不回退旧执行，也不先创建 Chat。实际 report 的 `outputs: [{id,path}]` 只允许本次冻结声明中的 ID，地址更新不改变文件名。
 
 读取、编辑及保存保持数组和来源字段；scheduler 显示静态规则，workflow 区分冻结定义、已保存执行规则、实际输入和实际报告输出。
+
+### 输入来源字段切换
+
+输入规则只接受 `run_file_ref`、`source_node_ref`、`node_output_ref`，不兼容旧来源字段 `input_id`、`node_id`、`output_id`。更新当前使用的 Map、客户端及 agent 指引后再发起新 Run。
+
+本次切换不迁移旧 Run 的冻结 Map 或执行记录。升级前停止旧 Run 的管理和执行活动，并停止后端，将旧 Run 目录整体移到配置的 Run 根目录之外离线保留；不要删除业务产物、Chat 历史或只改冻结 Map 的部分字段。所有旧 Run，包括未结束的 Run，均退出在线使用，需要继续的工作从新版 Map 重新发起。归档不代表旧工作已经完成，也不会自动关闭已有 Chat。
 
 ### 成果批准设置
 

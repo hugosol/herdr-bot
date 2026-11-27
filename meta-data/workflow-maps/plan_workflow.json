@@ -19,8 +19,8 @@
         {
           "type": "node",
           "id": "outline",
-          "node_id": "outline",
-          "output_id": "outline"
+          "source_node_ref": "outline",
+          "node_output_ref": "outline"
         }
       ],
       "output_rule": [
@@ -44,14 +44,14 @@
         {
           "type": "node",
           "id": "map",
-          "node_id": "generate_map",
-          "output_id": "map"
+          "source_node_ref": "generate_map",
+          "node_output_ref": "map"
         },
         {
           "type": "node",
           "id": "outline",
-          "node_id": "outline",
-          "output_id": "outline"
+          "source_node_ref": "outline",
+          "node_output_ref": "outline"
         }
       ],
       "output_rule": [

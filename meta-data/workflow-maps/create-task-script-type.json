@@ -15,8 +15,8 @@
         {
           "type": "node",
           "id": "request",
-          "node_id": "create_script",
-          "output_id": "request"
+          "source_node_ref": "create_script",
+          "node_output_ref": "request"
         }
       ],
       "output_rule": [

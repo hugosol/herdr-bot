@@ -134,7 +134,7 @@ test('P15.04 P53.01 P68.09 workflow Resume uses latest source Task env without t
   const maps = path.join(host.cwd, 'meta-data/workflow-maps'), bots = path.join(host.cwd, 'meta-data/bots')
   fs.mkdirSync(maps, { recursive: true }); fs.mkdirSync(bots, { recursive: true })
   const source = path.join(maps, 'resume.json')
-  const definition = { title: 'Resume Map', description: '', map_input_rule: { files: [{ id: 'real-brief', required: true }] }, nodes: { A: { title: 'Actual dispatch', bot_id: 'worker', input: 'NODE INPUT ONLY', zone, blocked_by: [], input_rule: [{ id: 'node-brief', type: 'run', input_id: 'real-brief' }] } } }
+  const definition = { title: 'Resume Map', description: '', map_input_rule: { files: [{ id: 'real-brief', required: true }] }, nodes: { A: { title: 'Actual dispatch', bot_id: 'worker', input: 'NODE INPUT ONLY', zone, blocked_by: [], input_rule: [{ id: 'node-brief', type: 'run', run_file_ref: 'real-brief' }] } } }
   fs.writeFileSync(source, JSON.stringify(definition))
   const brief = path.join(host.cwd, 'actual-brief.txt')
   fs.writeFileSync(brief, 'Named material in a real file')

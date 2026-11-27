@@ -19,11 +19,11 @@ async fn revise_bot_guides_publishes_four_independent_field_bindings() {
     assert_eq!(definition["nodes"].as_object().unwrap().len(), 6);
     assert_eq!(definition["nodes"]["w1"]["bot_id"], "prepare-bot-revision");
     assert_eq!(definition["nodes"]["w1"]["input_rule"], json!([
-        {"id":"request","type":"run","input_id":"request"},
-        {"id":"materials","type":"run","input_id":"materials"}
+        {"id":"request","type":"run","run_file_ref":"request"},
+        {"id":"materials","type":"run","run_file_ref":"materials"}
     ]));
     assert_eq!(definition["nodes"]["w1"]["output_rule"], json!([{"id":"baseline"},{"id":"handoff"}]));
-    let baseline = json!({"id":"baseline","type":"node","node_id":"w1","output_id":"baseline"});
+    let baseline = json!({"id":"baseline","type":"node","source_node_ref":"w1","node_output_ref":"baseline"});
     let mut final_inputs = vec![baseline.clone()];
     for (id, field, bot) in [("w2","when","write-bot-when"),("w3","description","write-bot-plan-guide"),("w4","input_rule","write-bot-node-guide"),("w6","output_rule","write-bot-output-rule")] {
         let node = &definition["nodes"][id];
@@ -33,7 +33,7 @@ async fn revise_bot_guides_publishes_four_independent_field_bindings() {
         assert_eq!(node["auto_approved"], false);
         assert_eq!(node["output_rule"], json!([{"id":"text"},{"id":"handoff"}]));
         for role in ["text","handoff"] {
-            final_inputs.push(json!({"id":format!("{field}_{role}"),"type":"node","node_id":id,"output_id":role}));
+            final_inputs.push(json!({"id":format!("{field}_{role}"),"type":"node","source_node_ref":id,"node_output_ref":role}));
         }
     }
     assert_eq!(definition["nodes"]["w5"]["bot_id"], "replace-text");

@@ -40,7 +40,7 @@ describe('Map public rule response contract', () => {
 })
 
 describe('node zone schema boundary', () => {
-  const input_rule = [{ id: 'registered-repo', type: 'node', node_id: 'A', output_id: 'material' }]
+  const input_rule = [{ id: 'registered-repo', type: 'node', source_node_ref: 'A', node_output_ref: 'material' }]
 
   it.each(['team/work', { type: 'dynamic' }, { type: 'dynamic', input_id: 'registered-repo' }])('loads and confirms the exact zone representation: %j', async zone => {
     responseWith({ zone, input_rule, auto_approved: false, auto_close: true })
@@ -63,7 +63,7 @@ describe('node zone schema boundary', () => {
 
 describe('node save response handoff schema boundary', () => {
   it('accepts array rules without changing opaque input text or adding dependencies', async () => {
-    const input_rule = [{ id: 'source', type: 'node', node_id: 'A', output_id: 'material' }]
+    const input_rule = [{ id: 'source', type: 'node', source_node_ref: 'A', node_output_ref: 'material' }]
     responseWith({ input_rule, output_rule: [{ id: 'result' }] })
     const map = await saveNode('map.json', draft)
     expect(map.nodes.B).toEqual({ ...node, input_rule, output_rule: [{ id: 'result' }] })
@@ -82,14 +82,17 @@ describe('node save response handoff schema boundary', () => {
   // Public save API: rejecting the new valid source would hide a successfully
   // persisted definition; accepting run_id would allow an unsupported source.
   it('accepts a local name for this Run input without changing dependencies', async () => {
-    const input_rule = [{ id: 'local', type: 'run', input_id: 'brief' }]
+    const input_rule = [{ id: 'local', type: 'run', run_file_ref: 'brief' }]
     responseWith({ input_rule })
     const map = await saveNode('map.json', draft)
     expect(map.nodes.B).toEqual({ ...node, input_rule })
   })
 
   it.each([
-    { input_rule: [{ id: 'local', type: 'run', input_id: 'brief', run_id: 'another-run' }] },
+    { input_rule: [{ id: 'local', type: 'run', run_file_ref: 'brief', run_id: 'another-run' }] },
+    { input_rule: [{ id: 'local', type: 'run', run_file_ref: 'brief', input_id: 'brief' }] },
+    { input_rule: [{ id: 'source', type: 'node', source_node_ref: 'A', node_output_ref: 'material', node_id: 'A' }] },
+    { input_rule: [{ id: 'source', type: 'node', source_node_ref: 'A', node_output_ref: 'material', output_id: 'material' }] },
     { input_rule: [{ id: 'local', type: 'run' }] },
     { input_rule: [{ id: 'source', type: 'file', path: 'input.txt', zone_id: 3 }] },
     { inputs: { source: { source: 'file', path: 'C:/input.txt' } } },

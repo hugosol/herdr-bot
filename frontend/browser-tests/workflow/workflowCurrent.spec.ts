@@ -232,7 +232,7 @@ test('handoff facts preserve frozen rules and resolved inputs while accumulating
   map.nodes.E.input_rule = [{ id: 'changed-input', type: 'file', path: 'input.txt', zone_id: 'changed/map' }]
   map.nodes.E.output_rule = [{ id: 'changed-output' }]
   fs.writeFileSync(mapPath, JSON.stringify(map))
-  run.nodes.E.execution.inputRule = [{ id: 'source', type: 'node', node_id: 'A', output_id: 'material' }]
+  run.nodes.E.execution.inputRule = [{ id: 'source', type: 'node', source_node_ref: 'A', node_output_ref: 'material' }]
   run.nodes.E.execution.outputRule = [{ id: 'result' }, { id: 'notes' }]
   run.nodes.E.execution.inputs = [{ id: 'source', path: 'C:/frozen/source.txt' }]
   run.nodes.A.execution.outputRule = [{ id: 'foreign' }]
@@ -263,8 +263,8 @@ test('handoff facts preserve frozen rules and resolved inputs while accumulating
   await expect(execution).toContainText('C:/report-zone')
   await expect(execution).not.toContainText('test/definition-zone')
   await expect(execution).toContainText('C:/frozen/source.txt')
-  await expect(execution).toContainText('"node_id": "A"')
-  await expect(execution).toContainText('"output_id": "material"')
+  await expect(execution).toContainText('"source_node_ref": "A"')
+  await expect(execution).toContainText('"node_output_ref": "material"')
   await expect(execution).toContainText('"id": "result"')
   await expect(execution).not.toContainText('C:/changed-map/input.txt')
   await expect(execution).not.toContainText('changed-output')

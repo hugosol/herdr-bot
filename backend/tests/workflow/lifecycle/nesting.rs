@@ -365,11 +365,11 @@ async fn missing_required_child_material_does_not_block_manager_but_blocks_work(
     let maps = &s.config.scheduler.map_directory;
     let mut outer: Value = serde_json::from_slice(&fs::read(maps.join("work.json")).unwrap()).unwrap();
     outer["map_input_rule"]["files"] = json!([{"id":"maybe","required":false}]);
-    for id in ["A","B"] { outer["nodes"][id]["input_rule"] = json!([{"type":"run","id":"material","input_id":"maybe"}]); }
+    for id in ["A","B"] { outer["nodes"][id]["input_rule"] = json!([{"type":"run","id":"material","run_file_ref":"maybe"}]); }
     fs::write(maps.join("work.json"), outer.to_string()).unwrap();
     let mut inner: Value = serde_json::from_slice(&fs::read(maps.join("inner.json")).unwrap()).unwrap();
     inner["map_input_rule"]["files"] = json!([{"id":"material","required":false}]);
-    inner["nodes"]["A"]["input_rule"] = json!([{"type":"run","id":"local","input_id":"material"}]);
+    inner["nodes"]["A"]["input_rule"] = json!([{"type":"run","id":"local","run_file_ref":"material"}]);
     fs::write(maps.join("inner.json"), inner.to_string()).unwrap();
     s.start("optional-root").await;
     native(&s, "omp", "optional-child", "node-zone");
@@ -410,7 +410,7 @@ async fn upstream_output_uses_parent_local_id_for_the_child_interface() {
     let mut outer: Value = serde_json::from_slice(&fs::read(maps.join("work.json")).unwrap()).unwrap();
     outer["nodes"]["source"] = json!({"title":"Source","bot_id":"worker","input":"Produce","zone":"node","blocked_by":[],"output_rule":[{"id":"upstream-result"}]});
     outer["nodes"]["A"]["blocked_by"] = json!(["source"]);
-    outer["nodes"]["A"]["input_rule"] = json!([{"type":"node","id":"child-material","node_id":"source","output_id":"upstream-result"}]);
+    outer["nodes"]["A"]["input_rule"] = json!([{"type":"node","id":"child-material","source_node_ref":"source","node_output_ref":"upstream-result"}]);
     fs::write(maps.join("work.json"), outer.to_string()).unwrap();
     let mut inner: Value = serde_json::from_slice(&fs::read(maps.join("inner.json")).unwrap()).unwrap();
     inner["map_input_rule"]["files"] = json!([{"id":"child-material","required":true}]);
@@ -442,9 +442,9 @@ async fn multilevel_local_ids_bind_only_the_owning_run() {
     let maps = &s.config.scheduler.map_directory;
     fs::write(&s.config.prompts_file, "nested_probe = 'rendered in the calling node only'\n").unwrap();
     fs::write(s.config.scheduler.bot_directory.join("leaf.json"), json!({"id":"leaf","name":"Leaf","when":"","description":"","input_rule":"","output_rule":"","map_file":"leaf.json"}).to_string()).unwrap();
-    fs::write(maps.join("work.json"), json!({"title":"Root","description":"","map_input_rule":{"files":[{"id":"outer","required":true}]},"nodes":{"A":{"title":"Call","bot_id":"nested","manager_task_id":s.manager_task,"input":" \tOUTER ${nested_probe}\r\n  ","zone":"node","blocked_by":[],"input_rule":[{"type":"run","id":"shared","input_id":"outer"}]}}}).to_string()).unwrap();
-    fs::write(maps.join("inner.json"), json!({"title":"Middle","description":"","map_input_rule":{"files":[{"id":"shared","required":true}]},"nodes":{"A":{"title":"Call leaf","bot_id":"leaf","manager_task_id":s.manager_task,"input":"MIDDLE","zone":"manager","blocked_by":[],"input_rule":[{"type":"run","id":"shared","input_id":"shared"}]}}}).to_string()).unwrap();
-    fs::write(maps.join("leaf.json"), json!({"title":"Leaf","description":"","map_input_rule":{"files":[{"id":"shared","required":true}]},"nodes":{"A":{"title":"Consume","bot_id":"worker","input":"LEAF","zone":"node","blocked_by":[],"input_rule":[{"type":"run","id":"local","input_id":"shared"}]}}}).to_string()).unwrap();
+    fs::write(maps.join("work.json"), json!({"title":"Root","description":"","map_input_rule":{"files":[{"id":"outer","required":true}]},"nodes":{"A":{"title":"Call","bot_id":"nested","manager_task_id":s.manager_task,"input":" \tOUTER ${nested_probe}\r\n  ","zone":"node","blocked_by":[],"input_rule":[{"type":"run","id":"shared","run_file_ref":"outer"}]}}}).to_string()).unwrap();
+    fs::write(maps.join("inner.json"), json!({"title":"Middle","description":"","map_input_rule":{"files":[{"id":"shared","required":true}]},"nodes":{"A":{"title":"Call leaf","bot_id":"leaf","manager_task_id":s.manager_task,"input":"MIDDLE","zone":"manager","blocked_by":[],"input_rule":[{"type":"run","id":"shared","run_file_ref":"shared"}]}}}).to_string()).unwrap();
+    fs::write(maps.join("leaf.json"), json!({"title":"Leaf","description":"","map_input_rule":{"files":[{"id":"shared","required":true}]},"nodes":{"A":{"title":"Consume","bot_id":"worker","input":"LEAF","zone":"node","blocked_by":[],"input_rule":[{"type":"run","id":"local","run_file_ref":"shared"}]}}}).to_string()).unwrap();
     let mut children = Vec::new();
     for (root_session, child_session, grand_session, worker_session, file, body) in [("r-one","c-one","g-one","w-one","one.txt","FIRST-418"),("r-two","c-two","g-two","w-two","two.txt","SECOND-905")] {
         let path = s.data.path().join(file);

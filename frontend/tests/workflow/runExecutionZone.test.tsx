@@ -29,7 +29,7 @@ describe('frozen execution zone display', () => {
     const inputDriven: CurrentDefinition = { ...current, map: { ...base, nodes: { A: {
       ...base.nodes.A,
       zone: { type: 'dynamic', input_id: 'registered-repo' },
-      input_rule: [{ id: 'registered-repo', type: 'run', input_id: 'registered-zone' }],
+      input_rule: [{ id: 'registered-repo', type: 'run', run_file_ref: 'registered-zone' }],
     } } } }
     const view = render(<RunCurrentView run={runWith(null)} reports={[]} current={inputDriven} managed />)
     const facts = within(screen.getByRole('region', { name: '当前执行事实' }))
