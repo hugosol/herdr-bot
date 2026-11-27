@@ -13,9 +13,10 @@ async fn create_bot_wrapper_publishes_complete_direct_material_interface() {
     assert!(path.is_file(), "publish the existing-target wrapper Map");
     let definition: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
     // Material guidance is editable; this contract fixes identities and requiredness.
-    let inputs: Vec<Value> = definition["input_files"].as_array().unwrap().iter()
+    let inputs: Vec<Value> = definition["map_input_rule"]["files"].as_array().unwrap().iter()
         .map(|input| json!({"id":input["id"],"required":input["required"]})).collect();
     assert_eq!(inputs, vec![json!({"id":"request","required":true}), json!({"id":"materials","required":false})]);
+    assert_eq!(definition["map_output_rule"]["files"], json!([{"id":"saved"},{"id":"handoff"}]));
     assert_eq!(definition["nodes"].as_object().unwrap().len(), 10);
     assert_eq!(definition["nodes"]["create_blank"]["input_rule"], json!([
         {"id":"request","type":"run","input_id":"request"},
@@ -81,7 +82,7 @@ async fn create_bot_wrapper_publishes_complete_direct_material_interface() {
     let endpoint = "/api/scheduler/maps/create-bot-wrapper.json";
     let interface = get_over_tcp(s.server.addr(), &format!("{endpoint}/inputs")).await;
     let interface: Value = serde_json::from_str(&interface.body).unwrap();
-    let declared = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"input_files":definition["input_files"],"input_requirements":definition["input_requirements"].as_str().unwrap_or(""),"revision":interface["revision"]}).to_string()).await;
+    let declared = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"map_input_rule":definition["map_input_rule"],"map_output_rule":definition["map_output_rule"],"revision":interface["revision"]}).to_string()).await;
     assert_eq!(declared.status, 200, "{}", declared.body);
     for id in ["create_blank", "write_when", "write_plan_guide", "write_node_guide", "write_output_rule", "optimize_when", "optimize_plan_guide", "optimize_node_guide", "optimize_output_rule", "save_bot"] {
         let mut node = definition["nodes"][id].clone();

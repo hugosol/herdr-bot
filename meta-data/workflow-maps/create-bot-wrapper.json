@@ -1,20 +1,26 @@
 {
   "group": "meta-map",
   "title": "创建bot",
-  "description": "为真实既有 normal Task／Map 创建完整 Bot：输入准备以本 Map 的 input_requirements 与 input_files[].description 为准；核实目标后创建空白 Bot，四路编写确认与表达优化，最后一次合法保存并交付 saved／handoff。不创建、修改或执行目标；父子交接见 docs/create-bot-wrapper.md「调用接口」。",
-  "input_requirements": "创建专用 v1 材料契约见 ${herdr-bot-path}/docs/business-materials.md「创建分支 v1」。request 必须为单个 UTF-8 JSON 对象，禁止重复 key、未知字段或版本、缺项；只要求执行必需数据，不提交人类批准凭据。管理者可在获准材料目录整理已明确委托；成果批准另由运行机制持有，不写入业务材料。参考 materials 不补 request 参数；缺项或歧义先澄清，不派发。",
-  "input_files": [
-    {
-      "id": "request",
-      "description": "必需的创建分支 v1 request JSON（schema_version=1、kind=request）：target 精确二选一 normal Task ID 或目录内 Map 文件名；requirements、constraints、non_goals、resource_limits 均必填，不包含 authorization、confirmation 或其他人类批准凭据；bot 的 id/name/group 可选。完整格式见 docs/business-materials.md 和 docs/contracts/script-bots.schema.json；不接受旧 Markdown。",
-      "required": true
-    },
-    {
-      "id": "materials",
-      "description": "参考材料：注明用途。",
-      "required": false
-    }
-  ],
+  "description": "为真实既有 normal Task／Map 创建完整 Bot：输入准备以本 Map 的 map_input_rule.description 与 map_input_rule.files[].description 为准；核实目标后创建空白 Bot，四路编写确认与表达优化，最后一次合法保存并交付 saved／handoff。不创建、修改或执行目标；父子交接见 docs/create-bot-wrapper.md「调用接口」。",
+  "map_input_rule": {
+    "description": "创建专用 v1 材料契约见 ${herdr-bot-path}/docs/business-materials.md「创建分支 v1」。request 必须为单个 UTF-8 JSON 对象，禁止重复 key、未知字段或版本、缺项；只要求执行必需数据，不提交人类批准凭据。管理者可在获准材料目录整理已明确委托；成果批准另由运行机制持有，不写入业务材料。参考 materials 不补 request 参数；缺项或歧义先澄清，不派发。",
+    "files": [
+      {
+        "id": "request",
+        "description": "必需的创建分支 v1 request JSON（schema_version=1、kind=request）：target 精确二选一 normal Task ID 或目录内 Map 文件名；requirements、constraints、non_goals、resource_limits 均必填，不包含 authorization、confirmation 或其他人类批准凭据；bot 的 id/name/group 可选。完整格式见 docs/business-materials.md 和 docs/contracts/script-bots.schema.json；不接受旧 Markdown。",
+        "required": true
+      },
+      {
+        "id": "materials",
+        "description": "参考材料：注明用途。",
+        "required": false
+      }
+    ]
+  },
+  "map_output_rule": {
+    "description": "",
+    "files": [{ "id": "saved" }, { "id": "handoff" }]
+  },
   "nodes": {
     "create_blank": {
       "title": "核实既有目标并创建空白 Bot",

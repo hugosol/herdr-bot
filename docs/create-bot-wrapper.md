@@ -8,9 +8,9 @@
 
 ## 调用接口
 
-输入要求的唯一权威来源为 [`create-bot-wrapper.json`](../meta-data/workflow-maps/create-bot-wrapper.json) 的 `input_requirements` 与各项 `input_files[].description`；scheduler 发起页分别展示非空总体要求与对应文件标签，Bot 能力摘要与调用者不另存完整要求。文件接口仍为必需 `request` 与可选 `materials`。
+输入要求的唯一权威来源为 [`create-bot-wrapper.json`](../meta-data/workflow-maps/create-bot-wrapper.json) 的 `map_input_rule.description` 与各项 `map_input_rule.files[].description`；scheduler 发起页分别展示非空总体要求与对应文件标签，Bot 能力摘要与调用者不另存完整要求。文件接口仍为必需 `request` 与可选 `materials`。
 
-启动管理者时可暂不提供 request，用户可先在本次要求或管理者对话中说明委托、提供文件。管理者读取共同输入要求和已有材料，澄清语义与授权，必要时在获准范围内整理为 request 文件，以 `prepare_inputs` 全量绑定并确认后才能派发任何业务节点；确认时 request 必须齐全、可读且语义满足要求，不能以文件存在代替核实。嵌套子管理者同样先完成输入准备；父节点通过 `input_rule` 将已有 request／materials 以同名输入显式绑定，作为子 Run 的准备初值，并填写本调用的 `manager_task_id`、zone 和自包含业务 input；发起前通过公开接口核实所选 Task 真实存在且为 manager 类型、zone 真实可用，不默认继承父层配置。管理者配置不是 Bot 属性。父节点还应声明 `saved` 和 `handoff` 输出，要求子管理者在完成整个子 Run 后将 `save_bot` 的同名交付直接报告给父层；地址登记不是业务验收，父管理者仍须显式接受交接。父层可接收子 Map 实际公开声明的同名输出子集，不从内部节点寻址。
+启动管理者时可暂不提供 request，用户可先在本次要求或管理者对话中说明委托、提供文件。管理者读取共同输入要求和已有材料，澄清语义与授权，必要时在获准范围内整理为 request 文件，以 `prepare_inputs` 全量绑定并确认后才能派发任何业务节点；确认时 request 必须齐全、可读且语义满足要求，不能以文件存在代替核实。嵌套子管理者同样先完成输入准备；父节点通过 `input_rule` 将已有 request／materials 以同名输入显式绑定，作为子 Run 的准备初值，并填写本调用的 `manager_task_id`、zone 和自包含业务 input；发起前通过公开接口核实所选 Task 真实存在且为 manager 类型、zone 真实可用，不默认继承父层配置。管理者配置不是 Bot 属性。子 Map 公开 `saved` 和 `handoff`。子管理者以 `save_bot` 的同名交付登记本次 `finish` 的公开文件；父节点按需声明同名输出子集，正式报告由系统从已完成子 Run 取文件地址，不由报告者重复登记或由父层从内部节点寻址。地址登记不是业务验收，父管理者仍须显式接受交接。
 
 最终 `saved` 是 v1 JSON envelope，包含公开接口完整读回的真实 `bot`、新 `revision` 和完整 `target.configuration`，不是旧的裸 Bot JSON；`handoff` 是 v1 saved 阶段 JSON，只记真实身份、normal Task／Map 唯一绑定、共同 baseline 与四份正文来源、保存和非目标保持结论及未验证项，不携带批准凭据。父层必须核对真实身份和绑定，不根据“完成”文字推断新能力已验证。必要时显式要求额外交付 baseline，但不通过 handoff 隐式寻址。
 
@@ -26,7 +26,7 @@
 
 1. `w1` → `create-task`：从本次 `Run.userInput` 和可选命名 `materials` 创建 normal Task。保留全文和执行配置确认，公开保存／完整读回；`handoff` 自包含地记录真实新 Task ID、需求、确认来源、权限及后续 Bot 创建委托。未明确的授权不得自行补齐。
 2. `w2` → `optimize-prompt`：直接消费 `w1.handoff` 中的完整 prompt、已确认语义与授权，仅整理表达并保存 prompt，保留其他配置，不重做需求访谈。W1 记录后续保义优化及保存授权；授权不足、语义变化或冲突须先解决。`saved` 单独承载完整最新 Task 配置，`handoff` 作为子流程 `request`，必须是 v1 严格 JSON：真实 Task 定位、需求及三个约束数组和可选 Bot 命名；不加 Schema 外的核对总结，不复制配置或正文，不生产 authorization、confirmation 或任何改名批准凭据。request／共同基线／目标字段归属见共同业务材料契约；不将执行层成果批准嵌入业务材料。报告可自由发送，成果按各节点 auto_approved 独立批准；外层管理者核实最新报告与交付后显式 complete。
-3. `wrap_bot` → Map 型 `create-bot-wrapper`：部署前从该节点读取并核实明确配置的 manager Task 和 zone；需更换时修改本次调用，不改 Bot 属性。`request` 直接绑定 `w2.handoff`，`materials` 直接绑定外层同名可选输入；不依赖 `blocked_by`、父 Chat 或 handoff 的隐式地址传材料。子管理者核实并逐项 complete 子节点，完成整个子 Run 后通过真实 node report 将 `save_bot.saved`／`save_bot.handoff` 直接登记为父节点同名输出。父管理者另行核实真实 Bot ID、唯一 Task 绑定、完整保存读回与执行层批准事实，显式 complete 本调用后交给 `optimize_bot`，此时不能 finish 外层；子 Run 完成、报告文字或 `can_complete` 都不是这个边界。
+3. `wrap_bot` → Map 型 `create-bot-wrapper`：部署前从该节点读取并核实明确配置的 manager Task 和 zone；需更换时修改本次调用，不改 Bot 属性。`request` 直接绑定 `w2.handoff`，`materials` 直接绑定外层同名可选输入；不依赖 `blocked_by`、父 Chat 或 handoff 的隐式地址传材料。子管理者核实并逐项 complete 子节点，以 `save_bot.saved`／`save_bot.handoff` 作为公开文件 finish 子 Run；正式 node report 由系统取得已登记的同名文件。父管理者另行核实真实 Bot ID、唯一 Task 绑定、完整保存读回与执行层批准事实，显式 complete 本调用后交给 `optimize_bot`，此时不能 finish 外层；子 Run 完成、报告文字或 `can_complete` 都不是这个边界。
 
 4. `optimize_bot` → `prompt优化者——Bot维度`：依赖 `wrap_bot`，显式接收其 `saved`／`handoff` 为 `bot_saved`／`bot_handoff`，并接收外层可选 `materials`。沿用有效需求与确认，查询服务最新配置，联合优化刚创建的 Task.prompt 与 Bot 四字段摘要；展示整体方案、共享影响和完整候选，取得最终文本与保存授权。Skill／文档只读，保持业务语义、身份、绑定和执行配置，不运行目标能力。`saved` 交付完整读回的最终 Bot 与 Task 配置，`handoff` 交付修改说明、确认依据、保存核对结果及未验证项。采用人工成果批准且不自动关闭；报告发送不要求批准，已批准仍须管理者显式完成交接。父管理者验收并 complete 此节点后才可 finish 外层；阻塞或部分保存不算整体完成，保留对象，不自动删除或回滚。包装产物仅是阶段记录，最终注明“文本／定义优化完成，行为未验证”。
 

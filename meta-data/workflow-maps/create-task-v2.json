@@ -2,14 +2,16 @@
   "title": "创建task-V2",
   "group": "meta-map",
   "description": "创建 normal Task 及绑定它的完整 Bot：先由 Task 创建者交付阶段配置，再独立调用创建bot-V2，在其既有分层设计阶段完成四字段摘要及获准且必要的 Task.prompt 保义优化。依据 create-task-v2 r1，W1 对应 create_task，W2 对应 create_bot_v2；不展开子图，不另设 prompt 优化或末尾联合优化阶段。\n\n最终 Task 与 Bot 配置以 create_bot_v2 的 saved 为准，create_task 的配置仅供阶段验收。父管理者验收最终 saved／handoff 并完成两个普通工作节点的交接后，才可结束整体流程。\n\n仅交付配置，不启动生成能力；现有创建task、创建bot、创建bot-V2 及其调用方保持不变。文本／定义优化完成不代表工具加载或业务效果已验证。",
-  "input_requirements": "通过本次要求说明拟创建能力的业务需求、输入输出、验收、非目标、约束、资源与权限、执行配置偏好，以及 Task＋Bot 创建委托。该要求是未来本次业务能力的需求，不是创建本 Map 的规划需求。说明已有确认及范围、参考材料用途与读取授权、材料写入授权和正式交付要求；分别明确 Task 创建、Bot 创建及必要 Task.prompt 保义优化的授权范围。未知正文在对应阶段形成候选后确认，不提前批准。缺失业务选择或授权由用户补齐；不包含业务试运行。",
-  "input_files": [
-    {
-      "id": "materials",
-      "required": false,
-      "description": "可选业务需求、规范、输入输出样例或已有提示词参考文件；说明内容、格式、用途及读取授权。原样供 Task 创建与创建bot-V2 使用，缺席合法，已提供须可读。"
-    }
-  ],
+  "map_input_rule": {
+    "description": "通过本次要求说明拟创建能力的业务需求、输入输出、验收、非目标、约束、资源与权限、执行配置偏好，以及 Task＋Bot 创建委托。该要求是未来本次业务能力的需求，不是创建本 Map 的规划需求。说明已有确认及范围、参考材料用途与读取授权、材料写入授权和正式交付要求；分别明确 Task 创建、Bot 创建及必要 Task.prompt 保义优化的授权范围。未知正文在对应阶段形成候选后确认，不提前批准。缺失业务选择或授权由用户补齐；不包含业务试运行。",
+    "files": [
+      {
+        "id": "materials",
+        "required": false,
+        "description": "可选业务需求、规范、输入输出样例或已有提示词参考文件；说明内容、格式、用途及读取授权。原样供 Task 创建与创建bot-V2 使用，缺席合法，已提供须可读。"
+      }
+    ]
+  },
   "nodes": {
     "create_bot_v2": {
       "title": "调用创建bot-V2",

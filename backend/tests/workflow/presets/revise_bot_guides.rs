@@ -13,7 +13,7 @@ async fn revise_bot_guides_publishes_four_independent_field_bindings() {
     let file = "enhance-existing-bot--bc-301b25d9f8d6.json";
     let definition: Value = serde_json::from_str(&fs::read_to_string(root.join("meta-data/workflow-maps").join(file)).unwrap()).unwrap();
     // Material guidance is editable; this contract fixes identities and requiredness.
-    let inputs: Vec<Value> = definition["input_files"].as_array().unwrap().iter()
+    let inputs: Vec<Value> = definition["map_input_rule"]["files"].as_array().unwrap().iter()
         .map(|input| json!({"id":input["id"],"required":input["required"]})).collect();
     assert_eq!(inputs, vec![json!({"id":"request","required":true}), json!({"id":"materials","required":false})]);
     assert_eq!(definition["nodes"].as_object().unwrap().len(), 6);
@@ -68,7 +68,7 @@ async fn revise_bot_guides_publishes_four_independent_field_bindings() {
     let endpoint = format!("/api/scheduler/maps/{file}");
     let interface = get_over_tcp(s.server.addr(), &format!("{endpoint}/inputs")).await;
     let interface: Value = serde_json::from_str(&interface.body).unwrap();
-    let saved = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"input_files":definition["input_files"],"input_requirements":definition["input_requirements"].as_str().unwrap_or(""),"revision":interface["revision"]}).to_string()).await;
+    let saved = post_json_over_tcp(s.server.addr(), &format!("{endpoint}/inputs"), &json!({"map_input_rule":definition["map_input_rule"],"revision":interface["revision"]}).to_string()).await;
     assert_eq!(saved.status, 200, "{}", saved.body);
     for id in ["w1","w2","w3","w4","w6","w5"] {
         let mut node = definition["nodes"][id].clone();

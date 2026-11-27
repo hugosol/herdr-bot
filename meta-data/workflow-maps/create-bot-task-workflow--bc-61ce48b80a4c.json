@@ -1,15 +1,17 @@
 {
   "group": "meta-map",
   "title": "创建task",
-  "description": "创建并保存 normal Task → 在当前 Chat 优化并保存 Task.prompt → 调用包装子流程交付完整 Bot → 联合优化 Task.prompt 与 Bot 四字段摘要并交付最终配置。最后的 Bot 维度优化保存、读回与交接验收完成后才能结束；受阻或部分保存不算整体完成，保留已创建对象，不自动回滚。输入准备见本 Map 的 input_requirements 与 input_files[].description。管理者按真实报告验收交接，逐项 complete 后 finish；配置交付不等于业务验证，不运行新能力。外层交接与授权边界见 ${herdr-bot-path}/docs/create-bot-wrapper.md 的“创建 Task＋Bot 的选定外层入口”。",
-  "input_requirements": "通过“本次要求”提供业务需求。",
-  "input_files": [
-    {
-      "id": "materials",
-      "description": "Task 创建需求的参考材料：注明用途。",
-      "required": false
-    }
-  ],
+  "description": "创建并保存 normal Task → 在当前 Chat 优化并保存 Task.prompt → 调用包装子流程交付完整 Bot → 联合优化 Task.prompt 与 Bot 四字段摘要并交付最终配置。最后的 Bot 维度优化保存、读回与交接验收完成后才能结束；受阻或部分保存不算整体完成，保留已创建对象，不自动回滚。输入准备见本 Map 的 map_input_rule.description 与 map_input_rule.files[].description。管理者按真实报告验收交接，逐项 complete 后 finish；配置交付不等于业务验证，不运行新能力。外层交接与授权边界见 ${herdr-bot-path}/docs/create-bot-wrapper.md 的“创建 Task＋Bot 的选定外层入口”。",
+  "map_input_rule": {
+    "description": "通过“本次要求”提供业务需求。",
+    "files": [
+      {
+        "id": "materials",
+        "description": "Task 创建需求的参考材料：注明用途。",
+        "required": false
+      }
+    ]
+  },
   "nodes": {
     "w1": {
       "title": "W1 创建 Task",
@@ -35,7 +37,7 @@
     "w2": {
       "title": "W2 保义优化 Task.prompt",
       "bot_id": "optimize-prompt",
-      "input": "完整读取 task_created：其中 Task.prompt 是原文，需求、确认及硬约束是保义依据。优化并保存该真实 normal Task 的 prompt，保持其余配置不变。\n保存前读取 ${herdr-bot-path}/docs/usage.md 的“仅修改 Task.prompt”，使用服务 ${herdr-bot-api-url}，按上游记录的授权执行。\n交付 saved 为完整读回的最新 Task 配置；handoff 按 ${herdr-bot-path}/meta-data/workflow-maps/create-bot-wrapper.json 的 input_files 中 request 项的 description 整理为包装 request，只传真实 Task ID、业务需求与执行约束及可选 Bot 命名。保存核对结论与完整配置留在 saved，不加入 request。必需执行数据缺失时明确阻塞。\n作为 request 交付的 handoff 必须遵守创建分支 v1 的严格 JSON（不是 Markdown）：schema_version=1、kind=request，target={type:task,task_id:真实最新 Task ID}；requirements、constraints、non_goals、resource_limits 完整必填，可选 bot。不生产 authorization、confirmation、approved、下游许可或其他人类批准凭据；成果批准由各次 execution 独立持有。保留业务讨论及真实成果把关，不将未来指南全文或保存批准作为本阶段材料前提；不复制配置／prompt，不加入 Schema 未声明的总结、保存结论或未验证字段。这些限制可写入已声明需求/约束；完整最新配置另在 saved。",
+      "input": "完整读取 task_created：其中 Task.prompt 是原文，需求、确认及硬约束是保义依据。优化并保存该真实 normal Task 的 prompt，保持其余配置不变。\n保存前读取 ${herdr-bot-path}/docs/usage.md 的“仅修改 Task.prompt”，使用服务 ${herdr-bot-api-url}，按上游记录的授权执行。\n交付 saved 为完整读回的最新 Task 配置；handoff 按 ${herdr-bot-path}/meta-data/workflow-maps/create-bot-wrapper.json 的 map_input_rule.files 中 request 项的 description 整理为包装 request，只传真实 Task ID、业务需求与执行约束及可选 Bot 命名。保存核对结论与完整配置留在 saved，不加入 request。必需执行数据缺失时明确阻塞。\n作为 request 交付的 handoff 必须遵守创建分支 v1 的严格 JSON（不是 Markdown）：schema_version=1、kind=request，target={type:task,task_id:真实最新 Task ID}；requirements、constraints、non_goals、resource_limits 完整必填，可选 bot。不生产 authorization、confirmation、approved、下游许可或其他人类批准凭据；成果批准由各次 execution 独立持有。保留业务讨论及真实成果把关，不将未来指南全文或保存批准作为本阶段材料前提；不复制配置／prompt，不加入 Schema 未声明的总结、保存结论或未验证字段。这些限制可写入已声明需求/约束；完整最新配置另在 saved。",
       "input_rule": [
         {
           "type": "node",
@@ -101,7 +103,7 @@
       "title": "为已优化 Task 包装完整 Bot",
       "bot_id": "create-bot-wrapper",
       "manager_task_id": "task-18e2c2827c484128-0",
-      "input": "按 request 为已优化 normal Task 创建并绑定完整 Bot。目标 Task 保持只读，不运行新能力。\n调用前读 ${herdr-bot-path}/docs/create-bot-wrapper.md 的“调用接口”；本次只承担包装子 Run 的管理及向父层交接，不代执行者编写或保存配置。子节点验收完成并 finish 子 Run 后，通过真实 node report 将 save_bot 的 saved／handoff 直接登记为本节点同名输出。交付须能核对真实 Bot ID、唯一 Task 绑定、完整保存读回、执行层批准事实和未验证项，不索要材料内授权凭据；父管理者另行验收并 complete 本调用，子 Run 结束不代替父层完成。",
+      "input": "按 request 为已优化 normal Task 创建并绑定完整 Bot。目标 Task 保持只读，不运行新能力。\n调用前读 ${herdr-bot-path}/docs/create-bot-wrapper.md 的“调用接口”；本次只承担包装子 Run 的管理及向父层交接，不代执行者编写或保存配置。子节点验收完成后，以 save_bot 的 saved／handoff 为同名公开文件 finish 子 Run；正式 node report 由系统取得这两个文件。交付须能核对真实 Bot ID、唯一 Task 绑定、完整保存读回、执行层批准事实和未验证项，不索要材料内授权凭据；父管理者另行验收并 complete 本调用，子 Run 结束不代替父层完成。",
       "input_rule": [
         {
           "type": "node",

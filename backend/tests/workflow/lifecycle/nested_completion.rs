@@ -22,7 +22,7 @@ async fn read_run(s: &Scenario, id: &Value) -> Value {
 }
 async fn setup(s: &Scenario) {
     // Maps are files; Bot creation and node editing use their public API.
-    fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner","description":"","nodes":{"inside":{"title":"Internal work","bot_id":"worker","input":"INTERNAL","zone":"node","blocked_by":[],"output_rule":[]}}}).to_string()).unwrap();
+    fs::write(s.config.scheduler.map_directory.join("inner.json"), json!({"title":"Inner","description":"","map_output_rule":{"files":[{"id":"result"},{"id":"missing"},{"id":"new-only"}]},"nodes":{"inside":{"title":"Internal work","bot_id":"worker","input":"INTERNAL","zone":"node","blocked_by":[],"output_rule":[]}}}).to_string()).unwrap();
     request(s, "/api/scheduler/bots/save", json!({"id":"nested","content":json!({"name":"Nested","when":"","description":"","input_rule":"","output_rule":"","map_file":"inner.json"}).to_string(),"revision":null}), 200).await;
     fs::write(s.config.scheduler.map_directory.join("work.json"), json!({"title":"Outer","description":"","nodes":{}}).to_string()).unwrap();
     for (id, content) in [

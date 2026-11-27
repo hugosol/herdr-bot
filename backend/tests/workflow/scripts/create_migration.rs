@@ -233,7 +233,11 @@ async fn migrated_workflow(fault: Option<&str>) {
         }
         if path.ends_with("enhance-existing-bot--bc-301b25d9f8d6.json") {
             // The independent revision graph test checks its four-lane wiring.
-            for map in [&mut expected, &mut current] { for field in ["title", "description", "input_files", "nodes"] { map.as_object_mut().unwrap().remove(field); } }
+            for map in [&mut expected, &mut current] { for field in ["title", "description", "nodes"] { map.as_object_mut().unwrap().remove(field); } }
+            let old = expected.as_object_mut().unwrap();
+            old.remove("input_files");
+            old.remove("input_requirements");
+            current.as_object_mut().unwrap().remove("map_input_rule");
         }
         assert_eq!(current, expected, "Unrelated definition content changed: {path}");
     }
@@ -280,9 +284,8 @@ async fn migrated_workflow(fault: Option<&str>) {
     fs::write(&s.config.tasks.storage_file, deployed_tasks.to_string()).unwrap();
     // Only the deployed authoring definitions are online. Keep unselected
     // old-format definitions unchanged in the isolated offline archive.
-    for path in fs::read_dir(root().join("meta-data/workflow-maps")).unwrap() {
-        let path = path.unwrap().path();
-        if path.extension().is_some_and(|e| e == "json") { fs::copy(&path, s.config.scheduler.map_directory.join(path.file_name().unwrap())).unwrap(); }
+    for file in ["create-bot-wrapper.json", "enhance-existing-bot--bc-301b25d9f8d6.json"] {
+        fs::copy(root().join("meta-data/workflow-maps").join(file), s.config.scheduler.map_directory.join(file)).unwrap();
     }
     let worker = api(&s, "/api/scheduler/bots/edit", json!({"id":"worker"}), 200).await;
     let backup = s.data.path().join("offline-bots");
