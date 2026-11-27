@@ -467,34 +467,6 @@ pub fn render_chat_name(rule: &str, zone: &str, task: &Task, chat_id: &str) -> S
     rendered
 }
 
-/// Join an already-rendered fixed prompt, literal input and common dictionary
-/// guidance. Render known fields before this join; never interpolate the result.
-/// A native Skill remains the single leading `/skill:<name>` invocation.
-pub fn compose_prompt(
-    fixed_prompt: &str,
-    native_skill: Option<&str>,
-    input: &str,
-    instructions: &str,
-) -> String {
-    let mut sections: Vec<&str> = Vec::new();
-    if !fixed_prompt.is_empty() {
-        sections.push(fixed_prompt);
-    }
-    if !input.is_empty() {
-        sections.push(input);
-    }
-    if !instructions.is_empty() {
-        sections.push(instructions);
-    }
-    let body = sections.join("\n\n");
-
-    match native_skill {
-        Some(skill) if body.is_empty() => format!("/skill:{skill}"),
-        Some(skill) => format!("/skill:{skill} {body}"),
-        None => body,
-    }
-}
-
 /// 目标 agent 的原生启动参数：只有显式配置时才传 `--model` / `--thinking`。
 ///
 /// 模型使用本次元数据快照中的完整 provider / model 映射；默认值不传覆盖。
@@ -653,10 +625,7 @@ pub(crate) async fn run_creation(
         view.stage = Stage::Submitting;
     }
     let composed;
-    let text = if let Some(delegation) = &delegation { delegation.prompt.as_str() } else { composed = match prompts.snapshot().and_then(|snapshot| {
-        let fixed = snapshot.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt)?;
-        Ok(compose_prompt(&fixed, preset.trigger.native_skill.as_deref(), &input, &snapshot.instructions(&task.trigger.prompt)))
-    }) {
+    let text = if let Some(delegation) = &delegation { delegation.prompt.as_str() } else { composed = match prompts.task(&task.trigger.prompt, preset.trigger.native_skill.as_deref(), &input) {
         Ok(text) => text,
         Err(error) => {
             let mut view = job.lock().await;
@@ -871,27 +840,5 @@ mod tests {
         for invalid in ["", "A7F3C2", "a7f3c", "a7f3c2x", "a7f3c\n"] {
             assert!(!is_valid_chat_id(invalid), "{invalid:?} 不应是合法短标识");
         }
-    }
-
-    /// 无 Skill、无 prompt、非空 input 时按字面提交本次任务。
-    #[test]
-    fn plain_input_is_submitted_once_without_extra_prefix() {
-        let task = task("{chat.id}");
-        assert_eq!(
-            compose_prompt(&task.trigger.prompt, task.trigger.skill.as_deref(), "检查登录\n第二行", ""),
-            "检查登录\n第二行"
-        );
-    }
-
-    /// 有 Skill 时只生成一次 `/skill:` 调用，名称后接普通空格与正文。
-    #[test]
-    fn skill_uses_one_native_invocation_prefix() {
-        let mut task = task("{chat.id}");
-        task.trigger.skill = Some("code-review".into());
-        task.trigger.prompt = "固定指示".to_string();
-        assert_eq!(
-            compose_prompt(&task.trigger.prompt, task.trigger.skill.as_deref(), "本次任务", ""),
-            "/skill:code-review 固定指示\n\n本次任务"
-        );
     }
 }

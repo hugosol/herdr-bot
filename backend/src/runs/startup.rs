@@ -91,32 +91,6 @@ pub(super) async fn write_github_materials(
     })).await.map_err(|e| format!("无法写入 Run 启动材料，未发起管理者 Chat：{e}"))?.and_then(|result| result).map_err(failed)
 }
 
-fn manager_input(state: &AppState, run: &Run) -> String {
-    let paths = Runs::paths(state, &run.id);
-    let materials = material_directory(&run.zone, &run.id);
-    let mut input = format!(
-        "Run ID: {}\nMap: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n中间资料位置: {}",
-        run.id, state.map_directory.join(&run.map).display(), state.run_instructions.display(),
-        paths[0].display(), paths[1].display(), paths[2].display(), materials.display());
-    input.push_str("\n\n[End node contract] Map may explicitly mark one end_node. It must wait for every other node to be completed. After successful dispatch, that Chat is handed to the user and remains running/open: do not request reports or complete it. Explicitly finish the Run when canFinish is true; this records handed-to-user, not completion of that Chat. Never finish after a failed dispatch. [/End node contract]");
-    if !run.user_input.is_empty() {
-        input.push_str("\n\n");
-        input.push_str(&run.user_input);
-    }
-    input
-}
-
-pub(crate) fn manager_prompt(
-    state: &AppState,
-    run: &Run,
-    task: &crate::tasks::Task,
-    preset: &crate::tasks::catalog::ResolvedPreset,
-) -> Result<String, String> {
-    let prompts = state.prompts.snapshot().map_err(|e| e.to_string())?;
-    let fixed = prompts.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt).map_err(|e| e.to_string())?;
-    Ok(crate::chats::compose_prompt(&fixed, preset.trigger.native_skill.as_deref(), &manager_input(state, run), &prompts.instructions(&task.trigger.prompt)))
-}
-
 pub(super) async fn manager_interrupted(
     state: &AppState,
     id: &str,
@@ -482,40 +456,29 @@ async fn protocol(
     let text = if let Some(launch) = delegation {
         std::borrow::Cow::Borrowed(launch.prompt.as_str())
     } else {
-    let paths = Runs::paths(state, &run.id);
-    let materials = material_directory(&run.zone, &run.id);
-    let prompts = state.prompts.snapshot().map_err(|e| e.to_string())?;
-    let fixed_prompt = prompts.render(crate::prompts::Field::TaskPrompt, &task.trigger.prompt).map_err(|e| e.to_string())?;
-    let mut input = match &role {
-        Role::Manager => manager_input(state, run),
-        Role::Node { id, target, .. } => {
-            use std::fmt::Write;
-            let execution = run.nodes[*id].execution.as_ref().ok_or("缺少冻结执行。")?;
-            if execution.end_node {
-                let mut input = format!("[Run background / userInput]\n{}\n[/Run background / userInput]\n\n[Named file inputs]\n", run.user_input);
-                for file in execution.inputs.as_ref().ok_or("缺少冻结输入地址。")? { writeln!(input, "{}: {}", file.id, file.path).unwrap(); }
-                write!(input, "[/Named file inputs]\n\n[Business input]\n{}", prompts.render(crate::prompts::Field::NodeInput, &target.input).map_err(|e| e.to_string())?).unwrap();
-                input
-            } else {
-            let mut input = format!(
-                "Node ID: {id}\nNode: {}\n运行说明: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n\n中间资料位置: {}\n\n[Run background / userInput]\n{}\n[/Run background / userInput]\n\n[Named file inputs]\n",
-                target.title, state.run_instructions.display(), paths[0].display(), paths[1].display(),
-                paths[2].display(), materials.display(), run.user_input);
-            for file in execution.inputs.as_ref().ok_or("缺少冻结输入地址。")? { writeln!(input, "{}: {}", file.id, file.path).unwrap(); }
-            writeln!(input, "[/Named file inputs]\n\n[Output rules]\n{}\n[/Output rules]", serde_json::to_string(&execution.output_rule).map_err(|e| e.to_string())?).unwrap();
-            write!(input, "\n[Result approval control]\nauto_approved: {}\nApprove the current session result before the final handoff report. Approval and reporting are independent; progress, problems and failures may be reported at any time without sending confirmation. Approval never completes work or notifies the manager; the manager must explicitly complete after a latest ready report and declared deliveries. Use the native approval tool; manual mode requires explicit native Yes.\n[/Result approval control]\n\n[Business input]\n{}",
-                target.auto_approved, prompts.render(crate::prompts::Field::NodeInput, &target.input).map_err(|e| e.to_string())?).unwrap();
-            input
+        let fixed = &task.trigger.prompt;
+        let skill = preset.trigger.native_skill.as_deref();
+        let text = match &role {
+            Role::Manager => state.prompts.manager(fixed, skill, &run.manager_context(state), &run.user_input),
+            Role::Node { id, target, .. } => {
+                use crate::prompts::{NodeContext, NodeRole};
+                let execution = run.nodes[*id].execution.as_ref().ok_or("缺少冻结执行。")?;
+                state.prompts.node(fixed, skill, &NodeContext {
+                    background: &run.user_input,
+                    input: &target.input,
+                    files: execution.inputs.as_deref().ok_or("缺少冻结输入地址。")?,
+                    role: (!execution.end_node).then(|| NodeRole {
+                        id,
+                        title: &target.title,
+                        run_files: run.prompt_files(state),
+                        output_rule: execution.output_rule.as_deref(),
+                        auto_approved: target.auto_approved,
+                    }),
+                    child: child.as_deref().map(|child| child.manager_context(state)),
+                })
             }
-        }
-    };
-    if let Some(child) = child {
-        use std::fmt::Write;
-        let paths = Runs::paths(state, &child.id);
-        write!(input, "\n\n[Child Run manager context]\nRun ID: {}\nMap: {}\n当前状态: {}\n执行历史: {}\n报告记录: {}\n中间资料位置: {}\n[/Child Run manager context]\n\n[End node contract] An explicit end_node waits for all other nodes completed. Successful dispatch hands its open Chat to the user without report or complete; explicitly finish this child Run when canFinish=true, then report normally to the parent manager. Failed dispatch cannot finish. [/End node contract]", child.id, state.map_directory.join(&child.map).display(), paths[0].display(), paths[1].display(), paths[2].display(), std::path::Path::new(&child.zone).join(".manager-zone").join(".workflow").join(&child.id).display()).unwrap();
-    }
-    let text = crate::chats::compose_prompt(&fixed_prompt, preset.trigger.native_skill.as_deref(), &input, &prompts.instructions(&task.trigger.prompt));
-    std::borrow::Cow::Owned(text)
+        }.map_err(|error| error.to_string())?;
+        std::borrow::Cow::Owned(text)
     };
     if let Err(error) = started.submit_once(&text, || {
         effects.input_attempted = true;

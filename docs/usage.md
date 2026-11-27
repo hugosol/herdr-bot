@@ -18,7 +18,7 @@
 
 服务 TOML 的 `prompts_file` 默认 `prompts.local.toml`，相对服务配置目录。将 [`prompts.example.toml`](../prompts.example.toml) 复制为本机文件并填写实际路径和 API URL，不覆盖已有配置。词典只为提示词提供参考信息，不解析程序路径、不设置执行目录，也不修改 Toolkit 扩展的实际连接配置。不要写入不应暴露给 agent 的密钥。
 
-- Task 固定 prompt、Bot 的 `when`、`plan_guide`、`node_guide`、Map 的 `description` 和 node 的 `input` 保存 `${key}` 原文。系统发送这些字段前读取最新词典，仅替换一次，不递归解释词典值。`$${key}` 输出字面量 `${key}`；临时输入、Run 本次要求、报告和 agent 产物不替换。改词典不用重启。
+- Task 固定 prompt、Bot 的 `when`、`plan_guide`、`node_guide`、Map 的 `description` 和 node 的 `input` 保存 `${key}` 原文。系统装配每条初始消息时读取一份最新词典快照，同条消息的 Task 固定设定、节点委托及词典说明共用该快照；仅替换一次，不递归解释词典值。`$${key}` 输出字面量 `${key}`；临时输入、Run 本次要求、报告和 agent 产物不替换。改词典不用重启。
 - agent 直接读定义仍会看到标签。只有替换前的 Task 固定 prompt 含未转义、完整闭合的 `${key}` 时，系统发起的 Chat（含流程派发）才收到词典绝对路径和读取说明。其他消息段、替换值、转义或未闭合标签不触发说明。系统不会改写原定义或自动注入 Bot 指南正文。
 - 词典不完整时允许保存定义。发送时遇到未知标签会报告字段和标签并停止发送。缺失文件视为空词典；非法 TOML 或不可读文件报错，不猜值。
 
