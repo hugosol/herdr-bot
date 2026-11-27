@@ -34,6 +34,21 @@
 
 本轮没有真实 GitHub 访问、克隆、zone 登记或模型业务执行，没有重启用户服务或删除 backup。结果不代替部署、用户迁移完成确认或业务验收。
 
+## 登记脚本复用实际服务地址：2026-11-27 追加证据
+
+`context.serviceUrl` 由已绑定 listener 提供，不新增配置、不从词典或请求 Host 推断。`register-zone.ts` 用同一地址执行 GET／POST／GET 并写入 `registered_zone.service_url`；Bot 说明改为“当前 herdr-bot 服务”。IPv4／IPv6 通配地址转换为同族回环，具体地址与实际端口保留；尚未关联 listener 时在 Bun 启动前明确失败，已关联地址不可替换。
+
+最后一次代码修改后的检查使用同一独占 `CARGO_TARGET_DIR=E:/Developer/myhub/herdr-bot/backend/target-github-cutover`：
+
+| 检查 | 结果 |
+| --- | --- |
+| `cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-fixture --example safe_shutdown_shell` | 通过，生产入口与安全壳均接入实际 listener。 |
+| `cargo test --manifest-path backend/Cargo.toml --lib -- script_service_origin:: runs::report_isolation_tests::script_reports_isolate_late_old_true_latest_false_and_material_scope` | 3/3 通过，覆盖地址格式、实际临时端口、缺失／替换拒绝及脚本报告调用方。 |
+| `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- typescript:: rust_lifecycle::script_lifecycle_real_restart_preserves_finished_and_interrupted_facts_without_replay selected_flow::selected_flow_executes_by_stable_identity_without_inventory_gate` | 9/9 通过，覆盖真实 Bun 上下文、登记脚本、已有脚本消费者和重启。 |
+| 登记 Bot JSON Schema | 通过。 |
+
+登记回归使用临时本地 Git 仓库和 `file://` 浅克隆；GitHub SSH URL 仅为 origin 元数据，未连接 GitHub。测试护栏只允许请求独立已知的 TestServer origin，并原样转发到真实 HTTP；实际登记、公开读回和输出材料均核对该随机端口，未替换脚本实现或伪造成功响应。未访问用户服务、认证或业务仓库，未重启部署或删除 backup。
+
 ## 本轮产品自动证据
 
 从对应产品 worktree 运行，使用独占绝对 `CARGO_TARGET_DIR`；先构建交付页（`npm --prefix frontend run build`），所选检查不触发生产操作。见[测试约定](agents/testing.md)。

@@ -28,8 +28,10 @@
 - **确认来源：** 本轮用户选定此 Map，并明确不把无助于任务完成的旧说明搬入 Task.prompt 或 node.input；接受只传启动时的 runInput，不需要同步管理者 Chat 后续补充。用户要求保留 GitHub 链接和 repo 父目录输入框，批准同步修改代码，而不只改配置与提示词。后续 review 中，用户确认只通过表单提供克隆参数、无需记录默认启动授权，并同意新增输入驱动动态 zone。上述为迁移方案授权，不是最终迁移完成或业务验收确认。
 - **来源与落点：** 从 `backup/20261127-161156-bot-map-cutover/workflow-maps/github-repository-exploration.json` 及同批 `bots/` 三个旧定义迁入正式 `meta-data` 目录。保留 Map 文件名、W1/W2/W3、三个 Bot ID 和原文件名、目标引用、依赖、批准及关闭策略；W3 的动态 zone 后续按本轮 review 改为输入驱动。未修改或删除 backup。备份内 `evidence/verification.json` 记录字节/目录匹配与文件系统在线排除，但服务未重启、chief 未清理、外部效果和在线 HTTP 未核验；本轮不据此宣布现场切换完成。
 - **输入与提示词：** GitHub 链接与父目录通过表单必填的两个字段生成唯一 `clone_request`，前后端拒绝缺项及已有文件替代，不再由管理者补齐；探索方向使用通用“本次要求”进入 `mapInput.runInput`。移除探索方向专用参数、`exploration_brief` 生成及其文件接线。Map 输入说明仅按链接、父目录、本次要求的业务含义组织；省略克隆请求文件说明，删除启动授权和通用步骤复述。W3 `input` 为空，原 Task `task-18e6bf4da8312bbc-0` 的空 prompt、模型、thinking、Suite 及其他设置不变。不把旧只读说明迁入 Task/node，也不把 Bot 摘要当执行约束；用户实际输入确定探索范围。
-- **交付边界：** Map 新输入规则只声明 `clone_request`；公开输出只描述探索 Chat 交接，不声明文件。W3 保持结束节点，成功发起后按通用协议 finish，不等待探索完成。脚本执行和失败处理不变，真实仓库核验由脚本承担；W3 通过 `input_rule` 接收 W2 的 `registered_zone`，并用 `zone.input_id` 引用该本地输入；后端读取 `zone_id` 选址，管理者不再手填 zoneIds 或读取流程选址提示词，也不重复承担脚本业务验收。
-- **共享影响：** 对正式定义及本批 backup 的静态引用调查中，仅此 Map 引用三个 Bot，仅探索 Bot 绑定该 Task；不据此排除用户独立调用。Task、两个脚本和共享 Suite 未修改；通用 Run 文本传递机制不变；新增的输入驱动 zone 可用于 Task／脚本／子 Map 节点，人工动态和固定 zone 保持原语义。其他未选 Map 不迁入、不算废弃。
+- **交付边界：** Map 新输入规则只声明 `clone_request`；公开输出只描述探索 Chat 交接，不声明文件。W3 保持结束节点，成功发起后按通用协议 finish，不等待探索完成。仓库核实与失败处理不变，真实仓库核验由脚本承担；W3 通过 `input_rule` 接收 W2 的 `registered_zone`，并用 `zone.input_id` 引用该本地输入；后端读取 `zone_id` 选址，管理者不再手填 zoneIds 或读取流程选址提示词，也不重复承担脚本业务验收。
+- **登记服务地址：** 用户确认复用当前 listener 的实际绑定结果，由后端通过 `context.serviceUrl` 提供给 `register-zone.ts`，用于请求及输出 `service_url`；不新增 paths 配置、不依赖提示词词典或固定 18787。Bot 说明改为“当前 herdr-bot 服务”。
+- **提示词 review 落盘：** Map.description 只描述用途，公开输出说明负责交付边界；三个 Bot 只保留选用所需的职责、输入输出摘要、关键限制和实际副作用，移除通用流转、实现校验细则、配置缓存及本 Map 专属说明。用户再次审核并确认的三个 Bot 正文已落盘：克隆与登记摘要进一步精简，探索明确以可访问的本地仓库代码为对象，不将本 Map 的两个前置步骤设为独立使用的必经流程。Task.prompt 与全部 node.input 继续为空，结构化文件接线和输入驱动 zone 不变。
+- **共享影响：** 对正式定义及本批 backup 的静态引用调查中，仅此 Map 引用三个 Bot，仅探索 Bot 绑定该 Task；不据此排除用户独立调用。Task、克隆脚本和共享 Suite 未修改；通用 Run 文本传递机制不变；新增的输入驱动 zone 可用于 Task／脚本／子 Map 节点，人工动态和固定 zone 保持原语义。其他未选 Map 不迁入、不算废弃。
 - **验证与现场边界：** 本轮定向检查结果由交付报告记录；未启动真实 GitHub 克隆、zone 登记或探索 Chat，未读取认证、清理 chief、归档其他 Run 或删除旧副本。待用户核对本次转换后再将状态改为“迁移完成”。
 
 下一条流程从[单流程迁移指引](agents/workflow-migration.md)开始，仅复用调查和 grilling 方法，不复用创建map的业务答案；共享原件原位维护、无需等待所有消费者一起迁移。停机、归档和清理见[交付与现场交接](bot-map-contract-refactor-delivery.md)。

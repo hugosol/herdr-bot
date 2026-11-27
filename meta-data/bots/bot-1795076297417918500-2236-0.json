@@ -1,9 +1,9 @@
 {
   "id": "github-clone",
   "name": "GitHub克隆",
-  "when": "需要将 GitHub 仓库通过 SSH 浅克隆到已有父目录的直接子目录，并取得仓库核实材料时使用。",
-  "description": "## 能力职责\n将指定 GitHub 仓库的默认分支以 depth=1 克隆到已有父目录的 repo 直接子目录，核实真实路径、origin、HEAD 和浅仓库状态。\n\n## 能力边界\n不登记 zone 或发起 Chat，不创建父目录、不复用或覆盖已有目标，不取额外引用、递归子模块或 LFS 实体，不安装、构建或运行仓库代码。\n\n## 操作效果\n访问 GitHub，创建仓库目录并写入结果材料；失败可能留下目录或仓库，不自动重试、清理或回滚。\n\n## 特殊前提\nWindows 后端已有 Bun/Git/SSH、SSH 认证、GitHub host trust、网络与仓库权限，以及本次网络和写入授权；执行无 Chat 或交互审批。认证失败不回退 HTTPS、不修改凭据或信任配置。",
-  "input_rule": "唯一命名文件 clone_request：UTF-8 JSON，仅含 github_url 与 parent_directory 两个字符串。指定确切 GitHub 仓库和已存在、安全可写的 Windows 绝对父目录；目标须未占用。脚本不从自然语言输入补参数，完整地址、路径和材料校验以 github-clone.ts 为准。",
-  "output_rule": "唯一命名文件 cloned_repository，包含仓库身份、SSH URL、父目录、仓库绝对路径、HEAD 与成功核实事实。Git 和结果材料均成功才交付；克隆及 Git 核实共用十分钟期限，失败保留原原因及已知部分效果，不代表后续登记或探索完成。",
+  "when": "需要将 GitHub 仓库拉取到本地供后续使用时。",
+  "description": "## 能力职责\n通过 SSH 浅克隆 GitHub 仓库的默认分支。\n\n## 能力边界\n在已有父目录下以仓库名创建新目录，目标已被占用即拒绝。仅取 depth=1，不递归子模块或下载 LFS 实体。\n\n## 操作效果\n创建仓库目录并写入结果材料；失败可能留下部分结果。\n\n## 特殊前提\n支持 Windows 后端，使用已有 SSH 认证和 GitHub 主机信任配置。",
+  "input_rule": "命名文件 clone_request，指定 GitHub 仓库链接和已存在、安全可写的 Windows 绝对父目录。",
+  "output_rule": "命名文件 cloned_repository，提供已核实的仓库身份、位置、SSH URL、HEAD 与浅仓库状态。",
   "script": "github-clone.ts"
 }

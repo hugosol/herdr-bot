@@ -430,7 +430,7 @@
       "model": "gpt-6.1-sol",
       "thinking": "medium",
       "skill": null,
-      "prompt": "当需要连接x.com等需要用个人账户登录后才能浏览或搜索信息的网站时，请用Scrapling接入用户当前正在使用的浏览器中，在页面上直接搜索",
+      "prompt": "当需要连接x.com等需要用个人账户登录后才能浏览或搜索信息的社交媒体或类似网站时，请用Scrapling接入用户当前正在使用的浏览器中，在页面上直接搜索",
       "suite": "scrapling-pi"
     },
     {

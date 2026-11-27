@@ -1,9 +1,9 @@
 {
   "id": "register-zone",
   "name": "登记zone",
-  "when": "需要将已克隆的 GitHub 仓库登记为本机服务的 zone，并取得供后续选择执行位置的登记材料时使用。",
-  "description": "## 能力职责\n核实已有仓库与克隆材料一致，在 http://127.0.0.1:18787 登记 owner/repo zone 并公开读回绑定。\n\n## 能力边界\n不克隆、同步、创建目录、连接 GitHub、修改 Git 内容或发起 Chat。zone ID 已存在即失败，即使路径相同也不复用、改绑或另造 ID；不支持 .git 文件式 worktree。\n\n## 操作效果\n新增本机 zone 绑定并写入结果材料。登记成功但材料失败不算交付成功；结果不明时保留事实，不自动重投、注销、回滚或删除仓库。\n\n## 特殊前提\nWindows 后端已有 Bun/Git、目标服务可达，以及本次新增绑定和材料写入授权；脚本使用后端账户权限，无 Chat 或交互审批。",
-  "input_rule": "唯一命名文件 cloned_repository：github-clone.ts 的完整成功输出，包含真实仓库身份、绝对路径、SSH URL、HEAD 与 checks。仓库须位于父目录的 repo 直接子目录并具有普通 .git 目录；完整材料与真实仓库校验由 register-zone.ts 实现，不从 node.input 补参数。",
-  "output_rule": "唯一命名文件 registered_zone，包含 service_url、zone_id、仓库身份及路径、SSH URL、HEAD、实际 binding 和 checks。成功要求仓库核实、登记公开读回与材料保存均通过；供调用方选择后续动态 zone，不代表探索完成。",
+  "when": "需要将已有 GitHub 仓库登记为herdr-bot的zone时。",
+  "description": "## 能力职责\n核实已有仓库与给定材料一致，在当前 herdr-bot 服务登记 owner/repo zone。\n\n## 能力边界\nzone ID 已存在即拒绝，包括目录相同的情况；仅支持具有普通 .git 目录的仓库。\n\n## 操作效果\n新增 zone 绑定并写入结果材料；材料交付失败时，登记可能已经生效。",
+  "input_rule": "命名文件 cloned_repository，提供已有仓库的身份、位置和核实结果。",
+  "output_rule": "命名文件 registered_zone，提供已登记的 zone ID、服务地址、仓库位置及核实结果。",
   "script": "register-zone.ts"
 }

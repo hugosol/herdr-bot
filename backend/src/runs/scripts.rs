@@ -107,6 +107,8 @@ fn execute(state: &AppState, run: &Run, execution: &NodeExecution, prepared: Pre
     let mut logs = Vec::new();
     let mut result = None;
     let work = (|| -> Result<(), Value> {
+        let service_url = state.script_service_url()
+            .map_err(|error| diagnostic("service-url-unavailable", error))?;
         let child = Command::new("bun").args(["--no-install", "--eval", include_str!("script-runner.ts")]).current_dir(&execution.zone).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()
             .map_err(|error| diagnostic("bun-unavailable", format!("无法启动 Bun；请安装 Bun 并确保服务进程 PATH 包含 bun（不自动下载）：{error}")))?;
         let mut child = ReapOnDrop(child);
@@ -140,7 +142,7 @@ fn execute(state: &AppState, run: &Run, execution: &NodeExecution, prepared: Pre
             else if log.last().is_some_and(|byte| *byte != b'\n') { retain_log(&mut log, b"\n"); }
             log
         });
-        let request = json!({"script":prepared.path,"source":prepared.source,"context":{"runId":run.id,"executionId":execution.id,"zone":execution.zone,"input":input,"inputs":execution.inputs.as_deref().unwrap_or_default(),"outputRule":execution.output_rule.as_deref().unwrap_or_default(),"outputDirectory":Path::new(&run.zone).join(".manager-zone").join(".workflow").join(&run.id).join(&execution.id)}});
+        let request = json!({"script":prepared.path,"source":prepared.source,"context":{"serviceUrl":service_url,"runId":run.id,"executionId":execution.id,"zone":execution.zone,"input":input,"inputs":execution.inputs.as_deref().unwrap_or_default(),"outputRule":execution.output_rule.as_deref().unwrap_or_default(),"outputDirectory":Path::new(&run.zone).join(".manager-zone").join(".workflow").join(&run.id).join(&execution.id)}});
         let protocol = (|| -> Result<(), String> {
             serde_json::to_writer(&mut stdin, &request).map_err(|error| error.to_string())?;
             stdin.write_all(b"\n").map_err(|error| error.to_string())?;

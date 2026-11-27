@@ -1,6 +1,6 @@
 {
   "title": "GitHub 仓库拉取与探索",
-  "description": "SSH 浅克隆 GitHub 仓库，登记 zone，并在该仓库发起探索 Chat 交给用户继续。Run 完成表示 Chat 已交接，不表示探索完成。",
+  "description": "SSH 浅克隆 GitHub 仓库，登记 zone，并在该仓库发起探索 Chat。",
   "map_input_rule": {
     "description": "- **GitHub 仓库链接**：指定本次要克隆并探索的仓库。\n- **克隆父目录**：指定服务器上已有的目录，仓库将克隆到该目录下以仓库名命名的直接子目录；它不是最终仓库目录。\n- **本次要求**：说明希望了解的问题、探索方向、关注范围及本次操作限制，作为探索 Chat 的初始业务要求。",
     "files": [
@@ -11,7 +11,7 @@
     ]
   },
   "map_output_rule": {
-    "description": "在新登记的仓库 zone 成功发起探索 Chat 并交给用户继续。不等待探索完成，不承诺探索文件成果；管理者按通用结束节点协议显式 finish。",
+    "description": "交付可继续交流的探索 Chat，探索工作由用户在该 Chat 中继续。",
     "files": []
   },
   "nodes": {

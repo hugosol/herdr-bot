@@ -294,6 +294,125 @@ export default async function(context) {
     assert!(!s.data.path().join("node-zone/dynamic.txt").exists());
 }
 
+fn registration_fixture_git(root: &std::path::Path, args: &[&str]) -> String {
+    let mut command = std::process::Command::new("git");
+    for (name, _) in std::env::vars_os() {
+        if name.to_string_lossy().to_ascii_uppercase().starts_with("GIT_") {
+            command.env_remove(name);
+        }
+    }
+    let output = command
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", root.join(".fixture-gitconfig"))
+        .env("GIT_ALLOW_PROTOCOL", "file")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .output()
+        .expect("run fixture Git");
+    assert!(output.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&output.stderr));
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+
+#[tokio::test]
+async fn typescript_register_zone_uses_bound_service_origin() {
+    let s = Scenario::new().await;
+    let addr = s.server.addr();
+    assert_ne!(addr, s.config.listen_addr.parse::<std::net::SocketAddr>().unwrap());
+    assert_ne!(addr.port(), 18787);
+    let origin = format!("http://{addr}");
+
+    let source = s.data.path().join("shallow-source");
+    let parent = s.data.path().join("local-checkouts");
+    fs::create_dir(&source).unwrap();
+    fs::create_dir(&parent).unwrap();
+    registration_fixture_git(&source, &["init", "--quiet", "--template="]);
+    for message in ["base", "shallow tip"] {
+        registration_fixture_git(&source, &[
+            "-c", "user.name=register-zone test", "-c", "user.email=zone@example.test",
+            "-c", "commit.gpgSign=false", "commit", "--quiet", "--allow-empty", "-m", message,
+        ]);
+    }
+    let source_url = format!("file:///{}", source.to_str().unwrap().replace('\\', "/")
+        .replace('%', "%25").replace(' ', "%20").replace('#', "%23").replace('?', "%3F"));
+    let repo = "local-shallow";
+    let checkout = parent.join(repo);
+    registration_fixture_git(&parent, &["clone", "--quiet", "--template=", "--depth=1", "--", &source_url, repo]);
+    let zone_id = "fixture-owner/local-shallow";
+    // Set inert identity metadata after the file-only clone; no GitHub operation is run.
+    let ssh_url = "git@github.com:fixture-owner/local-shallow.git";
+    registration_fixture_git(&checkout, &["remote", "set-url", "origin", ssh_url]);
+    let head = registration_fixture_git(&source, &["rev-parse", "HEAD"]);
+    fs::write(s.data.path().join("cloned_repository.json"), json!({
+        "owner": "fixture-owner", "repo": repo, "repository_id": zone_id, "ssh_url": ssh_url,
+        "parent_directory": parent, "repository_directory": checkout, "head_commit": head,
+        "checks": {"git_exit_code": 0, "origin_matches": true, "path_matches": true, "is_shallow": true}
+    }).to_string()).unwrap();
+
+    // Leave the shipped module untouched. Forward real requests only to the
+    // owned server so a regression cannot write to a different local service.
+    let probe = format!(r#"
+const origin = {};
+export default async function(context) {{
+    if (context.serviceUrl !== origin) throw new Error('wrong service origin: ' + context.serviceUrl);
+    const methods = [];
+    const fetch = globalThis.fetch;
+    globalThis.fetch = (url, options) => {{
+        if (url !== origin + '/api/zones') throw new Error('unexpected zone destination: ' + url);
+        methods.push(options.method);
+        return fetch(url, options);
+    }};
+    try {{
+        const {{default: registerZone}} = await import('./register-zone.ts');
+        const result = await registerZone(context);
+        if (result.status === 'success' && methods.join(',') !== 'GET,POST,GET') {{
+            throw new Error('unexpected zone requests: ' + methods.join(','));
+        }}
+        return result;
+    }} finally {{
+        globalThis.fetch = fetch;
+    }}
+}}
+"#, json!(origin));
+    fs::write(s.data.path().join("scripts/register-zone-probe.ts"), probe).unwrap();
+    let saved = post_json_over_tcp(addr, "/api/scheduler/bots/save", &json!({
+        "id": "register-zone", "revision": null,
+        "content": json!({"name":"Register zone","when":"","description":"","input_rule":"","output_rule":"","script":"register-zone-probe.ts"}).to_string()
+    }).to_string()).await;
+    assert_eq!(saved.status, 200, "{}", saved.body);
+    fs::write(s.config.scheduler.map_directory.join("work.json"), json!({
+        "title":"Register a local checkout", "description":"", "nodes":{
+            "register": {"title":"Register", "bot_id":"register-zone", "input":"", "zone":"node", "blocked_by":[],
+                "input_rule":[{"id":"cloned_repository","type":"file","zone_id":"manager","path":"cloned_repository.json"}],
+                "output_rule":[{"id":"registered_zone"}]}
+        }
+    }).to_string()).unwrap();
+
+    let before = get_over_tcp(addr, "/api/zones").await;
+    assert_eq!(before.status, 200, "{}", before.body);
+    let before: Value = serde_json::from_str(&before.body).unwrap();
+    assert!(!before["zones"].as_array().unwrap().iter().any(|zone| zone["id"] == zone_id));
+    let run = s.start("typescript-register-manager").await;
+    s.dispatch("typescript-register-manager", &["register"]).await;
+    let result = ended(&s, &run).await;
+    assert_eq!(result["run"]["nodes"]["register"]["execution"]["lifecycle"]["status"], "succeeded", "{result}");
+    let report = &result["reports"][0];
+    assert_eq!(report["source"], json!({"kind":"typescript","script":"register-zone-probe.ts"}));
+    assert_eq!(report["outputs"][0]["id"], "registered_zone");
+    let material: Value = serde_json::from_slice(&fs::read(report["outputs"][0]["path"].as_str().unwrap()).unwrap()).unwrap();
+    assert_eq!(material["service_url"], origin);
+    assert_eq!(material["zone_id"], zone_id);
+    assert_eq!(material["head_commit"], head);
+    assert_eq!(material["checks"], json!({"repository_verified":true,"post_status":200,"read_back_matches":true}));
+    let response = get_over_tcp(addr, "/api/zones").await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    let registry: Value = serde_json::from_str(&response.body).unwrap();
+    let binding = registry["zones"].as_array().unwrap().iter().find(|zone| zone["id"] == zone_id).unwrap();
+    assert!(common::same_path(std::path::Path::new(binding["path"].as_str().unwrap()), &checkout), "{binding}");
+    assert_eq!(&material["binding"], binding);
+}
+
 #[tokio::test]
 async fn typescript_user_file_imports_writes_and_hands_off_without_rebuilding_backend() {
     let s = Scenario::new().await;

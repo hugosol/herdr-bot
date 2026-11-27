@@ -161,8 +161,7 @@ async fn selected_flow_executes_by_stable_identity_without_inventory_gate() {
     s.config.suites.definition_file = s.data.path().join("suites.json");
     s.config.suites.generated_directory = s.data.path().join("generated-suites");
     fs::write(&s.config.suites.definition_file, r#"{"suites":[{"id":"codebase-exploration-omp","name":"Controlled local suite · OMP","harness":"omp"}]}"#).unwrap();
-    s.server = TestServer::start_app(herdr_bot::app(&s.config)).await;
-    fs::write(s.herdr.path().join("launch_endpoint.txt"), s.server.addr().to_string()).unwrap();
+    s.server = TestServer::start(&s.config).await;
     s.herdr.set_workspaces(json!([
         {"workspace_id":"w-manager","label":s.data.path().file_name().unwrap().to_str().unwrap()},
         {"workspace_id":"w-default","label":"bot-playground"}

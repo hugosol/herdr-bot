@@ -72,8 +72,13 @@ impl Scenario {
         fs::create_dir_all(&config.scheduler.map_directory).unwrap();
         fs::create_dir_all(&config.scheduler.bot_directory).unwrap();
         common::install_bot_scripts(&config.scheduler.bot_directory);
-        let app = herdr_bot::app(&config);
-        let server = TestServer::start_app(app.clone()).await;
+        let sessions = herdr_bot::sessions::SessionsState::with_policy(config.sessions.policy());
+        let (app, state) = herdr_bot::app_with_state(
+            &config,
+            std::sync::Arc::new(herdr_bot::SystemPowerOff),
+            std::sync::Arc::new(sessions),
+        );
+        let server = TestServer::start_with_state(app.clone(), &state).await;
         fs::write(herdr.path().join("launch_endpoint.txt"), server.addr().to_string()).unwrap();
         let node_zone = data.path().join("node-zone");
         fs::create_dir(&node_zone).unwrap();

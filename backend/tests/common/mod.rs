@@ -504,7 +504,13 @@ pub struct TestServer {
 impl TestServer {
     /// 在 `127.0.0.1` 的临时端口上启动应用。
     pub async fn start(config: &herdr_bot::Config) -> Self {
-        let server = Self::start_app(herdr_bot::app(config)).await;
+        let sessions = herdr_bot::sessions::SessionsState::with_policy(config.sessions.policy());
+        let (app, state) = herdr_bot::app_with_state(
+            config,
+            std::sync::Arc::new(herdr_bot::SystemPowerOff),
+            std::sync::Arc::new(sessions),
+        );
+        let server = Self::start_with_state(app, &state).await;
         let executable = &config.herdr.executable;
         if executable.file_stem().and_then(|stem| stem.to_str()) == Some("herdr-fixture") {
             std::fs::write(executable.with_file_name("launch_endpoint.txt"), server.addr.to_string()).unwrap();
@@ -512,12 +518,15 @@ impl TestServer {
         server
     }
 
+    /// Start a configured router and attach its listener so it can execute workflow scripts.
+    pub async fn start_with_state(app: axum::Router, state: &herdr_bot::AppState) -> Self {
+        Self::bind_app_on(SocketAddr::from(([127, 0, 0, 1], 0)), app, Some(state)).await
+    }
+
     /// 在 `127.0.0.1` 的临时端口上启动**给定的应用**（例如注入了记录型关机动作的应用）。
-    ///
-    /// 与 `start` 完全同一形态（真实监听端口 + 每个请求独立 TCP 连接），只是装配好的应用由调用者
-    /// 提供；路由注册与交付运行时一致，因为两种装配都只经 `herdr_bot::app` / `herdr_bot::app_with_power_off`。
+    /// 不登记脚本服务地址；需要执行 workflow 脚本时使用 `start_with_state`。
     pub async fn start_app(app: axum::Router) -> Self {
-        Self::start_app_on("127.0.0.1:0".parse().expect("回环测试监听地址"), app).await
+        Self::start_app_on(SocketAddr::from(([127, 0, 0, 1], 0)), app).await
     }
 
     /// 在指定的回环地址上启动应用；即使手动网络授权已设置，普通入口也拒绝非回环监听。
@@ -526,7 +535,7 @@ impl TestServer {
             bind.ip().is_loopback(),
             "普通测试只允许回环（loopback）监听：{bind}；真实网卡验收请使用手动入口"
         );
-        Self::bind_app_on(bind, app).await
+        Self::bind_app_on(bind, app, None).await
     }
 
     /// 仅供显式手动运行的真实网卡验收使用，在绑定前检查网络授权。
@@ -538,13 +547,16 @@ impl TestServer {
             Ok("1"),
             "真实网卡验收必须经手动入口授权：HERDR_BOT_MANUAL_NETWORK=1"
         );
-        Self::bind_app_on(bind, app).await
+        Self::bind_app_on(bind, app, None).await
     }
 
-    async fn bind_app_on(bind: SocketAddr, app: axum::Router) -> Self {
+    async fn bind_app_on(bind: SocketAddr, app: axum::Router, state: Option<&herdr_bot::AppState>) -> Self {
         let listener = tokio::net::TcpListener::bind(bind)
             .await
             .expect("绑定测试监听端口");
+        if let Some(state) = state {
+            state.attach_listener(&listener).expect("登记测试脚本服务地址");
+        }
         let addr = listener.local_addr().expect("读取测试监听地址");
         let serving = tokio::spawn(async move {
             // 与交付运行时同一份装配：会话事件写入的来源校验靠连接信息拿到 TCP 对端地址。

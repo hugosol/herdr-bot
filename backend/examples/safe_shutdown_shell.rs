@@ -83,6 +83,7 @@ async fn main() -> anyhow::Result<()> {
         fails,
     });
     let (app, state) = herdr_bot::app_with_state(&config, power_off, Arc::clone(&sessions));
+    state.attach_listener(&listener).context("登记脚本服务地址失败")?;
     herdr_bot::sessions::spawn_expiry_scan(sessions, Arc::clone(&state.shutdown));
 
     axum::serve(
