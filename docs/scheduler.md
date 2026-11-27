@@ -24,6 +24,8 @@ Map 目录可按名称、文件名或组名搜索，并与分组筛选组合使�
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
 | Chat | 实际对话与原生会话身份，不写进静态定义。执行身份、报告、状态和历史不属于 Map 或 Bot。 |
 
+Bot 的 when、description、input_rule、output_rule 供规划者和调用者发现、选择与组合能力，不作为执行指令注入目标 Chat，也不要求执行者通过读取 Bot 补全工作规则。执行所需的稳定知识由 Task、script 或 Map 实现及其引用资料完整承接；本次差异由调用输入提供。Bot 的目标引用仍用于解析实际实现。
+
 Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归属形成分组，不需要独立定义或 ID。省略或 `null` 表示未分组；非空名称不得带首尾空白，区分大小写。分组仅用于组织列表与选择控件，不影响引用、运行或校验资格，node 不拥有分组字段。界面归属编辑和自举归类范围见[定义分组](usage.md#taskbot-与-map-分组)。
 
 只接受这一种命名字段格式，没有 `schema_version` 或运行时旧格式兼容。旧 Map 的 `input_requirements`／`input_files`、旧 node 的 `parameters`、旧 Bot 的 `use_when`、`plan_guide`、`node_guide`、`inputs`、`outputs`、`implementation` 都是未知字段，连同版本 1 也明确拒绝。上线前停止服务、备份旧文件，再由规划者改写为新格式：把业务参数整理成 `input` 原文，明确选择 `zone` ID；逐项把旧能力知识归还实际实现、公共协议或四字段摘要。不能从旧业务参数猜测 Task／zone 绑定。未转换的旧 Map／Bot 保留在配置定义目录之外；新版不会以旧字段或离线副本作为读取回退。不改写旧 Run 或 Chat 记录。

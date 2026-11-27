@@ -271,6 +271,10 @@ cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_crea
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_save_ -- --nocapture` 执行真实 Bun 保存。比较实际文件、完整 Bot／目标及新 revision。用独立原文验证 CRLF、LF、空行、tab 和首尾空格；下游只从声明的 ID 读取，handoff 不带正文。并发修改、过期 revision 或错误绑定应拒绝。已保存但材料失败时保留部分效果，不回滚或刷新 baseline。具体输入和授权见[共同业务材料契约](../business-materials.md)。
 
+## 首条创建map发布与离线切换演练
+
+从本票 worktree 构建真实页面和后端，使用独占绝对 `CARGO_TARGET_DIR`；按[交付与现场交接](../bot-map-contract-refactor-delivery.md#本轮产品自动证据)精确选择发布定义、受控宿主与真实文件、浏览器和隔离生命周期/清理用例。演练不操作现场或启动生成的业务，实际用户验收与原生 tester 证据分别记录。
+
 ## 发布创建图迁移回归（P22／P23／P27／P28）
 
 用本轮构建的页面和独占 Cargo 目录运行 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_migration_ -- --nocapture`。发布 V1 Map 通过 Bun 执行创建和保存。核对命名文件、公开完整读回、revision、报告及显式 complete／finish；通过独立预期确认无关定义不变。这不证明模型遵从指引。原生材料消费和业务确认另跑下文创建及修订入口。修订可追加 `--cases task-no-materials` 定向复跑通用保存，不能代替完整矩阵。
@@ -861,6 +865,52 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-reco
 只读原生观察扩展仅记录 session_start／before_agent_start 的 PID、Session、cwd 和原生文件，不授予角色、不制造工具结果。证据包含两仓 revision／修改及锁文件身份、安装入口／二进制哈希、模型身份（无密钥）、原始用户授权、实际模型／HTTP 流量、原生历史、文件字节、前后记录哈希及持有的 OS 进程句柄退出确认。HOME／APPDATA／XDG／原生存储／命名 Herdr／定义与运行数据均独占，关闭 mDNS，持续消费 stdout／stderr；成功失败均停止并等待所属进程，原始与清理错误分开保留。任何宿主、模型、角色能力或清理失败都非零且未验证，不把启动成功、配置存在或最终状态当通过。
 
 `WORKFLOW_HANDOFF_TOOLKIT="$TOOLKIT_WT" python "$TESTER/scripts/accept-workflow-nesting-recovery.test.py"` 只验证 CLI 缺依赖时保留错误、双宿主未验证且不启动服务；不替代原生专项。常规检查仍按票据分别执行 workflow_dispatch、完整后端、前端、toolkit workflow-chat／相关原生 dock、typecheck 和全量入口。
+
+## 两类能力的真实原生规划验收（tester 专项）
+
+此入口保留原生规划的运行说明；新 Bot／Map 契约的适配和执行归独立 tester 专项，本轮产品检查不替代它。
+
+按[外部验收的配置和授权](#运行前提)设置 `$TESTER`、`$BOT`。本入口使用实际授权模型和原生 Chat，不能用定义回归或提示词检查代替。指定本次 Toolkit worktree，从产品 worktree 构建页面与二进制，使用独占绝对 `CARGO_TARGET_DIR`：
+
+```powershell
+$TOOLKIT_WT = 'D:/worktrees/toolkit'
+$env:CARGO_TARGET_DIR = 'D:/isolated-build/planning-acceptance-target'
+Set-Location $BOT
+bun install --cwd=frontend --frozen-lockfile
+npm --prefix frontend run build
+cargo build --manifest-path backend/Cargo.toml --bin herdr-bot --bin herdr-paths --bin herdr-fixture --example safe_shutdown_shell
+bun install --frozen-lockfile --cwd $TOOLKIT_WT
+python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-workflow-nesting-planning `
+  --backend (Join-Path $env:CARGO_TARGET_DIR 'debug/herdr-bot.exe') `
+  --toolkit $TOOLKIT_WT --hosts declared `
+  --paths-file 'D:/acceptance/dependencies.toml' `
+  --model-config 'D:/acceptance/model.json' `
+  --evidence-dir 'D:/acceptance/new-exclusive-planning-run'
+```
+
+`--hosts declared` 保留实际交付的概要规划、概要方案转 Map 和 manager Task 的宿主映射，不把它们统一改成 Pi。业务夹具本身的普通 Task 仍分别声明 Pi／OMP；这里只核实和预检业务目标，不启动它们。`--hosts omp,pi` 另行执行完整 OMP 和完整 Pi 两组原生规划入口，分别保留结果，两组都通过才成功；显式宿主覆盖会记录，不能作为原始混合声明的通过证据。每阶段观察窗口 `--timeout` 为 1..900 秒，默认 300 秒；失败不重试业务或模型决定。
+
+依赖文件只声明已安装程序、只读集成入口和规划技能来源，不指向用户认证或业务配置。入口通过同目录本 worktree 的 `herdr-paths.exe` 解析根引用；不会安装宿主、提权或改全局 PATH。所需根：
+
+```toml
+[roots]
+herdr = 'D:/installed/herdr'
+pi_package = 'D:/node_modules/@earendil-works/pi-coding-agent'
+omp_package = 'D:/node_modules/@oh-my-pi/pi-coding-agent'
+pi_state_extension = 'D:/readonly-integrations/herdr-agent-state.ts'
+omp_state_extension = 'D:/readonly-integrations/herdr-omp-agent-state.ts'
+wayfinder_skills = 'D:/sources/oh-my-wayfinder/skills'
+# Windows 原生 bash 工具需使用已有 Windows shell，不落到 WSL。
+native_shell = 'D:/Program Files/Git/bin/bash.exe'
+```
+
+模型声明显式提供 `provider`、`model`、无内联凭据的 `baseUrl` 和 `apiKeyEnv`；只读取这个明确命名的专用环境变量，不读用户 auth store。支持实际 OpenAI-compatible chat-completions 服务；需要宿主公开 text completion 时，可使用[测试指引中的透明 completion 传输](agents/testing.md#文件交接真实角色自动验收)，其证据仅证明此实际模型传输下的业务行为，不证明原生 provider wire 合规。模型配置仅写入隔离原生目录，退出时移除 credential-bearing `models.json`／`models.yml`；证据不保存密钥。
+
+独立业务预期在任何模型请求前固定：本地准备 CSV 的场景只选择 Task 型能力；本地核对的场景安排准备工作和一个 Map 型调用，校验子 manager、业务 input、独立 zone、`source` 同名输入、上游 `orders_csv` 到子输入的映射和 `review_result` 对外交付，禁止展开子图。相似名称的远程发布能力是干扰项，不以目录包含名称算选择正确。四字段摘要加入只有真实完整读取才可取得的标记，原生 tool result 必须分别证明规划者和转换者读到所选指南及实际 Task／子 Map；初始化 system/developer 消息不得自动注入这些指南。
+
+每个正例先保存草案，证明尚未生成 Map，再通过真实 Herdr 原生输入提交当前版本的明确确认。转换者独立读取已确认方案、生成 Map、通过公开严格查询及恰好一次只读预检。缺口场景缺生产目标决定、实现、凭据和授权，只能交付明确 G1 阻塞，不能补建 Task/Bot、生成 Map 或自主启动。全过程观察真实 HTTP、空 Run 列表、显式 Chat 请求、全部原生 Session 轨迹（包括允许的只读子代理）、既有定义哈希和所属进程；子代理 Session 不等于额外 Herdr Chat，模型自述“不启动”不算证据。读取概要方案中引用的指南文字不算重读实际能力：分别要求当前原生 Chat 的真实 Bot／目标 HTTP 响应及原生 JSON 读取结果。
+
+`--evidence-dir` 必须尚不存在；在 Windows 上使用短绝对路径，避免原生存储和 socket 超长。保存当前版本确认、源指南和方案的实际读取、原始文件、公开 HTTP 及逐场景结果。清理时确认所有所属进程退出，原始失败与清理错误分开记录。缺安装、授权、证据或隔离条件不判通过；CLI 拒绝回归也不证明真实模型行为。
 
 ## 嵌套 manager 双角色真实验收
 

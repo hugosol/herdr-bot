@@ -2,7 +2,7 @@
 
 供 Agent 与用户共同迁移用户选定的 Map 及必要关联定义。复用的是起手问题和 grilling 方式，不是固定改动清单或工作量承诺。范围随具体流程展开；一个会话未完成时如实交接，不以压缩范围换取结束。
 
-方法决策见[可复用迁移方法与转换规则](../../.scratch/bot-map-contract-refactor/lighthouse/05-reusable-migration.md)。范例是[关联提示词的联合设计与确认](../../.scratch/bot-map-contract-refactor/lighthouse/04-coherent-prompts.md)：它完成了「创建map」的迁移设计与正文确认，不代表生产定义已改写。
+方法决策见[可复用迁移方法与转换规则](../../.scratch/bot-map-contract-refactor/lighthouse/05-reusable-migration.md)。范例是[关联提示词的联合设计与确认](../../.scratch/bot-map-contract-refactor/lighthouse/04-coherent-prompts.md)：它提供「创建map」的迁移设计与确认正文。从[实际 Map 清单](../workflow-migration-inventory.md)选择下一条流程；清单分别记录仓库转换、用户确认及现场效果，不是运行门禁，也不把第一个范例的业务决策推广到其他 Map。
 
 ## 1. 确定本次对象与交付边界
 

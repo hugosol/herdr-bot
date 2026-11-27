@@ -339,9 +339,7 @@ manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `fi
 
 ### plan_workflow 的业务文件交接
 
-[plan_workflow 定义](../meta-data/workflow-maps/plan_workflow.json) 依次交接概要方案、已保存的 Map 和整图优化成果。规划者确认方案，转换者读取命名概要方案并新增 Map，优化者读取完整已保存定义，核对并交付最后的 Map；最终配置以优化成果和服务完整读回为准。管理者在各步读实际材料，验收后显式完成和派发，不能用交互中的草案或前一阶段的文件替代最终交付。
-
-此 Run 只交付业务定义，不启动该业务。根业务启动配置可待补齐，但方案内 Map 调用节点的 manager、zone、业务输入和材料映射缺失会阻止翻译。业务确认、成果批准与报告独立；按[规划交付契约](planning-deliverables.md)核对范围、授权和可翻译条件，不用验收器代替真实角色批准或消费材料。
+[创建map](../meta-data/workflow-maps/plan_workflow.json) 以 Run 的「本次要求」接收需求，未声明公开输入／输出规则；`outline`、`map`、`handoff` 是图内接线，而不是调用方的文件接口。最终交付在 scheduler 中查看，不启动生成的业务。各执行节点按自身委托取得[阶段交接标准](../meta-data/workflow-maps/plan_workflow/planning-deliverables.md#创建-map-的整图交接)；管理者仅按通用报告、批准及完成协议办理交接，不加载此流程的业务资料。
 
 ## 角色归属与来源集成检查
 
