@@ -37,9 +37,8 @@ fn install(s: &Scenario) -> Vec<u8> {
     bytes
 }
 
-// P33/P40–P46: the approved phase graph has no public file interface; mixing
-// an old candidate into the release, changing a binding or dropping a handoff
-// must disagree with service readback and the independent stable identities.
+// P33/P40–P46: the phase graph accepts a text request and exposes only the
+// created Map's identity to a parent. Internal outputs remain graph-local.
 #[tokio::test]
 async fn selected_flow_publishes_approved_graph_and_shared_knowledge_without_starting_work() {
     let s = Scenario::new().await;
@@ -48,18 +47,20 @@ async fn selected_flow_publishes_approved_graph_and_shared_knowledge_without_sta
     let map = read(&s, "/api/scheduler/maps/plan_workflow.json").await;
     assert_eq!(map["title"], "创建map");
     assert_eq!(map["group"], "meta-map");
-    assert_eq!(map["description"], "将业务需求转化为新业务 Map，并完成关联提示词的分层优化；交付系统中已保存的配置，不启动生成的业务流程。");
-    for key in ["map_input_rule", "map_output_rule", "input_requirements", "input_files", "materials"] {
+    let public_outputs = map["map_output_rule"]["files"].as_array().unwrap();
+    assert_eq!(public_outputs.len(), 1);
+    assert_eq!(public_outputs[0]["id"], "created_map");
+    for key in ["map_input_rule", "input_requirements", "input_files", "materials"] {
         assert!(file.get(key).is_none(), "unexpected static field: {key}");
         assert!(map.get(key).is_none() || map[key].is_null(), "unexpected public rule: {key}");
     }
     let nodes = [
-        ("outline", "概要规划与用户确认", "outline-planning", json!([]), json!([]), json!([{"id":"outline"}]), false, "概要规划"),
-        ("generate_map", "概要方案转换为业务 Map", "plan-to-map", json!(["outline"]), json!([{"id":"outline","type":"node","node_id":"outline","output_id":"outline"}]), json!([{"id":"map"}]), true, "Map 转换"),
-        ("optimize_map", "prompt优化者——Map维度", "bot-task-18e65aed740825f8-0", json!(["generate_map"]), json!([{"id":"map","type":"node","node_id":"generate_map","output_id":"map"},{"id":"outline","type":"node","node_id":"outline","output_id":"outline"}]), json!([{"id":"map"},{"id":"handoff"}]), false, "整图优化"),
+        ("outline", "概要规划与用户确认", "outline-planning", json!([]), json!([]), json!([{"id":"outline"}]), false),
+        ("generate_map", "概要方案转换为业务 Map", "plan-to-map", json!(["outline"]), json!([{"id":"outline","type":"node","node_id":"outline","output_id":"outline"}]), json!([{"id":"map"}]), true),
+        ("optimize_map", "prompt优化者——Map维度", "bot-task-18e65aed740825f8-0", json!(["generate_map"]), json!([{"id":"map","type":"node","node_id":"generate_map","output_id":"map"},{"id":"outline","type":"node","node_id":"outline","output_id":"outline"}]), json!([{"id":"map"},{"id":"handoff"},{"id":"created_map"}]), false),
     ];
     assert_eq!(map["nodes"].as_object().unwrap().len(), 3);
-    for (id, title, bot, deps, inputs, outputs, approved, phase) in nodes {
+    for (id, title, bot, deps, inputs, outputs, approved) in nodes {
         let node = &map["nodes"][id];
         assert_eq!(node["title"], title);
         assert_eq!(node["bot_id"], bot);
@@ -70,11 +71,6 @@ async fn selected_flow_publishes_approved_graph_and_shared_knowledge_without_sta
         assert_eq!(node["auto_approved"], approved);
         assert_eq!(node["auto_close"], true);
         assert_eq!(node["end_node"], false);
-        let conditional = format!("交付本阶段成果前，读取 ${{herdr-bot-path}}/{MATERIAL}「创建 Map 的整图交接」中的「{phase}」，核对本节点成果是否满足交接条件。");
-        let expected = if id == "optimize_map" {
-            format!("依据 outline 优化 map 对应的服务配置。允许修改目标 Map、关联 Task、Bot、子 Map 及共同文档中的提示词；共享对象的具体修改范围由用户在本 Chat 中确认。{conditional}")
-        } else { conditional };
-        assert_eq!(node["input"], expected);
     }
     for (_, id, name, target, binding) in BOTS {
         let bot = post(&s, "/api/scheduler/bots/edit", json!({"id":id}), 200).await;
@@ -95,15 +91,32 @@ async fn selected_flow_publishes_approved_graph_and_shared_knowledge_without_sta
         ("task-18e65aed740825f8-0", "prompt优化者——Map维度", "[Map 提示词优化] {zone.name} · {chat.id}", json!("writing-for-agents")),
     ] {
         let mut row = tasks["tasks"].as_array().unwrap().iter().find(|t| t["id"] == id).unwrap().clone();
-        let prompt = row.as_object_mut().unwrap().remove("prompt").unwrap();
+        row.as_object_mut().unwrap().remove("prompt").unwrap();
         assert_eq!(row, json!({"id":id,"name":name,"group":"meta-task","chatName":chat,"agent":"omp","taskType":"normal","model":"gpt-6-astra","thinking":"medium","skill":skill,"suite":"codebase-exploration-omp"}));
-        assert!(prompt.as_str().unwrap().contains(MATERIAL));
-        assert!(!prompt.as_str().unwrap().contains("trip-readiness.json"));
     }
-    let document = fs::read_to_string(repo().join(MATERIAL)).unwrap();
-    for section in ["共同身份", "共同写入规则", "规划文档保存与交接", "创建 Map 的整图交接", "能力建设需求", "概要方案", "能力选用与调用", "保存与证据边界"] {
-        assert!(document.lines().any(|line| line == format!("## {section}")), "{section}");
+
+    let parent_path = s.config.scheduler.map_directory.join("parent.json");
+    let parent_bytes = br#"{"title":"Caller","description":"","nodes":{}}"#;
+    fs::write(&parent_path, parent_bytes).unwrap();
+    let endpoint = "/api/scheduler/maps/parent.json/nodes";
+    let draft = read(&s, &format!("{endpoint}/new")).await;
+    let mut node = json!({"title":"Create and locate the Map","bot_id":"bot-map-plan-workflow",
+        "manager_task_id":s.manager_task,"input":"Create a review Map without running it.",
+        "zone":"node","blocked_by":[]});
+    for internal in ["outline", "map", "handoff"] {
+        node["output_rule"] = json!([{"id":internal}]);
+        let rejected = post(&s, &format!("{endpoint}/save"), json!({
+            "id":"create","content":node.to_string(),"revision":draft["revision"],"create":true
+        }), 400).await;
+        assert_eq!(rejected["code"], "node-map-output-unknown");
+        assert_eq!(fs::read(&parent_path).unwrap(), parent_bytes);
     }
+    node["output_rule"] = json!([{"id":"created_map"}]);
+    post(&s, &format!("{endpoint}/save"), json!({
+        "id":"create","content":node.to_string(),"revision":draft["revision"],"create":true
+    }), 200).await;
+    let parent = read(&s, "/api/scheduler/maps/parent.json").await;
+    assert_eq!(parent["nodes"]["create"]["output_rule"], json!([{"id":"created_map"}]));
     assert!(!repo().join("docs/planning-deliverables.md").exists());
     assert_eq!(read(&s, "/api/workflow/runs").await["runs"], json!([]));
     assert!(s.herdr.calls().is_empty(), "reading definitions is not starting the generated business");
@@ -198,8 +211,7 @@ async fn selected_flow_executes_by_stable_identity_without_inventory_gate() {
         let received = submissions(&s);
         assert_eq!(received.len(), before + 1);
         let prompt = common::prompt_body(&received[before]);
-        assert!(prompt.contains(&material_pointer) && prompt.ends_with(&request), "{prompt}");
-        assert!(!prompt.contains("创建 Map 的整图交接"), "the standalone Task does not get phase-specific instructions");
+        assert!(prompt.ends_with(&request), "{prompt}");
         assert_eq!(prompt.starts_with("/skill:"), !skill.is_empty());
         if !skill.is_empty() { assert!(prompt.starts_with(&format!("/skill:{skill} "))); }
     }
@@ -218,19 +230,20 @@ async fn selected_flow_executes_by_stable_identity_without_inventory_gate() {
     assert_eq!(received.len(), before + 1);
     let manager_prompt = common::prompt_body(&received[before]);
     assert!(manager_prompt.contains(input));
-    assert!(!manager_prompt.contains(MATERIAL) && !manager_prompt.contains("创建 Map 的整图交接"));
+    assert!(!manager_prompt.contains(MATERIAL));
     post(&s, "/api/workflow/manager/prepare_inputs", json!({"sessionId":MANAGER,"fileInputs":[],"confirmed":true,"reason":"Reviewed the isolated text-only request"}), 200).await;
 
     let outline = zone.join("outline.md");
     let converted = zone.join("converted.json");
     let final_map = zone.join("optimized.json");
     let handoff = zone.join("handoff.md");
+    let created_map = zone.join("created-map.json");
     let outline_bytes = b"# Isolated outline / r1\nAgreed: record the location, not the contents.\n";
     let handoff_bytes = b"Scope: one node input; no shared edits. Readback checked; business execution omitted.\r\n";
     let candidate = s.config.scheduler.map_directory.join("generated.json");
     let initial = json!({"title":"Generated test configuration","description":"Local sample only","nodes":{"record":{"title":"Record location","bot_id":"outline-planning","input":"Inventory existing notes.","zone":ZONE,"blocked_by":[]}}});
     let final_input = "Inventory existing notes; record their location, not their contents.";
-    for ((node, phase, skill, _), session) in phases.into_iter().zip(["selected-outline", "selected-convert", "selected-optimize"]) {
+    for ((node, _, skill, _), session) in phases.into_iter().zip(["selected-outline", "selected-convert", "selected-optimize"]) {
         identity(&s, session, false);
         let before = submissions(&s).len();
         let dispatch = post(&s, "/api/workflow/manager/dispatch", json!({"sessionId":MANAGER,"nodes":[node]}), 200).await;
@@ -239,8 +252,6 @@ async fn selected_flow_executes_by_stable_identity_without_inventory_gate() {
         assert_eq!(received.len(), before + 1);
         let prompt = common::prompt_body(&received[before]);
         assert!(prompt.contains(input) && prompt.contains(&material_pointer), "{prompt}");
-        assert!(prompt.contains(&format!("「创建 Map 的整图交接」中的「{phase}」")), "{prompt}");
-        assert!(!prompt.contains("各节点在准备交付本阶段成果时"), "the backend must not expand the business document");
         if !skill.is_empty() { assert!(prompt.starts_with(&format!("/skill:{skill} "))); }
         let outputs = match node {
             "outline" => {
@@ -263,7 +274,9 @@ async fn selected_flow_executes_by_stable_identity_without_inventory_gate() {
                 post(&s, &format!("{endpoint}/save"), json!({"id":"record","content":content.to_string(),"revision":edit["revision"],"create":false}), 200).await;
                 fs::copy(&candidate, &final_map).unwrap();
                 fs::write(&handoff, handoff_bytes).unwrap();
-                json!([{"id":"map","path":final_map},{"id":"handoff","path":handoff}])
+                let identity = json!({"map_file":candidate.file_name().unwrap().to_str().unwrap()});
+                fs::write(&created_map, identity.to_string()).unwrap();
+                json!([{"id":"map","path":final_map},{"id":"handoff","path":handoff},{"id":"created_map","path":created_map}])
             }
             _ => unreachable!(),
         };
@@ -274,12 +287,19 @@ async fn selected_flow_executes_by_stable_identity_without_inventory_gate() {
         let complete = post(&s, "/api/workflow/manager/complete", json!({"sessionId":MANAGER,"nodeId":node,"reason":"Accepted the named fixture artifacts"}), 200).await;
         assert_eq!(complete["snapshot"]["nodes"][node]["status"], "completed");
     }
-    post(&s, "/api/workflow/manager/finish", json!({"sessionId":MANAGER}), 200).await;
+    let missing = post(&s, "/api/workflow/manager/finish", json!({"sessionId":MANAGER}), 409).await;
+    assert_eq!(missing["code"], "output-missing");
+    assert_eq!(missing["snapshot"]["status"], "running");
+    let public = json!({"files":[{"id":"created_map","path":created_map}]});
+    let finished = post(&s, "/api/workflow/manager/finish", json!({"sessionId":MANAGER,"mapOutput":public}), 200).await;
+    assert_eq!(finished["snapshot"]["mapOutput"], public);
     let detail = read(&s, &run).await;
     assert_eq!(detail["run"]["status"], "completed");
-    assert!(detail["run"]["mapOutput"]["files"].as_array().is_none_or(Vec::is_empty));
+    assert_eq!(detail["run"]["mapOutput"], public);
     assert_eq!(read(&s, "/api/workflow/runs").await["runs"].as_array().unwrap().len(), 1);
-    let active = read(&s, "/api/scheduler/maps/generated.json").await;
+    let identity: Value = serde_json::from_slice(&fs::read(detail["run"]["mapOutput"]["files"][0]["path"].as_str().unwrap()).unwrap()).unwrap();
+    assert_eq!(identity, json!({"map_file":"generated.json"}));
+    let active = read(&s, &format!("/api/scheduler/maps/{}", identity["map_file"].as_str().unwrap())).await;
     let final_bytes = fs::read(&final_map).unwrap();
     assert_eq!(fs::read(&candidate).unwrap(), final_bytes);
     assert_ne!(fs::read(&converted).unwrap(), final_bytes);
@@ -292,7 +312,7 @@ async fn selected_flow_executes_by_stable_identity_without_inventory_gate() {
     let material: Value = serde_json::from_slice(&final_bytes).unwrap();
     assert_eq!(material, expected);
     assert!(detail["reports"].as_array().unwrap().iter().any(|report| report["outputs"] == json!([
-        {"id":"map","path":final_map},{"id":"handoff","path":handoff}
+        {"id":"map","path":final_map},{"id":"handoff","path":handoff},{"id":"created_map","path":created_map}
     ])));
     assert_eq!(fs::read(&outline).unwrap(), outline_bytes);
     assert_eq!(fs::read(&handoff).unwrap(), handoff_bytes);

@@ -1,6 +1,27 @@
 # Bot／Map 重构：交付与现场交接
 
-**本报告区分仓库转换、隔离回归、跨仓联调、原生专项和现场事实。** 仓库已交付首条 [创建map 资产与配置清单](workflow-migration-inventory.md)，并按用户本轮授权迁入 [GitHub 仓库拉取与探索](workflow-migration-inventory.md#github-仓库拉取与探索2026-11-27-选择性迁移)的新定义及启动输入调整；定义落盘不是用户迁移完成确认或业务验收。其余流程未选择不等于废弃，不以这份 Markdown 决定运行资格。
+**本报告区分仓库转换、隔离回归、跨仓联调、原生专项和现场事实。** 仓库已交付首条 [创建map 资产与配置清单](workflow-migration-inventory.md)，并按用户本轮授权迁入 [GitHub 仓库拉取与探索](workflow-migration-inventory.md#github-仓库拉取与探索2026-11-27-选择性迁移)的新定义及启动输入调整；本轮追加创建bot-V2 和两条创建流程的公开身份文件。定义落盘不是用户迁移完成确认或业务验收。其余流程未选择不等于废弃，不以这份 Markdown 决定运行资格。
+
+## 创建bot-V2 与创建map身份输出：本轮变更范围
+
+按本会话逐项确认，迁入创建bot-V2 的 Map 和三个 Bot，原位更新 W1/W2 及 Map 维度优化者的 Task.prompt。流程材料契约位于 `meta-data/workflow-maps/create-bot-v2/materials.md`；W2 与 Map 维度优化者共同读取 `docs/prompt-information-ownership.md`，不各自维护一份分层清单。
+
+V2 的 request 仅保留 type/ref，直接交给两个节点；W1 只交 bot_requirements，W2 公开交 created_bot 身份文件。创建map保留内部 outline/map/handoff，新增公开 created_map 身份文件。Bot ID 和 Map 文件名各按真实对象引用，不复制完整配置作为公开成果。
+
+本轮没有实现嵌套 Run 输入下传；用户明确留到两个上游流程迁移时处理。旧父流程、backup、运行记录和用户业务保持原状，不执行部署重启或真实创建业务。正文与接口批准不等于用户迁移完成确认，两个已转换对象的清单状态仍为“未开始”。本节下方的旧轮次结果是历史证据，不替代本轮定向检查。
+
+### 本轮定向检查
+
+| 检查 | 实际结果 |
+| --- | --- |
+| 两张 Map、四个 Bot 的 JSON Schema；Task 非目标字段与接线对照 | 6 个定义通过；36 个 Task 的非目标内容保持，3 个 prompt 与批准正文一致；V2 Bot 身份和节点策略保持。接线按直接及传递依赖核对。 |
+| `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch -- selected_flow:: plan_workflow:: selected_v2_delivers_request_to_both_nodes_and_returns_saved_bot_identity` | 首轮 7 项中 5 通过、2 失败。通过项包括创建map实际身份输出交接及原有规划用例；两项失败分别如下，不记为全绿。 |
+| V2 夹具修正后的 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_migration::selected_v2_delivers_request_to_both_nodes_and_returns_saved_bot_identity -- --exact` | 1/1 通过（0.70 秒）。通过公开接口派发，两节点实际读取同一 request，W2 读取需求交接；Bot 保存读回、身份文件定位、缺公开文件拒绝 finish、显式登记后完成、Task 与原始 request 保持。 |
+| `npm --prefix frontend run test:browser:build -- selectedFlow.spec.ts --workers=1` | TypeScript、Vite、后端与安全壳构建通过；网络护栏通过；Chrome 1/1 通过（1.9 秒），实际页面展示创建map公开身份文件及保留的内部材料。保留既有 chunk 大于 500 kB 提醒。 |
+
+失败与修订：V2 初次派发因隔离词典缺少 `herdr-bot-path` 被真实后端拒绝；补齐夹具词典后只复跑该项通过。另一个既有 `selected_flow_publishes_approved_graph_and_shared_knowledge_without_starting_work` 在第 81 行要求外层 Bot 的 group 为 null，但本轮开始时实际已为 meta-bot，且本轮按授权保持该字段；该无关旧断言未修改，测试仍记未通过，其后面的父图绑定断言尚未在该用例执行到。没有缩小九图全量发布断言或将未选 Map 恢复上线来制造通过。
+
+静态接线检查首轮错误地要求所有输入来源都是直接 blocked_by，遇到创建map已有传递依赖后修正检查方法；产品图未为此改动。检查命令使用当前 worktree 的绝对 `CARGO_TARGET_DIR=E:/Developer/myhub/herdr-bot/backend/target`。原始回归和页面输出见本会话 `local://6.log`、`local://7.log`。机械验证不证明真实模型生成的业务正文或实际部署通过。
 
 ## GitHub 探索选择性迁移：2026-11-27 定向证据
 

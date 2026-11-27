@@ -4,7 +4,7 @@
 
 ## 创建分支表示的交付边界
 
-材料使用[创建 V1 契约](business-materials.md#创建分支-v1可校验表示与空白创建)。最终保存只读共同 baseline 和四份命名 text，不消费字段 handoff 或批准凭据。[V2](contracts/create-bot-v2-materials.md) 和[修订](revise-bot-guides.md) 使用各自协议，不可替代。自定义旧部署按[脚本更新说明](usage.md#脚本空白-bot-创建)显式更新，不能恢复历史脚本执行或自动重写 Run。
+材料使用[创建 V1 契约](business-materials.md#创建分支-v1可校验表示与空白创建)。最终保存只读共同 baseline 和四份命名 text，不消费字段 handoff 或批准凭据。[创建 V2](../meta-data/workflow-maps/create-bot-v2/materials.md) 是另一入口，只接收命名 `request` 与本次要求（runInput），公开 `created_bot`，不接收 V1 的 `materials` 或交付 `saved`／`handoff`。[修订](revise-bot-guides.md)也使用独立协议。自定义旧部署按[脚本更新说明](usage.md#脚本空白-bot-创建)显式更新，不能恢复历史脚本执行或自动重写 Run。
 
 ## 调用接口
 
@@ -16,7 +16,7 @@
 
 ## 执行与授权
 
-编写者和优化者只负责自己的字段，按 [共同材料契约](business-materials.md)消费同一基线并交付 text 与 handoff。四个字段的完整正文分别由用户确认；表达优化只整理已确认的意思。创建和保存由 TypeScript 脚本执行，没有 Chat，不使用修订的通用替换者。结构化 Map 决定具体节点、命名接线与批准模式。Task.prompt 负责稳定步骤，node.input 只说明本次分支、材料用途、字段和权限；Bot 能力摘要只供规划者使用。
+编写者和优化者只负责自己的字段，按 [共同材料契约](business-materials.md)消费同一基线并交付 text 与 handoff。四个字段的完整正文分别由用户确认；表达优化只整理已确认的意思。创建和保存由 TypeScript 脚本执行，没有 Chat，不使用修订的通用替换者。结构化 Map 决定具体节点、命名接线与批准模式。调整本流程的 Task、节点委托或 Bot 摘要前，参照[提示词信息归属与 DRY](prompt-information-ownership.md)。
 
 成果批准与合法业务保存、报告和管理者显式完成独立。批准或 `canComplete:true` 不能证明基线、revision 或目标正确。材料写入只限于本次授权；不创建或执行业务目标，不安装工具、不扩权。配置交付不证明实际资源加载、模型遵从或业务效果。
 

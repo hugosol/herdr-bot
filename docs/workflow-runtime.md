@@ -132,6 +132,8 @@ Map 型 Bot 只保存 `map_file`，不固化管理者。具体 node 的 `manager
 
 父 execution 的可选 `childRunId` 与子 Run 的可选 `parent: {runId,nodeId,executionId}` 保存双向执行关联；普通执行／根 Run 省略它们，旧非嵌套记录仍可读取。两侧真实 Chat 引用相同、来源 Task／agent 一致且关联唯一时，该子 manager 才同时拥有子 Run 的管理者与父 execution 的节点角色。OMP／Pi 启动装配各自的 manager-chat 和 node-chat；没有新增 Task 类型或普遍放宽身份唯一性。`run`／`collect` 只定位子 Run，`context`／`report` 只定位关联的父 execution，包括保留的旧 execution；`approve` 也只批准真实父 execution，但旧子 manager 不能批准 retry 后的新 execution，旧执行的批准请求按陈旧执行拒绝。批准请求的 executionId 只校验已取得上下文，不能选择其他归属。请求不能指定其他 Run／execution／接收者来选择身份；同 Run 混用、缺少／错误／多重关联和复用原生 Session 仍拒绝。
 
+父节点的 `node.input` 原文成为子 Run 的 `mapInput.runInput`；父 Run 的 `mapInput.runInput` 与父管理者后续对话不自动向下传递。需要把动态需求传入新 V2 接口的父流程，留待各上游迁移明确如何提供，不在本轮实现新传值机制。
+
 父节点本次已经解析的 `inputs: [{id,path}]` 按**本地 id 同名**作为子 Run 的 `mapInput.files`。例如上游输出 `upstream-result` 被父 node 规则绑定为 `child-material` 时，子接口必须声明 `child-material`，而不是上游输出名。每层只解析所属 Run 的输入；同名跨 Map／Run 不串材料。空接口和可选缺席合法，不生成占位路径；即使子接口必需项暂缺，也可启动子管理者；子 Run 同样从 `inputsReady=false` 开始，须由子管理者澄清、补齐并确认后，才能派发任何内部业务节点。父 execution 已冻结的 inputs 不因子 Run 后续绑定而改变。
 
 ### 从 workflow 查看子 Run
@@ -323,28 +325,26 @@ manager-chat 需要在独立 toolkit 中通过公共 `PromptDeclaration` 的 `fi
 
 ### 统一文件交接约定
 
-以下区分后端在启动／派发前的文件检查与节点持续承担的业务职责。业务 input 的编写边界见 [node.input 的业务职责](scheduler.md#nodeinput-的业务职责)。
+以下区分后端的文件检查与节点持续承担的业务职责。编写或迁移节点委托时，按[提示词信息归属与 DRY](prompt-information-ownership.md)归位提示词并核对实际入口；静态字段见 [scheduler](scheduler.md#文件输入与输出规则)。
 
 - 消费者以派发时保存并注入的实际文件输入为准，直接读取命名地址；不读取运行记录筛选材料，不持续追踪上游是否产生新 execution，不因上游重试或更新输出登记自行切换地址。文件缺失、不可读或业务内容冲突时报告具体阻塞，不猜路径、不回退其他版本。
 - 登记固定的是地址，不是内容。生产者可以在业务授权内原地修改自己负责的文件；安全写入、避免覆盖其他节点／执行的产物及完整读回职责不变。需要保留不同版本时可写新文件并更新同一输出 ID 的地址；后续派发按届时适用登记解析，更新不重定向已有消费者。成果批准不等同于业务内容保存授权，也不冻结材料或正文。
 - 交接说明与可直接使用的纯正文是独立文件时，分别声明输出 ID 并登记地址；消费者逐项声明输入，不从同目录文件名或交接说明中推导未声明材料。输出规则不代替交付内容、格式、确认范围和验收要求。
 - 内部交接材料使用初始化提供的中间资料位置。生产者先核实写入位置、权限与路径边界；不要沿符号链接、目录联接或重解析点越出授权位置。新文件选不冲突的真实路径，不能覆盖其他节点或执行的产物；按业务约定安全写入后，从正式路径完整读回并核对，再登记。业务明确要求的正式位置仍有效，规则本身不预分配路径。
 - 已提供的根输入在预检、启动与输入准备入口，普通节点的直接文件／报告输出／Run 输入在本次派发前检查实际文件存在且可打开。检查只证明当时可读，固定输入地址不等于文件正文快照；框架不读取业务正文，不复制、锁定、校验或阻止后续改写。中间资料位置仅按 Run 区分，不提供自动的每 execution 隔离，上述不覆盖约定依赖生产者遵守。派发后删改不会触发系统重试、修复、补文件或搬运，不承诺持续可用性、不可变存储或服务端强制隔离保证。
-- 文件来源解析不证明业务正确。消费者仍核验目标 Bot 的 normal Task／Map 目标、共同基线、确认范围和实际配置冲突；保存时继续遵守业务授权、真实 revision 及完整读回要求。Bot 能力摘要的共同基线、唯一正文与必要说明统一按[共同业务材料契约](business-materials.md)生产、直接传入与核对。管理者仍负责完成与派发，`blocked_by` 与材料引用保持独立。
+- 文件来源解析只证明地址可用，不验证业务正确性。消费者按适用的业务契约核对材料；管理者仍负责完成与派发，`blocked_by` 与材料引用保持独立。
 
 例如消费者已获得 `text → A.md` 后，生产者将修订正文写入 `B.md` 并更新 `text` 登记；该消费者继续使用 `A.md`，后续消费者可取得 `B.md`。若在授权范围内原地修改 `A.md`，原消费者之后读取的就是新内容；删掉它后读取会失败，系统不提供旧内容副本或自动修复。
 
-本节记录已确认的职责与交接约定，不代表旧 Map、Task 提示词或外部角色扩展已同步迁移。精简旧业务 input 前须核对结构化规则与统一协议的实际承接，不能将文档约定当作运行强制能力。
-
 ### Bot 创建与修订的业务文件交接
 
-[共同业务材料](business-materials.md)定义基线、唯一正文与交接说明的职责。[创建 V1 包装](create-bot-wrapper.md)、[指南修订](revise-bot-guides.md)与[创建 V2](contracts/create-bot-v2-materials.md)有不同材料与授权接口，不混用。共享 Task 即使在独立 Chat 也须核实真实目标、基线、revision、允许修改范围及完整读回。成果批准不代替业务确认、保存授权或管理者完成。
+[创建 V1 包装](create-bot-wrapper.md)与[指南修订](revise-bot-guides.md)按各自接口使用[共同业务材料](business-materials.md)。[创建 V2](../meta-data/workflow-maps/create-bot-v2/materials.md)独立运行：唯一必需命名文件输入 `request` 仅定位目标；需求、约束、参考路径及用途写入本次要求（runInput），不另绑定 `materials`。W1 交付 Markdown `bot_requirements`；W2 直接消费该文件和同一 `request`，公开交付 JSON 身份文件 `created_bot`（`bot_id`）。本分支不生产 `target_materials` 或旧 `saved`／`handoff`。成果批准不代替业务确认、保存授权或管理者完成。
 
-包装子 Run 的 saved 与 handoff 由父层验收；若外层还有 `optimize_bot`，父管理者须验收最后的优化成果才 finish。定义保存或文本优化不证明运行行为，不为核实定义而启动用户业务。
+V1 包装子 Run 的 saved 与 handoff 由父层验收；若外层还有 `optimize_bot`，父管理者须验收最后的优化成果才 finish。定义保存或文本优化不证明运行行为，不为核实定义而启动用户业务。
 
 ### plan_workflow 的业务文件交接
 
-[创建map](../meta-data/workflow-maps/plan_workflow.json) 以 Run 的「本次要求」接收需求，未声明公开输入／输出规则；`outline`、`map`、`handoff` 是图内接线，而不是调用方的文件接口。最终交付在 scheduler 中查看，不启动生成的业务。各执行节点按自身委托取得[阶段交接标准](../meta-data/workflow-maps/plan_workflow/planning-deliverables.md#创建-map-的整图交接)；管理者仅按通用报告、批准及完成协议办理交接，不加载此流程的业务资料。
+[创建map](../meta-data/workflow-maps/plan_workflow.json) 以 Run 的「本次要求」接收需求，不声明公开文件输入。`optimize_map` 在内部 `map`／`handoff` 之外交付 `created_map`；管理者 `finish` 时以同名输出登记该公开身份文件。其中 `map_file` 为最终正式配置的实际文件名（含 `.json`），不是配置副本。最终配置可在 scheduler 中查看，不启动生成的业务。各执行节点按自身委托取得[阶段交接标准](../meta-data/workflow-maps/plan_workflow/planning-deliverables.md#创建-map-的整图交接)；管理者仅按通用报告、批准及完成协议办理交接，不加载此流程的业务资料。
 
 ## 角色归属与来源集成检查
 

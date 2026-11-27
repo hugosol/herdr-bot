@@ -277,7 +277,7 @@ cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_crea
 
 ## 首条创建map发布与离线切换演练
 
-从本票 worktree 构建真实页面和后端，使用独占绝对 `CARGO_TARGET_DIR`；按[交付与现场交接](../bot-map-contract-refactor-delivery.md#本轮产品自动证据)精确选择发布定义、受控宿主与真实文件、浏览器和隔离生命周期/清理用例。演练不操作现场或启动生成的业务，实际用户验收与原生 tester 证据分别记录。
+从本票 worktree 构建真实页面和后端，使用独占绝对 `CARGO_TARGET_DIR`；按[交付与现场交接](../bot-map-contract-refactor-delivery.md#本轮产品自动证据)精确选择发布定义、受控宿主与真实文件、浏览器和隔离生命周期/清理用例。静态核对最终节点保留 `map`／`handoff` 并新增 `created_map`；通过运行入口另行核对 `finish` 必须登记该公开身份文件，以及父层只接收声明的同名子集。真实交付取证须比较身份文件的 `map_file` 与最终配置实际文件名；原先无公开输出的历史演练不能验证该修订。演练不操作现场或启动生成的业务，实际用户验收与原生 tester 证据分别记录。
 
 ## 发布创建图迁移回归（P22／P23／P27／P28）
 
@@ -287,7 +287,7 @@ cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch rust_crea
 
 `cargo test --manifest-path backend/Cargo.toml --test workflow_dispatch create_migration:: -- --nocapture` 比较发布 Map 实际配置与独立的批准模式和结束节点预期。按 [运行时批准协议](../workflow-runtime.md#角色责任与批准动作矩阵) 判断职责，不能从旧报告开关机械推导批准模式。
 
-V2 保留专用 authorization／confirmation 材料，独立运行并比较实际文件、完整公开对象及 revision。成功报告本身不能批准或完成节点。保留显式批准、complete／finish 的独立证据，并确认 V1 Run 和 request 不变。受控宿主与 HTTP 的人工来源不证明原生 Yes 或真实模型遵从。
+按 [当前 V2 材料契约](../../meta-data/workflow-maps/create-bot-v2/materials.md)核对独立的命名 `request`、本次要求（runInput）、W1 的 `bot_requirements`、W2 对同一 `request` 的绑定和 `created_bot` 身份交付；对照实际文件与服务读回对象，不要求旧批准材料或配置副本。成功报告本身不能批准或完成节点。保留显式批准、complete／finish 的独立证据，并确认 V1 Run 和 request 不变。受控宿主与 HTTP 的人工来源不证明原生 Yes 或真实模型遵从。
 
 ## 后端并行与诊断
 
@@ -427,7 +427,9 @@ python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-node-approval-failure
 
 ### 发布 V2 双宿主原生与页面专项（P34／P35 V2）
 
-从参与的 herdr-bot worktree 根运行：
+以下是旧版嵌套 V2 的验收入口和取证口径，不适用于当前选择性迁移。旧父图 `create-task-v2.json` 未迁移，其当前接线不代表独立 `create-bot-v2.json` 的新接口；旧专项的源定义、材料和原生证据均不能证明当前 [V2 契约](../../meta-data/workflow-maps/create-bot-v2/materials.md)。当前 V2 须以独立图实际运行取证；父层专项需待上游迁移，核实明确提供的动态需求与新身份文件的消费。
+
+复现旧版时，从参与的 herdr-bot worktree 根运行：
 
 ```sh
 python "$TESTER/run.py" --herdr-bot-worktree "$BOT" accept-node-approval-v2 --toolkit-worktree "$TOOLKIT_WT" --backend "$HERDR_BOT_BINARY" --hosts omp,pi --paths-file "$ISOLATED_PATHS" --model-config "$AUTHORIZED_MODEL_CONFIG" --evidence-dir "$NEW_EVIDENCE_DIR"

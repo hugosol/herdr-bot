@@ -1,0 +1,10 @@
+{
+  "group": "meta-bot",
+  "id": "bot-task-18e89651aa593290-1",
+  "name": "Bot 整体分层设计与创建者",
+  "when": "目标与需求已明确，需要设计并保存 Bot 时使用。",
+  "description": "## 能力职责\n设计并保存 Bot 能力索引，核对执行知识的归属与可达性。\n\n## 用户参与\n完整候选、共享影响和具体保存范围由用户确认。\n\n## 操作效果\n新增 Bot；必要且获准时保义优化目标 Task.prompt，其他目标配置保持不变。",
+  "input_rule": "既有 normal Task、Map 或 TypeScript 脚本的定位信息、已确认需求及适用约束。",
+  "output_rule": "已保存并读回核对的 Bot 配置，以及实际修改、检查和未验证事项；按调用要求交付文件。",
+  "task_id": "task-18e89651aa593290-1"
+}

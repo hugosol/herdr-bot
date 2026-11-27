@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test'
 import { startServer } from '../../support/support'
 
 // P40/P41, S1/S2/S4. Selecting a Map from another release, silently restoring
-// its legacy file interface, or starting a Run to inspect the definition would
+// file inputs, losing the public identity output, or launching during inspection would
 // disagree with the real page, independent expected graph, or host recorder.
 test('selected creation Map is visible with only a textual business request', async ({ page, request }, info) => {
   const server = await startServer({ separateCwd: true, herdr: {} })
@@ -28,7 +28,7 @@ test('selected creation Map is visible with only a textual business request', as
     const definition = await readMap.json()
     expect(definition.title).toBe('创建map')
     expect(definition.map_input_rule).toBeUndefined()
-    expect(definition.map_output_rule).toBeUndefined()
+    expect(definition.map_output_rule.files.map((file: { id: string }) => file.id)).toEqual(['created_map'])
 
     await page.goto(`${server.baseURL}?layout=expanded`)
     await page.getByRole('tab', { name: 'scheduler', exact: true }).click()
@@ -36,6 +36,9 @@ test('selected creation Map is visible with only a textual business request', as
     for (const title of ['概要规划与用户确认', '概要方案转换为业务 Map', 'prompt优化者——Map维度']) {
       await expect(page.getByRole('button', { name: new RegExp(title) }).first()).toBeVisible()
     }
+    const outputs = page.getByRole('region', { name: 'Map 输出规则', exact: true })
+    await expect(outputs.getByRole('listitem')).toHaveCount(1)
+    await expect(outputs.getByText('created_map', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '+ 发起 Run', exact: true }).click()
     const launch = page.getByRole('form', { name: '发起 Run', exact: true })
     await expect(launch.getByRole('textbox', { name: '本次要求', exact: true })).toBeVisible()

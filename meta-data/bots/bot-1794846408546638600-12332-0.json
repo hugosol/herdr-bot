@@ -1,0 +1,10 @@
+{
+  "group": "meta-bot",
+  "id": "align-bot-requirements-v2",
+  "name": "Bot 需求对齐者",
+  "when": "创建 Bot 前，需要核实既有目标并对齐能力需求时使用。",
+  "description": "## 能力职责\n调查目标能力，与用户确认供后续设计使用的业务需求。\n\n## 用户参与\n目标歧义、能力差异和未决业务取舍由用户确认。\n\n## 操作效果\n目标保持只读，交付需求材料。",
+  "input_rule": "既有 normal Task、Map 或 TypeScript 脚本的定位信息，以及拟建 Bot 的需求和必要参考资料。",
+  "output_rule": "包含准确目标身份、已确认需求、本次创建约束及未验证事项的交接材料。",
+  "task_id": "task-18e892cb6456b0d0-0"
+}

@@ -2,6 +2,14 @@
   "title": "创建map",
   "group": "meta-map",
   "description": "将业务需求转化为新业务 Map，并完成关联提示词的分层优化；交付系统中已保存的配置，不启动生成的业务流程。",
+  "map_output_rule": {
+    "files": [
+      {
+        "id": "created_map",
+        "description": "已创建 Map 的定位文件，JSON 字段 map_file 为正式 Map 文件名（含 .json）。"
+      }
+    ]
+  },
   "nodes": {
     "generate_map": {
       "title": "概要方案转换为业务 Map",
@@ -52,6 +60,9 @@
         },
         {
           "id": "handoff"
+        },
+        {
+          "id": "created_map"
         }
       ],
       "auto_approved": false,

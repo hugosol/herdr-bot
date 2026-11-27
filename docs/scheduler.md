@@ -24,11 +24,11 @@ Map 目录可按名称、文件名或组名搜索，并与分组筛选组合使�
 | Task | 发起 Chat 的可复用预设，持有 agent、trigger config 与 env config；不嵌入 Map、node 或 Bot。 |
 | Chat | 实际对话与原生会话身份，不写进静态定义。执行身份、报告、状态和历史不属于 Map 或 Bot。 |
 
-Bot 的 when、description、input_rule、output_rule 供规划者和调用者发现、选择与组合能力，不作为执行指令注入目标 Chat，也不要求执行者通过读取 Bot 补全工作规则。执行所需的稳定知识由 Task、script 或 Map 实现及其引用资料完整承接；本次差异由调用输入提供。Bot 的目标引用仍用于解析实际实现。
+Bot 的四个摘要字段不作为执行指令注入目标 Chat；目标引用仍用于解析实际实现。编写或联合调整 Bot、Task、Map/node 与关联文档时，按[提示词信息归属与 DRY](prompt-information-ownership.md)归位信息并核对执行侧实际可达性。
 
 Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归属形成分组，不需要独立定义或 ID。省略或 `null` 表示未分组；非空名称不得带首尾空白，区分大小写。分组仅用于组织列表与选择控件，不影响引用、运行或校验资格，node 不拥有分组字段。界面归属编辑和自举归类范围见[定义分组](usage.md#taskbot-与-map-分组)。
 
-只接受这一种命名字段格式，没有 `schema_version` 或运行时旧格式兼容。旧 Map 的 `input_requirements`／`input_files`、旧 node 的 `parameters`、旧 Bot 的 `use_when`、`plan_guide`、`node_guide`、`inputs`、`outputs`、`implementation` 都是未知字段，连同版本 1 也明确拒绝。上线前停止服务、备份旧文件，再由规划者改写为新格式：把业务参数整理成 `input` 原文，明确选择 `zone` ID；逐项把旧能力知识归还实际实现、公共协议或四字段摘要。不能从旧业务参数猜测 Task／zone 绑定。未转换的旧 Map／Bot 保留在配置定义目录之外；新版不会以旧字段或离线副本作为读取回退。不改写旧 Run 或 Chat 记录。
+只接受这一种命名字段格式，没有 `schema_version` 或运行时旧格式兼容。旧 Map 的 `input_requirements`／`input_files`、旧 node 的 `parameters`、旧 Bot 的 `use_when`、`plan_guide`、`node_guide`、`inputs`、`outputs`、`implementation` 都是未知字段，连同版本 1 也明确拒绝。上线前停止服务、备份旧文件，再由规划者改写为新格式：把业务参数整理成 `input` 原文，明确选择 `zone` ID。不能从旧业务参数猜测 Task／zone 绑定。未转换的旧 Map／Bot 保留在配置定义目录之外；新版不会以旧字段或离线副本作为读取回退。不改写旧 Run 或 Chat 记录。
 
 完整 Map 示例：
 
@@ -73,13 +73,11 @@ Task、Bot 和 Map 顶层均可包含 `group` 字符串：同类型的同名归�
 }
 ```
 
-Bot 的 when、description、input_rule、output_rule 供规划者和调用者发现、选择与组合能力，不作为执行指令注入目标 Chat，也不要求执行者通过读取 Bot 补全工作规则。执行所需的稳定知识由 Task、script 或 Map 实现及其引用资料完整承接；本次差异由调用输入提供。Bot 的目标引用仍用于解析实际实现。
-
 四个字段均必填字符串，可以各自为空。`when` 写适用性，`description` 写能力职责与边界，Bot 的 `input_rule`／`output_rule` 写规划用的输入／成果摘要，与 Map/node 的结构化规则不同。编写格式见[四字段编写与表达优化](business-materials.md#四字段编写与表达优化)，保存不解析标题。目标可以全省略或为 null（可保存但不可运行的草稿）；非 null 目标互斥。旧字段不再接受，备份须在在线定义读取范围外，不出现在在线列表且不会回退。
 
 ### node.input 的业务职责
 
-`node.input` 只承载本项工作的业务指示：目标与非目标、命名材料的用途、允许修改的对象和字段、交付内容与格式、验收条件及业务冲突处理。必要的业务操作指引若尚未由关联 Task 提供，仍须保留；文件流转规则不能替代操作知识。Bot 指南不会自动注入，因此不能以“指南中已有”为由删除执行所需的业务要求。
+`node.input` 是本次节点委托的字符串，可为空。编写或迁移时，按[提示词信息归属与 DRY](prompt-information-ownership.md#按消费者归位)区分本次差异、稳定实现、业务资料和公用规则。下表是对应结构化字段与运行事实，不是需要再写入委托的清单。
 
 | 内容 | 承载位置 |
 | --- | --- |
@@ -89,11 +87,9 @@ Bot 的 when、description、input_rule、output_rule 供规划者和调用者�
 | 前置依赖与流程推进 | `blocked_by` 与管理者编排，不由消费者筛报告重做调度 |
 | 成果批准模式 | `auto_approved`；不控制报告发送。业务内容确认与保存授权仍由业务约定。 |
 
-交接说明与可直接使用的纯正文分别声明输出，下游逐项引用；不只登记交接说明，再通过同目录、固定文件名或报告正文发现其他文件。内部交接使用初始化提供的中间资料位置，不在每个 input 中规定材料根／Run ID／工作编号／execution ID 的路径算法。用户明确指定的正式交付位置、格式或业务命名仍保留。输出 ID 不指定物理文件名，也不替节点分配地址或生成文件。
+输出 ID 不指定物理文件名，也不替节点分配地址或生成文件。正文、交接说明与其他成果的声明和登记见[统一文件交接约定](workflow-runtime.md#统一文件交接约定)。
 
-Bot 摘要修订可直接引用同一 `baseline` 及四组 `*_text`、`*_handoff`。V1 创建保存只接收基线与四份正文，不消费各字段 handoff 或批准凭据。各分支的目标身份、基线、必要确认、安全保存与读回见[共同业务材料契约](business-materials.md)。
-
-迁移旧定义时，先声明真实输出并补齐消费者的输入规则，再移除人工寻址、全图工作—文件映射、持续追踪上游当前 execution 和重复报告策略。通用保存与交接要求遵循[统一文件交接约定](workflow-runtime.md#统一文件交接约定)。规则仍为空或通用职责尚无承接方时，不得仅删文字造成信息丢失；本规范不表示存量 Map 或 Task 提示词已经迁移。
+Bot 摘要修订与 V1 创建的命名接线见[共同业务材料契约](business-materials.md)；V2 的接口独立，以 [V2 专用材料契约](../meta-data/workflow-maps/create-bot-v2/materials.md)为准。
 
 ### Map 公开输入与输出规则
 

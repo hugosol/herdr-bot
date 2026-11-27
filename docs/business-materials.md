@@ -1,8 +1,8 @@
 # Bot 能力摘要的共同业务材料契约
 
-创建、修订 Bot 能力摘要及独立 Chat 共用本契约。先读“三种材料，直接交给消费者”，再按当前职责读取：基线生产者读“目标核实与基线生产”；编写者读“共同基线消费”和“四字段编写与表达优化”；优化者读“共同基线消费”和“表达优化”；保存者读“一次合法保存与失败核实”。要求文件时另读“文件与独立 Chat”。各阶段只执行自身步骤。
+创建 V1、修订 Bot 能力摘要及独立 Chat 共用本契约。先读“三种材料，直接交给消费者”，再按当前职责读取：基线生产者读“目标核实与基线生产”；编写者读“共同基线消费”和“四字段编写与表达优化”；优化者读“共同基线消费”和“表达优化”；保存者读“一次合法保存与失败核实”。要求文件时另读“文件与独立 Chat”。各阶段只执行自身步骤。
 
-指南面向规划者，不会自动注入执行 Chat；执行所需章节由 Task 或本次 input 明确指向，独立 Chat 同样适用。
+指南面向规划者，不会自动注入执行 Chat；执行所需章节由 Task 或本次 input 明确指向，独立 Chat 同样适用。跨 Bot、Task、Map/node 与关联资料重整提示词前，读取[提示词信息归属与 DRY](prompt-information-ownership.md)。显式选择创建 V2 时使用 [V2 专用材料契约](../meta-data/workflow-maps/create-bot-v2/materials.md)，不使用本页的 baseline／text／handoff 协议。
 
 ## 创建分支 v1：可校验表示与空白创建
 
@@ -19,7 +19,7 @@
 - `baseline` 保留已核实的完整 request、公开读回的完整 Bot、真实 revision 及完整目标对象。四个能力字段严格为 `""`；Bot 不绑定脚本。目标、request 与 Bot 的唯一绑定一致，不能用名称、地址或摘要代替完整配置。
 - `revision` 逐字取自真实 `POST /api/scheduler/bots/edit`。其中 `original` 是含 ID 的完整原始 JSON 字符串，不是版本号、时间戳、哈希或重新序列化的对象。
 
-V1 request 不接受 `authorization`、`confirmation`、`approved` 或其他批准凭据。成果批准属于本次 execution，不写入 request、baseline 或创建交接；下游保存权限不能倒灌为上游输入。不能由其他字段推断授权或把旧材料自动转换成 V1。[V2](contracts/create-bot-v2-materials.md) 的专用协议独立。
+V1 request 不接受 `authorization`、`confirmation`、`approved` 或其他批准凭据。成果批准属于本次 execution，不写入 request、baseline 或创建交接；下游保存权限不能倒灌为上游输入。不能由其他字段推断授权或把旧材料自动转换成 V1。[V2](../meta-data/workflow-maps/create-bot-v2/materials.md) 的专用协议独立。
 
 字段归属：调用方生产 request，target 只定位既有对象，bot 只提供可选 id／name／group，不能夹带四字段正文、目标绑定或 configuration。创建脚本经公开接口调查目标并唯一保存新 Bot；baseline.bot／revision／target.configuration 来自创建后的完整公开读回，baseline.request 原样保留已验证请求，不能用调用方配置代替服务事实。后续 V1 保存消费者读取同一 request／baseline／target，不恢复已删除的 request 凭据；材料生产者直接生成以下新协议，不先生成旧协议再转换：
 
@@ -41,7 +41,7 @@ V1 request 不接受 `authorization`、`confirmation`、`approved` 或其他批�
 
 - 字段 handoff 使用 `$defs.guide_handoff`：必填 kind=`handoff`、stage=`guide`、bot_id、target（无 configuration 的唯一定位）、field（when／description／input_rule／output_rule）、sources、constraints、unverified。它只供编写与表达优化说明来源及语义限制，不含批准凭据、正文、完整配置或 revision.original，不是保存的必需输入。
 - `sources` 是非空 `{binding_id,direction,role}` 数组；direction 是本次生产者的 input／output，role 是 request／materials／baseline／text／handoff，binding_id 是已声明的本地命名绑定 ID。同方向 ID 不重复。它只记来源／用途，消费者**不沿索引寻址**。编写者记 baseline 输入和最终 text 输出；优化者另记收到的 text／handoff，记录新的 text 输出。
-- V1 不生产或消费 `authorization`、`confirmation`、`approved`、`text_sha256`、`save_authorized` 或 `confirmation_evidence` 等人类批准凭据；未知字段直接拒绝，无旧输入兼容。成果批准属于本次 execution，与合法保存的数据一致性检查独立。修订和 V2 保留各自确认与交接协议，同步使用四字段 Bot 格式。
+- V1 不生产或消费 `authorization`、`confirmation`、`approved`、`text_sha256`、`save_authorized` 或 `confirmation_evidence` 等人类批准凭据；未知字段直接拒绝，无旧输入兼容。成果批准属于本次 execution，与合法保存的数据一致性检查独立。修订与 V2 的业务确认和交付以各自契约为准，同样使用四字段 Bot 格式。
 - 最终保存只接受五个唯一命名输入：`baseline`、`when_text`、`description_text`、`input_rule_text`、`output_rule_text`。四份正文分别原样写入 Bot 的 when、description、input_rule、output_rule。命名绑定就是字段归属，不从文件名、正文语义、邻居文件、handoff 或 node.input 猜归属／生成正文；缺失、重复、未知绑定均拒绝，不接受旧式字段或额外交接。纯正文允许任意合法 UTF-8（含空串），保存端不猜测其业务语义。canComplete 或成果批准不替代业务数据正确性核对。
 - 保存时重读当前 Bot、revision 和完整目标，与同一 baseline 精确比较；保留所有非目标字段及唯一绑定。一次合法保存汇总四段原样 text，禁止分次保存、自动合并或绕过运行禁写。写后完整读回 Bot、真实新 revision 与未变目标；四字段须逐字等于最终 text，非目标须逐项等于 baseline。
 - `saved` 使用 `$defs.saved`：kind=`saved`，必填完整 bot、真实新 revision、完整 target（含 configuration），**不是**仅 Bot ID、响应摘要或候选。输出 ID 仍是 saved。
@@ -74,7 +74,7 @@ JSON Schema 负责字段形状，不会访问服务、验证 revision.original �
 
 ## 三种材料，直接交给消费者
 
-以下章节保留修订及独立非 v1 调用的原有业务确认与保存授权职责；创建 v1 的字段形状和保存必需输入以上节为准：字段 handoff 不含批准凭据，最终保存只接收 baseline 与四份明确命名的 text，不适用下文四组 handoff 验权要求。V2 保留专用确认与交付协议，同样使用新 Bot 格式。
+以下章节保留修订及独立非 v1 调用的原有业务确认与保存授权职责；创建 v1 的字段形状和保存必需输入以上节为准：字段 handoff 不含批准凭据，最终保存只接收 baseline 与四份明确命名的 text，不适用下文四组 handoff 验权要求。V2 不适用本节；按 [V2 专用材料契约](../meta-data/workflow-maps/create-bot-v2/materials.md)准备目标定位、需求与身份交接。
 
 | 材料角色 | 唯一内容 | 消费者 |
 | --- | --- | --- |
@@ -121,7 +121,7 @@ workflow 的每个必要消费者都在 `input_rule` 中直接引用共同基线
 - `input_rule`：规划需要知道的输入种类、含义与关键前提；区分必需、可选与条件适用，不代写本次业务委托或文件绑定。
 - `output_rule`：可期待成果的种类、含义、载体与关键限制；区分定稿、中间材料、已保存配置与实际业务效果，不虚构可交付文件。
 
-四个字段供规划者阅读。它们不会随目标注入，也不是运行校验规则。重新归位旧信息时，以真实实现核对稳定工作设定、详细输入输出、具体步骤及权限边界是否已经由 Task／script／Map 或其引用资料承接；未承接的知识须归还实现并核实真实读取入口。公共身份、批准、报告和接线各由公共协议维护；本次目标、范围和材料用途归用户实际输入或 node.input。不要用摘要隐藏执行缺口，也不要为未选流程决定新业务。
+四个字段供规划者阅读，不随目标注入，也不作为运行校验规则。需要从旧指南重新归位信息时，按[提示词信息归属与 DRY](prompt-information-ownership.md#核对实际可达性)核对执行侧实际可达性；不为未选流程决定新业务。
 
 只澄清尚未决定的业务取舍，展示并确认所属完整正文，沿用有效确认；未确认稿标为草稿。修订委托在同一 Chat 整理并确认；创建委托是否另设表达优化由调用方安排。全文确认、最终配置保存授权与执行层成果批准分别成立；报告自由发送，不要求发送许可。
 

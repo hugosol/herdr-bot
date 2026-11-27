@@ -1,0 +1,77 @@
+{
+  "title": "创建bot-V2",
+  "group": "meta-map",
+  "description": "为既有 Task、Map 或 TypeScript 脚本对齐需求并创建 Bot，交付已保存配置及其身份。",
+  "map_input_rule": {
+    "description": "通过本次要求说明创建需求、约束、已有确认，以及参考资料路径与用途。",
+    "files": [
+      {
+        "id": "request",
+        "required": true,
+        "description": "创建目标的定位文件。准备或读取时，查阅 ${herdr-bot-path}/meta-data/workflow-maps/create-bot-v2/materials.md「request」。"
+      }
+    ]
+  },
+  "map_output_rule": {
+    "files": [
+      {
+        "id": "created_bot",
+        "description": "已创建 Bot 的身份 JSON 文件，唯一字段 bot_id 为正式配置的 Bot ID；用于读取或引用该 Bot，不是完整配置副本。"
+      }
+    ]
+  },
+  "nodes": {
+    "align_requirements": {
+      "title": "对齐 Bot 需求",
+      "bot_id": "align-bot-requirements-v2",
+      "input": "读取 request 前，查阅 ${herdr-bot-path}/meta-data/workflow-maps/create-bot-v2/materials.md「request」；交付 bot_requirements 前，查阅同文档「bot_requirements」。写入交接文件前，读取同文档「材料写入授权」。",
+      "input_rule": [
+        {
+          "type": "run",
+          "id": "request",
+          "input_id": "request"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "bot_requirements"
+        }
+      ],
+      "auto_approved": false,
+      "auto_close": true,
+      "end_node": false,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": []
+    },
+    "design_and_create": {
+      "title": "整体分层设计并创建 Bot",
+      "bot_id": "bot-task-18e89651aa593290-1",
+      "input": "读取 request 或 bot_requirements 前，查阅 ${herdr-bot-path}/meta-data/workflow-maps/create-bot-v2/materials.md 中对应章节；交付 created_bot 前，查阅同文档「created_bot」。写入交接文件前，读取同文档「材料写入授权」。",
+      "input_rule": [
+        {
+          "type": "run",
+          "id": "request",
+          "input_id": "request"
+        },
+        {
+          "type": "node",
+          "id": "bot_requirements",
+          "node_id": "align_requirements",
+          "output_id": "bot_requirements"
+        }
+      ],
+      "output_rule": [
+        {
+          "id": "created_bot"
+        }
+      ],
+      "auto_approved": false,
+      "auto_close": true,
+      "end_node": false,
+      "zone": "hugosol/herdr-bot",
+      "blocked_by": [
+        "align_requirements"
+      ]
+    }
+  }
+}

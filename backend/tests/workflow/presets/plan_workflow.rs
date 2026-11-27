@@ -104,7 +104,8 @@ async fn mixed_target_planning_shape_saves_and_preflights_without_running_busine
 }
 
 // S1/S4: editing and saving each node preserves the new-format named handoff
-// without starting work. Retired rule fields do not become online definitions.
+// and public identity declaration without starting work. Retired rule fields
+// do not become online definitions.
 #[tokio::test]
 async fn planning_definition_round_trips_named_handoff_without_starting_work() {
     let s = Scenario::new().await;
@@ -116,10 +117,11 @@ async fn planning_definition_round_trips_named_handoff_without_starting_work() {
     assert!(rejected.body.contains("input_requirements"), "{}", rejected.body);
     assert_eq!(fs::read_to_string(path).unwrap(), legacy);
 
-    let definition = json!({"title":"Planning handoff fixture","description":"","map_input_rule":{"description":"Describe the change","files":[]},"nodes":{
+    let public_output = json!({"description":"","files":[{"id":"created_map"}]});
+    let definition = json!({"title":"Planning handoff fixture","description":"","map_input_rule":{"description":"Describe the change","files":[]},"map_output_rule":public_output,"nodes":{
         "outline":{"title":"Outline","bot_id":"worker","input":"Draft an outline","zone":"node","blocked_by":[],"output_rule":[{"id":"outline"}]},
         "translate":{"title":"Translate","bot_id":"worker","input":"Translate the approved outline","zone":"node","blocked_by":["outline"],"input_rule":[{"type":"node","id":"outline","node_id":"outline","output_id":"outline"}],"output_rule":[{"id":"map"}]},
-        "check":{"title":"Check","bot_id":"worker","input":"Check the approved outline and Map","zone":"node","blocked_by":["translate"],"input_rule":[{"type":"node","id":"outline","node_id":"outline","output_id":"outline"},{"type":"node","id":"map","node_id":"translate","output_id":"map"}],"output_rule":[{"id":"map"},{"id":"handoff"}]}
+        "check":{"title":"Check","bot_id":"worker","input":"Check the approved outline and Map","zone":"node","blocked_by":["translate"],"input_rule":[{"type":"node","id":"outline","node_id":"outline","output_id":"outline"},{"type":"node","id":"map","node_id":"translate","output_id":"map"}],"output_rule":[{"id":"map"},{"id":"handoff"},{"id":"created_map"}]}
     }});
     fs::write(s.config.scheduler.map_directory.join("plan_workflow.json"), definition.to_string()).unwrap();
     let endpoint = "/api/scheduler/maps/plan_workflow.json";
@@ -127,6 +129,7 @@ async fn planning_definition_round_trips_named_handoff_without_starting_work() {
     assert_eq!(response.status, 200, "{}", response.body);
     let original: Value = serde_json::from_str(&response.body).unwrap();
     assert_eq!(original["map_input_rule"], definition["map_input_rule"]);
+    assert_eq!(original["map_output_rule"], public_output);
     for (id, node) in definition["nodes"].as_object().unwrap() {
         for field in ["blocked_by", "output_rule"] {
             assert_eq!(original["nodes"][id][field], node[field]);
